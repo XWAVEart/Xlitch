@@ -582,3 +582,62 @@ def generate_output_filename(original_filename, effect, settings):
     """
     base, ext = os.path.splitext(original_filename)
     return f"{base}_{effect}_{settings}{ext}"
+
+def full_frame_sort(image, direction='vertical', sort_by='brightness', reverse=False):
+    """
+    Apply full-frame pixel sorting in the specified direction.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        direction (str): Direction of sorting ('vertical', 'horizontal').
+        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue').
+        reverse (bool): Whether to reverse the sort order.
+    
+    Returns:
+        Image: Processed image with full-frame sorting.
+    """
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Create a new image with the same size as the input image
+    width, height = image.size
+    sorted_im = Image.new(image.mode, image.size)
+    
+    # Define the sort function based on the sort_by parameter
+    sort_function = {
+        'color': lambda p: sum(p[:3]),
+        'brightness': brightness,
+        'hue': hue,
+        'red': lambda p: p[0],     # Sort by red channel only
+        'green': lambda p: p[1],   # Sort by green channel only
+        'blue': lambda p: p[2]     # Sort by blue channel only
+    }.get(sort_by, lambda p: sum(p[:3]))
+    
+    if direction == 'vertical':
+        # Sort each column from top to bottom
+        for x in range(width):
+            # Get the pixels in the current column
+            column_pixels = [(image.getpixel((x, y)), y) for y in range(height)]
+            
+            # Sort the pixels by the specified criteria
+            column_pixels.sort(key=lambda item: sort_function(item[0]), reverse=reverse)
+            
+            # Set the pixels in the current column of the output image
+            for new_y, (pixel, _) in enumerate(column_pixels):
+                sorted_im.putpixel((x, new_y), pixel)
+    
+    elif direction == 'horizontal':
+        # Sort each row from left to right
+        for y in range(height):
+            # Get the pixels in the current row
+            row_pixels = [(image.getpixel((x, y)), x) for x in range(width)]
+            
+            # Sort the pixels by the specified criteria
+            row_pixels.sort(key=lambda item: sort_function(item[0]), reverse=reverse)
+            
+            # Set the pixels in the current row of the output image
+            for new_x, (pixel, _) in enumerate(row_pixels):
+                sorted_im.putpixel((new_x, y), pixel)
+    
+    return sorted_im

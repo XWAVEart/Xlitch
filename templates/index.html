@@ -337,19 +337,17 @@
             <!-- Pixel Sorting (Corner-to-Corner) -->
             <div id="pixel_sort_corner_fields" class="effect-fields" style="display:none;">
                 <h3>Corner-to-Corner Pixel Sorting</h3>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.corner_sort_by.label }}</label>
-                        {{ form.corner_sort_by(required=True) }}
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.starting_corner.label }}</label>
-                        {{ form.starting_corner(required=True) }}
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.corner_direction.label }}</label>
-                        {{ form.corner_direction(required=True) }}
-                    </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.starting_corner.label }}</label>
+                    {{ form.starting_corner(required=True) }}
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.corner_direction.label }}</label>
+                    {{ form.corner_direction(required=True) }}
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.corner_sort_by.label }}</label>
+                    {{ form.corner_sort_by(required=True) }}
                 </div>
                 <div class="form-group">
                     <label class="required-field">Chunk Size</label>
@@ -359,6 +357,24 @@
                         {{ form.corner_chunk_height(required=True, placeholder="Height", value="32", min=8, step=8) }}
                     </div>
                     <span class="help-text">Values must be multiples of 8 (8, 16, 24, 32, etc.)</span>
+                </div>
+            </div>
+            
+            <!-- Full Frame Sorting -->
+            <div id="full_frame_sort_fields" class="effect-fields" style="display:none;">
+                <h3>Full Frame Pixel Sorting</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.full_frame_direction.label }}</label>
+                    {{ form.full_frame_direction(required=True) }}
+                    <span class="help-text">Vertical sorts each column, Horizontal sorts each row</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.full_frame_sort_by.label }}</label>
+                    {{ form.full_frame_sort_by(required=True) }}
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.full_frame_reverse.label }}</label>
+                    {{ form.full_frame_reverse(required=True) }}
                 </div>
             </div>
             

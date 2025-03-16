@@ -5,10 +5,10 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort
+from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'  # Replace with a secure key in production
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-for-testing')  # Use environment variable in production
 app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['PROCESSED_FOLDER'] = 'processed/'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
@@ -135,6 +135,13 @@ def index():
                     logger.debug(f"Bit manipulation chunk size: {chunk_size}")
                     processed_image = bit_manipulation(image, chunk_size)
                     settings = f"bitmanip_{chunk_size}"
+                elif effect == 'full_frame_sort':
+                    direction = form.full_frame_direction.data
+                    sort_by = form.full_frame_sort_by.data
+                    reverse = form.full_frame_reverse.data == 'true'
+                    logger.debug(f"Full frame sort params: direction={direction}, sort_by={sort_by}, reverse={reverse}")
+                    processed_image = full_frame_sort(image, direction, sort_by, reverse)
+                    settings = f"fullframe_{direction}_{sort_by}_{'desc' if reverse else 'asc'}"
                 
                 # Save the processed image
                 output_filename = generate_output_filename(filename, effect, settings)
@@ -288,5 +295,5 @@ if __name__ == '__main__':
     os.makedirs(app.config['PROCESSED_FOLDER'], exist_ok=True)
     
     # Get port from environment variable for Heroku compatibility
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)

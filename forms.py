@@ -32,6 +32,7 @@ class ImageProcessForm(FlaskForm):
     effect = SelectField('Effect', choices=[
         ('pixel_sort_original', 'Pixel Sorting (Original)'),
         ('pixel_sort_corner', 'Pixel Sorting (Corner-to-Corner)'),
+        ('full_frame_sort', 'Full Frame Sorting'),
         ('color_channel', 'Color Channel Manipulation'),
         ('data_moshing', 'Double Expose'),
         ('pixel_drift', 'Pixel Drift'),
@@ -149,6 +150,24 @@ class ImageProcessForm(FlaskForm):
                                 default=8,
                                 validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
     
+    # Full Frame Sorting
+    full_frame_direction = SelectField('Direction', choices=[
+        ('vertical', 'Vertical'), 
+        ('horizontal', 'Horizontal')
+    ], default='vertical', validators=[Optional()])
+    full_frame_sort_by = SelectField('Sort By', choices=[
+        ('color', 'Color (R+G+B)'), 
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel')
+    ], default='brightness', validators=[Optional()])
+    full_frame_reverse = SelectField('Sort Order', choices=[
+        ('false', 'Ascending (Low to High)'), 
+        ('true', 'Descending (High to Low)')
+    ], default='false', validators=[Optional()])
+    
     def validate(self, extra_validators=None):
         """Custom validation based on the selected effect."""
         logger.debug(f"Validating form with effect: {self.effect.data}")
@@ -265,6 +284,20 @@ class ImageProcessForm(FlaskForm):
             if not self.bit_chunk_size.data:
                 self.bit_chunk_size.errors = ['Chunk size is required for Bit Manipulation']
                 logger.debug("Missing bit_chunk_size for bit_manipulation")
+                return False
+                
+        elif effect == 'full_frame_sort':
+            if not self.full_frame_direction.data:
+                self.full_frame_direction.errors = ['Direction is required for Full Frame Sorting']
+                logger.debug("Missing full_frame_direction for full_frame_sort")
+                return False
+            if not self.full_frame_sort_by.data:
+                self.full_frame_sort_by.errors = ['Sort by is required for Full Frame Sorting']
+                logger.debug("Missing full_frame_sort_by for full_frame_sort")
+                return False
+            if not self.full_frame_reverse.data:
+                self.full_frame_reverse.errors = ['Sort order is required for Full Frame Sorting']
+                logger.debug("Missing full_frame_reverse for full_frame_sort")
                 return False
                 
         # If we get here, validation passed
