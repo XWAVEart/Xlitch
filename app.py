@@ -3,6 +3,7 @@ from werkzeug.utils import secure_filename
 import os
 import traceback
 import logging
+import numpy as np
 from forms import ImageProcessForm
 from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort
 
