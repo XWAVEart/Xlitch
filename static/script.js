@@ -189,8 +189,8 @@ $(document).ready(function() {
         
         // Show loading indicator
         $('#processed-container').hide();
-        $('#loading').remove(); // Remove any existing loading indicator
-        $('<div id="loading">Processing image...</div>').insertAfter('#image-preview');
+        $('#loading').remove();
+        $('<div id="loading"><div class="spinner"></div><span>Processing image...</span></div>').insertAfter('#image-form');
         addDebugInfo("Added loading indicator");
         
         // Disable the submit button to prevent multiple submissions
@@ -342,8 +342,8 @@ $(document).ready(function() {
         
         // Show loading indicator
         $('#processed-container').hide();
-        $('#loading').remove(); // Remove any existing loading indicator
-        $('<div id="loading">Processing image...</div>').insertAfter('#image-preview');
+        $('#loading').remove();
+        $('<div id="loading"><div class="spinner"></div><span>Processing image...</span></div>').insertAfter('#image-form');
         addDebugInfo("Added loading indicator");
         
         // Disable the submit button to prevent multiple submissions

@@ -29,32 +29,36 @@
             font-family: 'Roboto', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
             line-height: 1.6;
-        }
-        
-        h1, h2, h3 {
-            color: var(--accent-color);
-            margin-bottom: 15px;
+            padding: 20px;
+            max-width: 100%;
+            overflow-x: hidden;
         }
         
         h1 {
-            font-size: 2.5rem;
             text-align: center;
-            margin: 20px 0;
-            font-weight: 300;
-            letter-spacing: 1px;
+            margin-bottom: 20px;
+            color: var(--accent-color);
+            font-size: 2.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            body {
+                padding: 10px;
+            }
         }
         
         .form-container {
             background-color: var(--card-bg);
-            padding: 25px;
             border-radius: 8px;
-            margin-bottom: 30px;
+            padding: 20px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+            max-width: 100%;
         }
         
         .form-row {
@@ -65,65 +69,31 @@
         }
         
         .form-group {
-            flex: 1;
-            min-width: 200px;
+            flex: 1 1 300px;
             margin-bottom: 15px;
         }
         
-        .form-group label {
+        @media (max-width: 768px) {
+            .form-group {
+                flex: 1 1 100%;
+            }
+            
+            .form-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+        
+        label {
             display: block;
             margin-bottom: 5px;
+            color: var(--text-color);
             font-weight: 500;
-            font-size: 0.9rem;
-            color: var(--text-secondary);
         }
         
-        .effect-fields {
-            background-color: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            border-radius: 5px;
-            margin-top: 15px;
-            border: 1px solid var(--border-color);
-        }
-        
-        .effect-fields h3 {
-            font-size: 1.1rem;
-            margin-bottom: 15px;
+        .required-field::after {
+            content: " *";
             color: var(--accent-color);
-        }
-        
-        .image-preview {
-            margin-top: 30px;
-            display: none;
-        }
-        
-        .preview-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-        
-        .preview-box {
-            flex: 1;
-            min-width: 300px;
-            background-color: var(--card-bg);
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            border: 1px solid var(--border-color);
-        }
-        
-        .preview-box h3 {
-            text-align: center;
-            margin-bottom: 15px;
-        }
-        
-        img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 5px;
-            display: block;
-            margin: 0 auto;
         }
         
         input[type="text"],
@@ -131,12 +101,12 @@
         input[type="file"],
         select {
             width: 100%;
-            padding: 8px 12px;
-            border-radius: 4px;
+            padding: 10px;
             border: 1px solid var(--border-color);
+            border-radius: 4px;
             background-color: var(--input-bg);
             color: var(--text-color);
-            font-size: 0.9rem;
+            font-size: 16px;
         }
         
         input[type="file"] {
@@ -144,152 +114,199 @@
             cursor: pointer;
         }
         
-        input[type="submit"], 
+        .chunk-size-inputs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .chunk-size-inputs input {
+            flex: 1;
+        }
+        
+        .chunk-size-inputs span {
+            font-weight: bold;
+            color: var(--text-secondary);
+        }
+        
         button {
             background-color: var(--accent-color);
-            color: #000;
-            padding: 10px 20px;
+            color: #fff;
             border: none;
+            padding: 12px 20px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 1rem;
+            font-size: 16px;
             font-weight: 500;
-            margin-right: 10px;
-            transition: all 0.2s ease;
-        }
-        
-        input[type="submit"]:hover, 
-        button:hover {
-            background-color: #00b386;
-            transform: translateY(-2px);
-        }
-        
-        #loading {
-            margin-top: 15px;
-            padding: 10px;
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
+            transition: background-color 0.2s;
+            display: inline-block;
             text-align: center;
-            font-weight: 500;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            background-color: #00b084;
+        }
+        
+        .effect-fields {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .effect-fields h3 {
+            margin-bottom: 15px;
+            color: var(--accent-color);
+        }
+        
+        .help-text {
+            display: block;
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 5px;
         }
         
         .error-message {
             color: var(--error-color);
             background-color: rgba(255, 82, 82, 0.1);
-            border: 1px solid rgba(255, 82, 82, 0.3);
-            padding: 8px;
-            margin-top: 5px;
+            padding: 10px;
             border-radius: 4px;
-            font-size: 0.9rem;
+            margin-bottom: 15px;
+            font-size: 14px;
         }
         
         .global-error {
-            margin-bottom: 15px;
+            margin-top: 10px;
         }
         
-        .has-error input, 
+        .has-error input,
         .has-error select {
             border-color: var(--error-color);
         }
         
-        .required-field::after {
-            content: " *";
-            color: var(--error-color);
-        }
-        
-        .chunk-size-inputs {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .chunk-size-inputs input {
-            width: 70px;
-        }
-        
-        .debug-info {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
-            display: none;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        .button-group {
-            margin-top: 25px;
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
-        
-        .direct-submit-form {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: rgba(255, 255, 255, 0.05);
-            border-radius: 5px;
-            border: 1px solid var(--border-color);
-            display: none;
-        }
-        
-        a {
-            color: var(--accent-color);
-            text-decoration: none;
-        }
-        
-        a:hover {
-            text-decoration: underline;
-        }
-        
-        #download-link {
-            display: inline-block;
-            margin-top: 15px;
-            padding: 8px 15px;
-            background-color: var(--accent-color);
-            color: #000;
-            border-radius: 4px;
-            font-weight: 500;
+        #image-preview, #processed-container {
+            margin-top: 30px;
             text-align: center;
         }
         
-        #download-link:hover {
-            background-color: #00b386;
-            text-decoration: none;
+        .preview-container {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .preview-container h2 {
+            margin-bottom: 15px;
+            color: var(--accent-color);
+        }
+        
+        .preview-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            margin-bottom: 15px;
         }
         
         .action-buttons {
             display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 15px;
             justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
         }
         
-        .action-buttons a,
+        .action-buttons a, 
         .action-buttons button {
-            flex: 1;
-            min-width: 150px;
-            text-align: center;
             padding: 10px 15px;
             background-color: var(--accent-color);
-            color: #000;
-            border: none;
+            color: white;
+            text-decoration: none;
             border-radius: 4px;
             font-weight: 500;
+            transition: all 0.3s ease;
+            border: none;
             cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.2s ease;
-            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 120px;
         }
         
-        .action-buttons a:hover,
+        .action-buttons a:hover, 
         .action-buttons button:hover {
-            background-color: #00b386;
+            background-color: #00b084;
             transform: translateY(-2px);
+        }
+        
+        #loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: var(--accent-color);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #debug-info {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            overflow-x: auto;
+            display: none;
+        }
+        
+        /* Mobile-specific styles */
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .form-container, .preview-container {
+                padding: 15px;
+                border-radius: 6px;
+            }
+            
+            button, .action-buttons a, .action-buttons button {
+                width: 100%;
+                padding: 12px 10px;
+                font-size: 14px;
+                min-width: unset;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            input[type="text"],
+            input[type="number"],
+            input[type="file"],
+            select {
+                font-size: 14px;
+                padding: 8px;
+            }
+            
+            .effect-fields h3 {
+                font-size: 1.2rem;
+            }
         }
     </style>
 </head>
