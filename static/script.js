@@ -140,6 +140,73 @@ $(document).ready(function() {
             }
         }
         
+        if ($('#polar_sort_fields').is(':visible')) {
+            if (!$('[name="polar_chunk_size"]').val()) {
+                $('[name="polar_chunk_size"]').val('32');
+                addDebugInfo("Set default polar_chunk_size to 32");
+            }
+        }
+        
+        if ($('#perlin_noise_sort_fields').is(':visible')) {
+            if (!$('[name="perlin_chunk_width"]').val()) {
+                $('[name="perlin_chunk_width"]').val('32');
+                addDebugInfo("Set default perlin_chunk_width to 32");
+            }
+            if (!$('[name="perlin_chunk_height"]').val()) {
+                $('[name="perlin_chunk_height"]').val('32');
+                addDebugInfo("Set default perlin_chunk_height to 32");
+            }
+            if (!$('[name="perlin_noise_scale"]').val()) {
+                $('[name="perlin_noise_scale"]').val('0.01');
+                addDebugInfo("Set default perlin_noise_scale to 0.01");
+            }
+            if (!$('[name="perlin_seed"]').val()) {
+                $('[name="perlin_seed"]').val('42');
+                addDebugInfo("Set default perlin_seed to 42");
+            }
+        }
+        
+        if ($('#perlin_full_frame_fields').is(':visible')) {
+            if (!$('[name="perlin_full_frame_noise_scale"]').val()) {
+                $('[name="perlin_full_frame_noise_scale"]').val('0.01');
+                addDebugInfo("Set default perlin_full_frame_noise_scale to 0.01");
+            }
+            if (!$('[name="perlin_full_frame_seed"]').val()) {
+                $('[name="perlin_full_frame_seed"]').val('42');
+                addDebugInfo("Set default perlin_full_frame_seed to 42");
+            }
+        }
+        
+        if ($('#perlin_merge_fields').is(':visible')) {
+            if (!$('[name="perlin_merge_noise_scale"]').val()) {
+                $('[name="perlin_merge_noise_scale"]').val('0.01');
+                addDebugInfo("Set default perlin_merge_noise_scale to 0.01");
+            }
+            if (!$('[name="perlin_merge_threshold"]').val()) {
+                $('[name="perlin_merge_threshold"]').val('0.5');
+                addDebugInfo("Set default perlin_merge_threshold to 0.5");
+            }
+            if (!$('[name="perlin_merge_seed"]').val()) {
+                $('[name="perlin_merge_seed"]').val('42');
+                addDebugInfo("Set default perlin_merge_seed to 42");
+            }
+        }
+        
+        if ($('#pixelate_fields').is(':visible')) {
+            if (!$('[name="pixelate_width"]').val()) {
+                $('[name="pixelate_width"]').val('8');
+                addDebugInfo("Set default pixelate_width to 8");
+            }
+            if (!$('[name="pixelate_height"]').val()) {
+                $('[name="pixelate_height"]').val('8');
+                addDebugInfo("Set default pixelate_height to 8");
+            }
+            if (!$('[name="pixelate_bins"]').val()) {
+                $('[name="pixelate_bins"]').val('100');
+                addDebugInfo("Set default pixelate_bins to 100");
+            }
+        }
+        
         // Set default intensity factor if empty
         if ($('#adjust_fields').is(':visible') && !$('[name="intensity_factor"]').val()) {
             $('[name="intensity_factor"]').val('1.5');

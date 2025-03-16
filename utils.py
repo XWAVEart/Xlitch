@@ -1,8 +1,9 @@
-from PIL import Image, ImageColor
+from PIL import Image, ImageColor, ImageDraw
 import os
 import random
 import numpy as np
 import cv2
+import colorsys
 
 def load_image(file_path):
     """
@@ -336,60 +337,113 @@ def data_moshing(image, secondary_image, blend_mode='classic', opacity=0.5):
     img1 = np.array(image).astype(float)
     img2 = np.array(secondary_image).astype(float)
     
+    # Apply the selected blend mode
     if blend_mode == 'classic':
-        # Classic alpha blend (weighted average)
-        result = Image.blend(image, secondary_image, alpha=opacity)
-    
+        # Simple alpha blending
+        blended = img1 * (1 - opacity) + img2 * opacity
     elif blend_mode == 'screen':
-        # Screen blend mode: brightens the image, good for dark images
-        # Formula: 1 - (1 - img1/255) * (1 - img2/255) * 255
-        result_array = 255 - (((255 - img1) * (255 - img2)) / 255)
-        # Apply opacity
-        result_array = img1 * (1 - opacity) + result_array * opacity
-        result = Image.fromarray(np.clip(result_array, 0, 255).astype(np.uint8))
-    
+        # Screen blend mode: 1 - (1 - img1) * (1 - img2)
+        blended = 255 - (255 - img1) * (255 - img2) / 255
+        blended = img1 * (1 - opacity) + blended * opacity
     elif blend_mode == 'multiply':
-        # Multiply blend mode: darkens the image, good for light images
-        # Formula: (img1 * img2) / 255
-        result_array = (img1 * img2) / 255
-        # Apply opacity
-        result_array = img1 * (1 - opacity) + result_array * opacity
-        result = Image.fromarray(np.clip(result_array, 0, 255).astype(np.uint8))
-    
+        # Multiply blend mode: img1 * img2
+        blended = img1 * img2 / 255
+        blended = img1 * (1 - opacity) + blended * opacity
     elif blend_mode == 'overlay':
-        # Overlay blend mode: increases contrast, preserves highlights and shadows
-        # Formula: if img1 < 128: 2 * img1 * img2 / 255, else: 1 - 2 * (255 - img1) * (255 - img2) / 255
-        mask = img1 < 128
-        result_array = np.zeros_like(img1)
-        result_array[mask] = (2 * img1[mask] * img2[mask]) / 255
-        result_array[~mask] = 255 - (2 * (255 - img1[~mask]) * (255 - img2[~mask])) / 255
-        # Apply opacity
-        result_array = img1 * (1 - opacity) + result_array * opacity
-        result = Image.fromarray(np.clip(result_array, 0, 255).astype(np.uint8))
-    
+        # Overlay blend mode
+        mask = img1 > 127.5
+        blended = np.zeros_like(img1)
+        blended[mask] = 255 - (255 - 2 * (img1[mask] - 127.5)) * (255 - img2[mask]) / 255
+        blended[~mask] = (2 * img1[~mask]) * img2[~mask] / 255
+        blended = img1 * (1 - opacity) + blended * opacity
     elif blend_mode == 'difference':
-        # Difference blend mode: subtracts the darker color from the lighter one
-        # Formula: |img1 - img2|
-        result_array = np.abs(img1 - img2)
-        # Apply opacity
-        result_array = img1 * (1 - opacity) + result_array * opacity
-        result = Image.fromarray(np.clip(result_array, 0, 255).astype(np.uint8))
-    
+        # Difference blend mode: |img1 - img2|
+        blended = np.abs(img1 - img2)
+        blended = img1 * (1 - opacity) + blended * opacity
     elif blend_mode == 'color_dodge':
-        # Color Dodge: brightens the base color to reflect the blend color
-        # Formula: img1 / (255 - img2) * 255
-        # Avoid division by zero
-        img2_safe = np.where(img2 == 255, 254, img2)
-        result_array = (img1 / (255 - img2_safe)) * 255
-        # Apply opacity
-        result_array = img1 * (1 - opacity) + result_array * opacity
-        result = Image.fromarray(np.clip(result_array, 0, 255).astype(np.uint8))
-    
+        # Color dodge blend mode: img1 / (1 - img2)
+        blended = np.zeros_like(img1)
+        mask = img2 < 255
+        blended[mask] = np.minimum(255, img1[mask] / (1 - img2[mask] / 255))
+        blended[~mask] = 255
+        blended = img1 * (1 - opacity) + blended * opacity
     else:
-        # Default to classic blend if an invalid mode is specified
-        result = Image.blend(image, secondary_image, alpha=opacity)
+        # Default to classic blend if mode not recognized
+        blended = img1 * (1 - opacity) + img2 * opacity
     
-    return result
+    # Clip values to valid range and convert back to uint8
+    blended = np.clip(blended, 0, 255).astype(np.uint8)
+    
+    # Create a new image from the blended array
+    return Image.fromarray(blended)
+
+def perlin_noise_replacement(image, secondary_image, noise_scale=0.1, threshold=0.5, seed=None):
+    """
+    Replace pixels in the primary image with pixels from a secondary image based on Perlin noise.
+
+    Args:
+        image (Image): Primary PIL Image object to process.
+        secondary_image (Image): Secondary PIL Image for replacement pixels.
+        noise_scale (float): Scale of Perlin noise.
+        threshold (float): Noise threshold for replacement (0 to 1).
+        seed (int, optional): Seed for the Perlin noise generator. If None, a random pattern is generated.
+
+    Returns:
+        Image: Processed image with noise-based pixel replacement.
+    """
+    # Try to import noise packages, with fallbacks
+    noise_module = None
+    try:
+        # Try the noise package first
+        from noise import pnoise2
+        noise_module = 'noise'
+    except ImportError:
+        try:
+            # Try noise-python as a fallback
+            from noise_python import snoise2
+            noise_module = 'noise-python'
+        except ImportError:
+            raise ImportError("Either 'noise' or 'noise-python' package is required for Perlin Merge. Install with: pip install noise noise-python")
+    
+    # Convert both images to RGB mode if they have alpha channels or are in different modes
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    if secondary_image.mode != 'RGB':
+        secondary_image = secondary_image.convert('RGB')
+    
+    # Resize secondary image to match primary image
+    secondary_image = secondary_image.resize(image.size)
+    image_array = np.array(image)
+    secondary_array = np.array(secondary_image)
+    
+    # Generate Perlin noise map for the entire image
+    noise_map = np.zeros((image.height, image.width))
+    for i in range(image.height):
+        for j in range(image.width):
+            # Use the appropriate noise function based on which package is available
+            if noise_module == 'noise':
+                from noise import pnoise2
+                # Use seed as base parameter if provided
+                if seed is not None:
+                    noise_map[i, j] = pnoise2(i * noise_scale, j * noise_scale, base=seed)
+                else:
+                    noise_map[i, j] = pnoise2(i * noise_scale, j * noise_scale)
+            else:  # noise-python
+                from noise_python import snoise2
+                # Use seed as octaves parameter if provided (not ideal but works as a seed)
+                if seed is not None:
+                    noise_map[i, j] = snoise2(i * noise_scale, j * noise_scale, octaves=seed % 10 + 1)
+                else:
+                    noise_map[i, j] = snoise2(i * noise_scale, j * noise_scale)
+    
+    # Normalize noise map to [0, 1]
+    noise_map = (noise_map - noise_map.min()) / (noise_map.max() - noise_map.min())
+    
+    # Replace pixels where noise exceeds threshold
+    mask = noise_map > threshold
+    image_array[mask] = secondary_array[mask]
+    
+    return Image.fromarray(image_array)
 
 def pixel_drift(image, direction='down', num_bands=10, intensity=1.0):
     """
@@ -775,3 +829,411 @@ def full_frame_sort(image, direction='vertical', sort_by='brightness', reverse=F
                 sorted_im.putpixel((new_x, y), pixel)
     
     return sorted_im
+
+def polar_sorting(image, chunk_size, sort_by='angle', reverse=False):
+    """
+    Apply polar sorting to an image by sorting pixels within chunks based on polar coordinates.
+
+    Args:
+        image (Image): PIL Image object to process.
+        chunk_size (int): Size of square chunks (e.g., 32 for 32x32 chunks).
+        sort_by (str): 'angle' to sort by angle, 'radius' to sort by distance from center.
+        reverse (bool): Whether to reverse the sort order.
+
+    Returns:
+        Image: Processed image with polar-sorted pixels.
+    """
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+        
+    width, height = image.size
+    # Split image into chunks
+    chunks = []
+    for y in range(0, height, chunk_size):
+        for x in range(0, width, chunk_size):
+            # Calculate actual chunk dimensions (handle edge cases)
+            actual_width = min(chunk_size, width - x)
+            actual_height = min(chunk_size, height - y)
+            if actual_width > 0 and actual_height > 0:
+                chunks.append((image.crop((x, y, x + actual_width, y + actual_height)), (x, y)))
+
+    sorted_image = Image.new('RGB', image.size)
+    
+    for chunk, (x_offset, y_offset) in chunks:
+        chunk_width, chunk_height = chunk.size
+        chunk_array = np.array(chunk)
+        
+        # Calculate polar coordinates relative to chunk center
+        cx, cy = chunk_width // 2, chunk_height // 2
+        y_coords, x_coords = np.mgrid[:chunk_height, :chunk_width]
+        angles = np.arctan2(y_coords - cy, x_coords - cx)  # Angle from center
+        radii = np.sqrt((x_coords - cx)**2 + (y_coords - cy)**2)  # Distance from center
+        
+        # Create a mapping of original positions to sorted positions
+        positions = []
+        for y in range(chunk_height):
+            for x in range(chunk_width):
+                pixel = chunk_array[y, x]
+                angle = angles[y, x]
+                radius = radii[y, x]
+                sort_value = angle if sort_by == 'angle' else radius
+                positions.append(((y, x), sort_value, pixel))
+        
+        # Sort by the chosen coordinate
+        positions.sort(key=lambda p: p[1], reverse=reverse)
+        
+        # Create sorted chunk
+        sorted_chunk = np.zeros_like(chunk_array)
+        for i, ((orig_y, orig_x), _, pixel) in enumerate(positions):
+            new_y = i // chunk_width
+            new_x = i % chunk_width
+            if new_y < chunk_height and new_x < chunk_width:
+                sorted_chunk[new_y, new_x] = pixel
+        
+        # Convert back to PIL Image and paste into the result
+        sorted_chunk_img = Image.fromarray(sorted_chunk)
+        sorted_image.paste(sorted_chunk_img, (x_offset, y_offset))
+    
+    return sorted_image
+
+def perlin_noise_sorting(image, chunk_size=32, noise_scale=0.1, direction='horizontal', reverse=False, seed=None):
+    """
+    Apply Perlin noise-based sorting to an image by using noise values to sort pixels in chunks.
+
+    Args:
+        image (Image): PIL Image object to process.
+        chunk_size (int or str): Size of chunks. Can be an integer for square chunks or a string 'widthxheight'.
+        noise_scale (float): Scale of Perlin noise (higher = more detailed noise).
+        direction (str): 'horizontal' or 'vertical' sorting direction.
+        reverse (bool): Whether to reverse the sort order.
+        seed (int, optional): Seed for the Perlin noise generator. If None, a random pattern is generated.
+
+    Returns:
+        Image: Processed image with noise-sorted pixels.
+    """
+    # Try to import noise packages, with fallbacks
+    noise_module = None
+    try:
+        # Try the noise package first
+        from noise import pnoise2
+        noise_module = 'noise'
+    except ImportError:
+        try:
+            # Try noise-python as a fallback
+            from noise_python import snoise2
+            noise_module = 'noise-python'
+        except ImportError:
+            raise ImportError("Either 'noise' or 'noise-python' package is required for Perlin noise sorting. Install with: pip install noise noise-python")
+    
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+        
+    width, height = image.size
+    
+    # Parse chunk size
+    if isinstance(chunk_size, str) and 'x' in chunk_size:
+        # Format: 'widthxheight'
+        chunk_width, chunk_height = map(int, chunk_size.split('x'))
+    else:
+        # Square chunks
+        chunk_width = chunk_height = int(chunk_size)
+    
+    # Handle special case for full image sorting
+    if chunk_width >= width and chunk_height >= height:
+        chunk_width, chunk_height = width, height
+    
+    # Split image into chunks
+    chunks = []
+    for y in range(0, height, chunk_height):
+        for x in range(0, width, chunk_width):
+            # Calculate actual chunk dimensions (handle edge cases)
+            actual_width = min(chunk_width, width - x)
+            actual_height = min(chunk_height, height - y)
+            if actual_width > 0 and actual_height > 0:
+                chunks.append((image.crop((x, y, x + actual_width, y + actual_height)), (x, y)))
+
+    sorted_image = Image.new('RGB', image.size)
+    
+    for chunk, (x_offset, y_offset) in chunks:
+        chunk_width_actual, chunk_height_actual = chunk.size
+        chunk_array = np.array(chunk)
+        
+        # Generate Perlin noise map for the chunk
+        noise_map = np.zeros((chunk_height_actual, chunk_width_actual))
+        for i in range(chunk_height_actual):
+            for j in range(chunk_width_actual):
+                # Add some variation based on chunk position for more interesting results
+                x_noise = (j + x_offset) * noise_scale
+                y_noise = (i + y_offset) * noise_scale
+                
+                # Use the appropriate noise function based on which package is available
+                if noise_module == 'noise':
+                    from noise import pnoise2
+                    # Use seed as base parameter if provided
+                    if seed is not None:
+                        noise_map[i, j] = pnoise2(x_noise, y_noise, base=seed)
+                    else:
+                        noise_map[i, j] = pnoise2(x_noise, y_noise)
+                else:  # noise-python
+                    from noise_python import snoise2
+                    # Use seed as octaves parameter if provided (not ideal but works as a seed)
+                    if seed is not None:
+                        noise_map[i, j] = snoise2(x_noise, y_noise, octaves=seed % 10 + 1)
+                    else:
+                        noise_map[i, j] = snoise2(x_noise, y_noise)
+        
+        if direction == 'horizontal':
+            # Sort each row by noise values
+            sorted_chunk = np.zeros_like(chunk_array)
+            for i in range(chunk_height_actual):
+                row_pixels = [(j, chunk_array[i, j]) for j in range(chunk_width_actual)]
+                row_noise = noise_map[i, :]
+                
+                # Sort pixels by noise values
+                noise_pixel_pairs = list(zip(row_noise, row_pixels))
+                noise_pixel_pairs.sort(key=lambda x: x[0], reverse=reverse)
+                
+                # Place sorted pixels back into the row
+                for new_j, (_, (_, pixel)) in enumerate(noise_pixel_pairs):
+                    sorted_chunk[i, new_j] = pixel
+        else:  # vertical
+            # Sort each column by noise values
+            sorted_chunk = np.zeros_like(chunk_array)
+            for j in range(chunk_width_actual):
+                col_pixels = [(i, chunk_array[i, j]) for i in range(chunk_height_actual)]
+                col_noise = noise_map[:, j]
+                
+                # Sort pixels by noise values
+                noise_pixel_pairs = list(zip(col_noise, col_pixels))
+                noise_pixel_pairs.sort(key=lambda x: x[0], reverse=reverse)
+                
+                # Place sorted pixels back into the column
+                for new_i, (_, (_, pixel)) in enumerate(noise_pixel_pairs):
+                    sorted_chunk[new_i, j] = pixel
+        
+        # Convert back to PIL Image and paste into the result
+        sorted_chunk_img = Image.fromarray(sorted_chunk)
+        sorted_image.paste(sorted_chunk_img, (x_offset, y_offset))
+    
+    return sorted_image
+
+def perlin_full_frame_sort(image, noise_scale=0.01, sort_by='brightness', reverse=False, seed=None):
+    """
+    Apply full-frame pixel sorting controlled by Perlin noise.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        noise_scale (float): Scale of Perlin noise (higher = more detailed noise).
+        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue',
+                       'saturation', 'luminance', 'contrast').
+        reverse (bool): Whether to reverse the sort order.
+        seed (int, optional): Seed for the Perlin noise generator. If None, a random pattern is generated.
+    
+    Returns:
+        Image: Processed image with Perlin noise-controlled full-frame sorting.
+    """
+    # Try to import noise packages, with fallbacks
+    noise_module = None
+    try:
+        # Try the noise package first
+        from noise import pnoise2
+        noise_module = 'noise'
+    except ImportError:
+        try:
+            # Try noise-python as a fallback
+            from noise_python import snoise2
+            noise_module = 'noise-python'
+        except ImportError:
+            raise ImportError("Either 'noise' or 'noise-python' package is required for Perlin noise sorting. Install with: pip install noise noise-python")
+    
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Create a new image with the same size as the input image
+    width, height = image.size
+    sorted_im = Image.new(image.mode, image.size)
+    
+    # Define the sort function based on the sort_by parameter
+    sort_function = {
+        'color': lambda p: sum(p[:3]),
+        'brightness': brightness,
+        'hue': hue,
+        'red': lambda p: p[0],     # Sort by red channel only
+        'green': lambda p: p[1],   # Sort by green channel only
+        'blue': lambda p: p[2],     # Sort by blue channel only
+        'saturation': saturation,  # Sort by color saturation
+        'luminance': luminance,    # Sort by luminance (value in HSV)
+        'contrast': contrast       # Sort by contrast (max-min RGB)
+    }.get(sort_by, lambda p: sum(p[:3]))
+    
+    # Generate Perlin noise map for the entire image
+    noise_map = np.zeros((height, width))
+    for y in range(height):
+        for x in range(width):
+            # Use the appropriate noise function based on which package is available
+            if noise_module == 'noise':
+                from noise import pnoise2
+                # Use seed as base parameter if provided
+                if seed is not None:
+                    noise_map[y, x] = pnoise2(x * noise_scale, y * noise_scale, base=seed)
+                else:
+                    noise_map[y, x] = pnoise2(x * noise_scale, y * noise_scale)
+            else:  # noise-python
+                from noise_python import snoise2
+                # Use seed as octaves parameter if provided (not ideal but works as a seed)
+                if seed is not None:
+                    noise_map[y, x] = snoise2(x * noise_scale, y * noise_scale, octaves=seed % 10 + 1)
+                else:
+                    noise_map[y, x] = snoise2(x * noise_scale, y * noise_scale)
+    
+    # Normalize noise map to [0, 1]
+    noise_map = (noise_map - noise_map.min()) / (noise_map.max() - noise_map.min())
+    
+    # Sort each column based on Perlin noise values
+    for x in range(width):
+        # Get the pixels in the current column
+        column_pixels = [(image.getpixel((x, y)), y, noise_map[y, x]) for y in range(height)]
+        
+        # Sort the pixels by Perlin noise value first, then by the specified criteria
+        column_pixels.sort(key=lambda item: (item[2], sort_function(item[0])), reverse=reverse)
+        
+        # Set the pixels in the current column of the output image
+        for new_y, (pixel, _, _) in enumerate(column_pixels):
+            sorted_im.putpixel((x, new_y), pixel)
+    
+    return sorted_im
+
+def pixelate_by_mode(image, pixel_width=8, pixel_height=8, attribute='color', num_bins=100):
+    """
+    Pixelate an image by creating larger blocks of pixels based on various attributes.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        pixel_width (int): Width of each pixel block.
+        pixel_height (int): Height of each pixel block.
+        attribute (str): Attribute to use for determining pixel color ('color', 'brightness', 'hue', etc.).
+        num_bins (int): Number of bins to use for quantizing attribute values.
+    
+    Returns:
+        Image: A new pixelated image.
+    """
+    # Create a copy of the image
+    im = image.copy()
+    width, height = im.size
+    
+    # Create a new image with the same size
+    result = Image.new('RGB', (width, height))
+    
+    # Define the attribute function based on the selected attribute
+    if attribute == 'color':
+        # For color, we'll use the most common color in the block
+        def attr_func(pixel):
+            return pixel
+    elif attribute == 'brightness':
+        def attr_func(pixel):
+            return brightness(pixel)
+    elif attribute == 'hue':
+        def attr_func(pixel):
+            return hue(pixel)
+    elif attribute == 'saturation':
+        def attr_func(pixel):
+            return saturation(pixel)
+    elif attribute == 'luminance':
+        def attr_func(pixel):
+            return luminance(pixel)
+    
+    # Process each pixel block
+    for y in range(0, height, pixel_height):
+        for x in range(0, width, pixel_width):
+            # Define the block boundaries
+            block_right = min(x + pixel_width, width)
+            block_bottom = min(y + pixel_height, height)
+            
+            # Get all pixels in the block
+            block_pixels = []
+            for by in range(y, block_bottom):
+                for bx in range(x, block_right):
+                    pixel = im.getpixel((bx, by))
+                    block_pixels.append(pixel)
+            
+            if attribute == 'color':
+                # Find the most common color in the block
+                color_counts = {}
+                for pixel in block_pixels:
+                    pixel_str = str(pixel)
+                    if pixel_str in color_counts:
+                        color_counts[pixel_str] += 1
+                    else:
+                        color_counts[pixel_str] = 1
+                
+                # Get the most common color
+                most_common_color_str = max(color_counts, key=color_counts.get)
+                most_common_color = eval(most_common_color_str)
+                
+                # Fill the block with the most common color
+                for by in range(y, block_bottom):
+                    for bx in range(x, block_right):
+                        result.putpixel((bx, by), most_common_color)
+            else:
+                # Calculate the average attribute value for the block
+                attr_values = [attr_func(pixel) for pixel in block_pixels]
+                avg_attr = sum(attr_values) / len(attr_values)
+                
+                # Find a representative pixel with the closest attribute value
+                closest_pixel = min(block_pixels, key=lambda p: abs(attr_func(p) - avg_attr))
+                
+                # Fill the block with the representative color
+                for by in range(y, block_bottom):
+                    for bx in range(x, block_right):
+                        result.putpixel((bx, by), closest_pixel)
+    
+    return result
+
+def draw_concentric_squares(image, num_points=10, num_squares=5, thickness=2):
+    """
+    Draw concentric squares around randomly chosen points on an image, starting from points closest to the edge.
+
+    Args:
+        image (Image): PIL Image object to process.
+        num_points (int): Number of random points to select.
+        num_squares (int): Number of concentric squares per point.
+        thickness (int): Thickness of each square's outline and spacing between squares.
+
+    Returns:
+        Image: A new image with concentric squares drawn over the original.
+    """
+    # Create a copy of the image
+    im = image.copy()
+    draw = ImageDraw.Draw(im)
+    width, height = im.size
+
+    # Calculate the image center
+    center_x = width // 2
+    center_y = height // 2
+
+    # Generate random points within image boundaries
+    points = [(random.randint(0, width - 1), random.randint(0, height - 1)) for _ in range(num_points)]
+
+    # Sort points by distance from center, farthest first (descending order)
+    sorted_points = sorted(points, key=lambda p: (p[0] - center_x)**2 + (p[1] - center_y)**2, reverse=True)
+
+    # Process each point in sorted order
+    for cx, cy in sorted_points:
+        # Get the color at the point's pixel
+        color = im.getpixel((cx, cy))
+
+        # Draw concentric squares centered on (cx, cy)
+        for k in range(1, num_squares + 1):
+            # Calculate the half-side length for the k-th square
+            S = k * 2 * thickness
+            left = cx - S
+            top = cy - S
+            right = cx + S
+            bottom = cy + S
+            # Draw the square as an outline with specified thickness
+            draw.rectangle([left, top, right, bottom], outline=color, width=thickness)
+
+    return im

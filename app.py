@@ -5,7 +5,7 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2
+from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, draw_concentric_squares
 from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
@@ -128,6 +128,27 @@ def index():
                         return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
                     processed_image = data_moshing(image, secondary_img, blend_mode, opacity)
                     settings = f"doubleexpose_{blend_mode}_{opacity}"
+                elif effect == 'perlin_merge':
+                    secondary_image = form.perlin_merge_secondary.data
+                    noise_scale = form.perlin_merge_noise_scale.data
+                    threshold = form.perlin_merge_threshold.data
+                    seed = form.perlin_merge_seed.data
+                    if not secondary_image:
+                        logger.error("Secondary image required for Perlin Merge but not provided")
+                        error_msg = "Secondary image required for Perlin Merge"
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
+                    secondary_filename = secure_filename(secondary_image.filename)
+                    secondary_path = os.path.join(app.config['UPLOAD_FOLDER'], secondary_filename)
+                    secondary_image.save(secondary_path)
+                    logger.debug(f"Secondary image saved to {secondary_path}")
+                    logger.debug(f"Perlin merge params: noise_scale={noise_scale}, threshold={threshold}, seed={seed}")
+                    secondary_img = load_image(secondary_path)
+                    if secondary_img is None:
+                        logger.error(f"Failed to load secondary image from {secondary_path}")
+                        error_msg = "Error loading secondary image"
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
+                    processed_image = perlin_noise_replacement(image, secondary_img, noise_scale, threshold, seed)
+                    settings = f"perlinmerge_{noise_scale}_{threshold}_{seed}"
                 elif effect == 'pixel_drift':
                     direction = form.drift_direction.data
                     drift_bands = form.drift_bands.data
@@ -154,6 +175,32 @@ def index():
                     logger.debug(f"Full frame sort params: direction={direction}, sort_by={sort_by}, reverse={reverse}")
                     processed_image = full_frame_sort(image, direction, sort_by, reverse)
                     settings = f"fullframe_{direction}_{sort_by}_{'desc' if reverse else 'asc'}"
+                elif effect == 'polar_sort':
+                    chunk_size = form.polar_chunk_size.data
+                    sort_by = form.polar_sort_by.data
+                    reverse = form.polar_reverse.data == 'true'
+                    logger.debug(f"Polar sort params: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
+                    processed_image = polar_sorting(image, chunk_size, sort_by, reverse)
+                    settings = f"polar_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
+                elif effect == 'perlin_noise_sort':
+                    chunk_width = form.perlin_chunk_width.data
+                    chunk_height = form.perlin_chunk_height.data
+                    chunk_size = f"{chunk_width}x{chunk_height}"
+                    noise_scale = form.perlin_noise_scale.data
+                    direction = form.perlin_direction.data
+                    reverse = form.perlin_reverse.data == 'true'
+                    seed = form.perlin_seed.data
+                    logger.debug(f"Perlin noise sort params: chunk_size={chunk_size}, noise_scale={noise_scale}, direction={direction}, reverse={reverse}, seed={seed}")
+                    processed_image = perlin_noise_sorting(image, chunk_size, noise_scale, direction, reverse, seed)
+                    settings = f"perlin_{chunk_size}_{noise_scale}_{direction}_{'desc' if reverse else 'asc'}_{seed}"
+                elif effect == 'perlin_full_frame':
+                    noise_scale = form.perlin_full_frame_noise_scale.data
+                    sort_by = form.perlin_full_frame_sort_by.data
+                    reverse = form.perlin_full_frame_reverse.data == 'true'
+                    seed = form.perlin_full_frame_seed.data
+                    logger.debug(f"Perlin full frame params: noise_scale={noise_scale}, sort_by={sort_by}, reverse={reverse}, seed={seed}")
+                    processed_image = perlin_full_frame_sort(image, noise_scale, sort_by, reverse, seed)
+                    settings = f"perlinfullframe_{noise_scale}_{sort_by}_{'desc' if reverse else 'asc'}_{seed}"
                 elif effect == 'spiral_sort_2':
                     chunk_size = form.spiral2_chunk_size.data
                     sort_by = form.spiral2_sort_by.data
@@ -161,6 +208,21 @@ def index():
                     logger.debug(f"Spiral sort 2 params: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
                     processed_image = spiral_sort_2(image, chunk_size, sort_by, reverse)
                     settings = f"spiral2_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
+                elif effect == 'pixelate':
+                    pixel_width = form.pixelate_width.data
+                    pixel_height = form.pixelate_height.data
+                    attribute = form.pixelate_attribute.data
+                    num_bins = form.pixelate_bins.data
+                    logger.debug(f"Pixelate params: width={pixel_width}, height={pixel_height}, attribute={attribute}, bins={num_bins}")
+                    processed_image = pixelate_by_mode(image, pixel_width, pixel_height, attribute, num_bins)
+                    settings = f"pixelate_{pixel_width}x{pixel_height}_{attribute}_{num_bins}"
+                elif effect == 'concentric_squares':
+                    num_points = form.concentric_num_points.data
+                    num_squares = form.concentric_num_squares.data
+                    thickness = form.concentric_thickness.data
+                    logger.debug(f"Concentric squares params: points={num_points}, squares={num_squares}, thickness={thickness}")
+                    processed_image = draw_concentric_squares(image, num_points, num_squares, thickness)
+                    settings = f"concentric_{num_points}_{num_squares}_{thickness}"
                 
                 # Save the processed image
                 output_filename = generate_output_filename(filename, effect, settings)

@@ -33,6 +33,12 @@ class ImageProcessForm(FlaskForm):
         ('pixel_sort_original', 'Pixel Sorting (Original)'),
         ('pixel_sort_corner', 'Pixel Sorting (Corner-to-Corner)'),
         ('full_frame_sort', 'Full Frame Sorting'),
+        ('polar_sort', 'Polar Sorting'),
+        ('perlin_noise_sort', 'Perlin Noise Sorting'),
+        ('perlin_full_frame', 'Perlin Full Frame'),
+        ('perlin_merge', 'Perlin Merge'),
+        ('pixelate', 'Pixelate'),
+        ('concentric_squares', 'Concentric Squares'),
         ('color_channel', 'Color Channel Manipulation'),
         ('data_moshing', 'Double Expose'),
         ('pixel_drift', 'Pixel Drift'),
@@ -204,6 +210,108 @@ class ImageProcessForm(FlaskForm):
         ('true', 'Descending (High to Low)')
     ], default='false', validators=[Optional()])
     
+    # Polar Sorting
+    polar_chunk_size = IntegerField('Chunk Size', 
+                                  default=32,
+                                  validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
+    polar_sort_by = SelectField('Sort By', choices=[
+        ('angle', 'Angle (around center)'), 
+        ('radius', 'Radius (distance from center)')
+    ], default='angle', validators=[Optional()])
+    polar_reverse = SelectField('Sort Order', choices=[
+        ('false', 'Ascending (Low to High)'), 
+        ('true', 'Descending (High to Low)')
+    ], default='false', validators=[Optional()])
+    
+    # Perlin Noise Sorting
+    perlin_chunk_width = IntegerField('Chunk Width', 
+                                   default=32,
+                                   validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
+    perlin_chunk_height = IntegerField('Chunk Height', 
+                                    default=32,
+                                    validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
+    perlin_noise_scale = FloatField('Noise Scale', 
+                                  default=0.01,
+                                  validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    perlin_direction = SelectField('Direction', choices=[
+        ('horizontal', 'Horizontal'), 
+        ('vertical', 'Vertical')
+    ], default='horizontal', validators=[Optional()])
+    perlin_reverse = SelectField('Sort Order', choices=[
+        ('false', 'Ascending (Low to High)'), 
+        ('true', 'Descending (High to Low)')
+    ], default='false', validators=[Optional()])
+    perlin_seed = IntegerField('Noise Seed',
+                             default=42,
+                             validators=[Optional(), NumberRange(min=1, max=9999)])
+    
+    # Perlin Full Frame
+    perlin_full_frame_noise_scale = FloatField('Noise Scale', 
+                                            default=0.01,
+                                            validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    perlin_full_frame_sort_by = SelectField('Sort By', choices=[
+        ('color', 'Color (R+G+B)'), 
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
+    ], default='brightness', validators=[Optional()])
+    perlin_full_frame_reverse = SelectField('Sort Order', choices=[
+        ('false', 'Ascending (Low to High)'), 
+        ('true', 'Descending (High to Low)')
+    ], default='false', validators=[Optional()])
+    perlin_full_frame_seed = IntegerField('Noise Seed',
+                                        default=42,
+                                        validators=[Optional(), NumberRange(min=1, max=9999)])
+    
+    # Perlin Merge
+    perlin_merge_secondary = FileField('Secondary Image', validators=[
+        Optional(),
+        FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
+    ])
+    perlin_merge_noise_scale = FloatField('Noise Scale', 
+                                       default=0.01,
+                                       validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    perlin_merge_threshold = FloatField('Threshold', 
+                                     default=0.5,
+                                     validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    perlin_merge_seed = IntegerField('Noise Seed',
+                                   default=42,
+                                   validators=[Optional(), NumberRange(min=1, max=9999)])
+    
+    # Pixelate
+    pixelate_width = IntegerField('Pixel Width',
+                                default=8,
+                                validators=[Optional(), NumberRange(min=2, max=64)])
+    pixelate_height = IntegerField('Pixel Height',
+                                 default=8,
+                                 validators=[Optional(), NumberRange(min=2, max=64)])
+    pixelate_attribute = SelectField('Attribute', choices=[
+        ('color', 'Color (Most Common)'),
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance')
+    ], default='color', validators=[Optional()])
+    pixelate_bins = IntegerField('Number of Bins',
+                               default=100,
+                               validators=[Optional(), NumberRange(min=10, max=1000)])
+    
+    # Concentric Squares
+    concentric_num_points = IntegerField('Number of Points',
+                                      default=10,
+                                      validators=[Optional(), NumberRange(min=1, max=100)])
+    concentric_num_squares = IntegerField('Squares per Point',
+                                       default=5,
+                                       validators=[Optional(), NumberRange(min=1, max=20)])
+    concentric_thickness = IntegerField('Line Thickness',
+                                     default=2,
+                                     validators=[Optional(), NumberRange(min=1, max=10)])
+    
     def validate(self, extra_validators=None):
         """Custom validation based on the selected effect."""
         logger.debug(f"Validating form with effect: {self.effect.data}")
@@ -348,6 +456,90 @@ class ImageProcessForm(FlaskForm):
             if not self.full_frame_reverse.data:
                 self.full_frame_reverse.errors = ['Sort order is required for Full Frame Sorting']
                 logger.debug("Missing full_frame_reverse for full_frame_sort")
+                return False
+                
+        elif effect == 'polar_sort':
+            if not self.polar_chunk_size.data:
+                self.polar_chunk_size.errors = ['Chunk size is required for Polar Sorting']
+                logger.debug("Missing polar_chunk_size for polar_sort")
+                return False
+            if not self.polar_sort_by.data:
+                self.polar_sort_by.errors = ['Sort by is required for Polar Sorting']
+                logger.debug("Missing polar_sort_by for polar_sort")
+                return False
+            if not self.polar_reverse.data:
+                self.polar_reverse.errors = ['Sort order is required for Polar Sorting']
+                logger.debug("Missing polar_reverse for polar_sort")
+                return False
+                
+        elif effect == 'perlin_noise_sort':
+            logger.debug("Validating perlin_noise_sort fields")
+            if not self.perlin_chunk_width.data:
+                self.perlin_chunk_width.errors = ['Chunk width is required for Perlin Noise Sorting']
+                logger.debug("Missing perlin_chunk_width for perlin_noise_sort")
+                return False
+            if not self.perlin_chunk_height.data:
+                self.perlin_chunk_height.errors = ['Chunk height is required for Perlin Noise Sorting']
+                logger.debug("Missing perlin_chunk_height for perlin_noise_sort")
+                return False
+            if not self.perlin_noise_scale.data:
+                self.perlin_noise_scale.errors = ['Noise scale is required for Perlin Noise Sorting']
+                logger.debug("Missing perlin_noise_scale for perlin_noise_sort")
+                return False
+            if not self.perlin_direction.data:
+                self.perlin_direction.errors = ['Direction is required for Perlin Noise Sorting']
+                logger.debug("Missing perlin_direction for perlin_noise_sort")
+                return False
+            if not self.perlin_reverse.data:
+                self.perlin_reverse.errors = ['Sort order is required for Perlin Noise Sorting']
+                logger.debug("Missing perlin_reverse for perlin_noise_sort")
+                return False
+                
+        elif effect == 'perlin_full_frame':
+            logger.debug("Validating perlin_full_frame fields")
+            if not self.perlin_full_frame_noise_scale.data:
+                self.perlin_full_frame_noise_scale.errors = ['Noise scale is required for Perlin Full Frame']
+                logger.debug("Missing perlin_full_frame_noise_scale for perlin_full_frame")
+                return False
+            if not self.perlin_full_frame_sort_by.data:
+                self.perlin_full_frame_sort_by.errors = ['Sort by is required for Perlin Full Frame']
+                logger.debug("Missing perlin_full_frame_sort_by for perlin_full_frame")
+                return False
+            if not self.perlin_full_frame_reverse.data:
+                self.perlin_full_frame_reverse.errors = ['Sort order is required for Perlin Full Frame']
+                logger.debug("Missing perlin_full_frame_reverse for perlin_full_frame")
+                return False
+                
+        elif effect == 'perlin_merge':
+            if not self.perlin_merge_secondary.data:
+                self.perlin_merge_secondary.errors = ['Secondary image is required for Perlin Merge']
+                logger.debug("Missing perlin_merge_secondary for perlin_merge")
+                return False
+            if not self.perlin_merge_noise_scale.data:
+                self.perlin_merge_noise_scale.errors = ['Noise scale is required for Perlin Merge']
+                logger.debug("Missing perlin_merge_noise_scale for perlin_merge")
+                return False
+            if not self.perlin_merge_threshold.data:
+                self.perlin_merge_threshold.errors = ['Threshold is required for Perlin Merge']
+                logger.debug("Missing perlin_merge_threshold for perlin_merge")
+                return False
+                
+        elif effect == 'pixelate':
+            if not self.pixelate_width.data:
+                self.pixelate_width.errors = ['Pixel width is required for Pixelate']
+                logger.debug("Missing pixelate_width for pixelate")
+                return False
+            if not self.pixelate_height.data:
+                self.pixelate_height.errors = ['Pixel height is required for Pixelate']
+                logger.debug("Missing pixelate_height for pixelate")
+                return False
+            if not self.pixelate_attribute.data:
+                self.pixelate_attribute.errors = ['Attribute is required for Pixelate']
+                logger.debug("Missing pixelate_attribute for pixelate")
+                return False
+            if not self.pixelate_bins.data:
+                self.pixelate_bins.errors = ['Number of bins is required for Pixelate']
+                logger.debug("Missing pixelate_bins for pixelate")
                 return False
                 
         # If we get here, validation passed

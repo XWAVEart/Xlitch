@@ -379,19 +379,171 @@
             
             <!-- Full Frame Sorting -->
             <div id="full_frame_sort_fields" class="effect-fields" style="display:none;">
-                <h3>Full Frame Pixel Sorting</h3>
+                <h3>Full Frame Sorting</h3>
                 <div class="form-group">
                     <label class="required-field">{{ form.full_frame_direction.label }}</label>
                     {{ form.full_frame_direction(required=True) }}
-                    <span class="help-text">Vertical sorts each column, Horizontal sorts each row</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.full_frame_sort_by.label }}</label>
                     {{ form.full_frame_sort_by(required=True) }}
+                    <span class="help-text">Property to sort pixels by</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.full_frame_reverse.label }}</label>
                     {{ form.full_frame_reverse(required=True) }}
+                </div>
+            </div>
+            
+            <!-- Polar Sorting -->
+            <div id="polar_sort_fields" class="effect-fields" style="display:none;">
+                <h3>Polar Sorting</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.polar_chunk_size.label }}</label>
+                    {{ form.polar_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
+                    <span class="help-text">Size of square chunks (8-128, multiples of 8)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.polar_sort_by.label }}</label>
+                    {{ form.polar_sort_by(required=True) }}
+                    <span class="help-text">Sort by angle around center or distance from center</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.polar_reverse.label }}</label>
+                    {{ form.polar_reverse(required=True) }}
+                </div>
+            </div>
+            
+            <!-- Perlin Noise Sorting -->
+            <div id="perlin_noise_sort_fields" class="effect-fields" style="display:none;">
+                <h3>Perlin Noise Sorting</h3>
+                <div class="form-group">
+                    <label class="required-field">Chunk Size</label>
+                    <div class="chunk-size-inputs">
+                        {{ form.perlin_chunk_width(required=True, placeholder="Width", value="32", min=8, max=1024, step=8) }}
+                        <span>x</span>
+                        {{ form.perlin_chunk_height(required=True, placeholder="Height", value="32", min=8, max=1024, step=8) }}
+                    </div>
+                    <span class="help-text">Values must be multiples of 8 (8-1024). Use large values for full rows/columns.</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_noise_scale.label }}</label>
+                    {{ form.perlin_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
+                    <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_seed.label }}</label>
+                    {{ form.perlin_seed(required=True, min=1, max=9999, type="number") }}
+                    <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_direction.label }}</label>
+                    {{ form.perlin_direction(required=True) }}
+                    <span class="help-text">Direction to sort pixels</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_reverse.label }}</label>
+                    {{ form.perlin_reverse(required=True) }}
+                </div>
+            </div>
+            
+            <!-- Perlin Full Frame -->
+            <div id="perlin_full_frame_fields" class="effect-fields" style="display:none;">
+                <h3>Perlin Full Frame Sorting</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_full_frame_noise_scale.label }}</label>
+                    {{ form.perlin_full_frame_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
+                    <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_full_frame_seed.label }}</label>
+                    {{ form.perlin_full_frame_seed(required=True, min=1, max=9999, type="number") }}
+                    <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_full_frame_sort_by.label }}</label>
+                    {{ form.perlin_full_frame_sort_by(required=True) }}
+                    <span class="help-text">Property to sort pixels by</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_full_frame_reverse.label }}</label>
+                    {{ form.perlin_full_frame_reverse(required=True) }}
+                </div>
+            </div>
+            
+            <!-- Perlin Merge -->
+            <div id="perlin_merge_fields" class="effect-fields" style="display:none;">
+                <h3>Perlin Merge</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_merge_secondary.label }}</label>
+                    {{ form.perlin_merge_secondary(id="perlin-merge-secondary-input", required=True) }}
+                    <span class="help-text">Image to merge with the primary image</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_merge_noise_scale.label }}</label>
+                    {{ form.perlin_merge_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
+                    <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed pattern)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_merge_seed.label }}</label>
+                    {{ form.perlin_merge_seed(required=True, min=1, max=9999, type="number") }}
+                    <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_merge_threshold.label }}</label>
+                    {{ form.perlin_merge_threshold(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
+                    <span class="help-text">Threshold for pixel replacement (0.0-1.0, higher = less replacement)</span>
+                </div>
+            </div>
+            
+            <!-- Pixelate -->
+            <div id="pixelate_fields" class="effect-fields" style="display:none;">
+                <h3>Pixelate</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.pixelate_width.label }}</label>
+                        {{ form.pixelate_width(required=True, min=2, max=64) }}
+                        <span class="help-text">Width of each pixel block (2-64)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.pixelate_height.label }}</label>
+                        {{ form.pixelate_height(required=True, min=2, max=64) }}
+                        <span class="help-text">Height of each pixel block (2-64)</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.pixelate_attribute.label }}</label>
+                        {{ form.pixelate_attribute(required=True) }}
+                        <span class="help-text">Attribute to use for determining pixel color</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.pixelate_bins.label }}</label>
+                        {{ form.pixelate_bins(required=True, min=10, max=1000) }}
+                        <span class="help-text">Number of bins for quantizing attribute values (10-1000)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Concentric Squares -->
+            <div id="concentric_squares_fields" class="effect-fields" style="display:none;">
+                <h3>Concentric Squares</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.concentric_num_points.label }}</label>
+                        {{ form.concentric_num_points(required=True, min=1, max=100) }}
+                        <span class="help-text">Number of random points to select (1-100)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.concentric_num_squares.label }}</label>
+                        {{ form.concentric_num_squares(required=True, min=1, max=20) }}
+                        <span class="help-text">Number of concentric squares per point (1-20)</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.concentric_thickness.label }}</label>
+                    {{ form.concentric_thickness(required=True, min=1, max=10) }}
+                    <span class="help-text">Thickness of each square's outline (1-10)</span>
                 </div>
             </div>
             
