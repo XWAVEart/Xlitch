@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XWAVE XLITCH XORT</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #252525;
+            --accent-color: #00c896;
+            --text-color: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --border-color: #333;
+            --input-bg: #333;
+            --error-color: #ff5252;
+            --success-color: #4caf50;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        h1, h2, h3 {
+            color: var(--accent-color);
+            margin-bottom: 15px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            text-align: center;
+            margin: 20px 0;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+        
+        .form-container {
+            background-color: var(--card-bg);
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border-color);
+        }
+        
+        .form-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .form-group {
+            flex: 1;
+            min-width: 200px;
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        
+        .effect-fields {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .effect-fields h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent-color);
+        }
+        
+        .image-preview {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .preview-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .preview-box {
+            flex: 1;
+            min-width: 300px;
+            background-color: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border-color);
+        }
+        
+        .preview-box h3 {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+        
+        input[type="file"] {
+            padding: 8px;
+            cursor: pointer;
+        }
+        
+        input[type="submit"], 
+        button {
+            background-color: var(--accent-color);
+            color: #000;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            margin-right: 10px;
+            transition: all 0.2s ease;
+        }
+        
+        input[type="submit"]:hover, 
+        button:hover {
+            background-color: #00b386;
+            transform: translateY(-2px);
+        }
+        
+        #loading {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        .error-message {
+            color: var(--error-color);
+            background-color: rgba(255, 82, 82, 0.1);
+            border: 1px solid rgba(255, 82, 82, 0.3);
+            padding: 8px;
+            margin-top: 5px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .global-error {
+            margin-bottom: 15px;
+        }
+        
+        .has-error input, 
+        .has-error select {
+            border-color: var(--error-color);
+        }
+        
+        .required-field::after {
+            content: " *";
+            color: var(--error-color);
+        }
+        
+        .chunk-size-inputs {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .chunk-size-inputs input {
+            width: 70px;
+        }
+        
+        .debug-info {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            display: none;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .button-group {
+            margin-top: 25px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .direct-submit-form {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            display: none;
+        }
+        
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        #download-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 8px 15px;
+            background-color: var(--accent-color);
+            color: #000;
+            border-radius: 4px;
+            font-weight: 500;
+            text-align: center;
+        }
+        
+        #download-link:hover {
+            background-color: #00b386;
+            text-decoration: none;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: center;
+        }
+        
+        .action-buttons a,
+        .action-buttons button {
+            flex: 1;
+            min-width: 150px;
+            text-align: center;
+            padding: 10px 15px;
+            background-color: var(--accent-color);
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+        
+        .action-buttons a:hover,
+        .action-buttons button:hover {
+            background-color: #00b386;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <h1>XWAVE XLITCH XORT</h1>
+    <div class="form-container">
+        <form method="POST" action="/" enctype="multipart/form-data" id="image-form">
+            {{ form.hidden_tag() }}
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="required-field">{{ form.primary_image.label }}</label>
+                    {{ form.primary_image(id="primary-image-input", required=True) }}
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.effect.label }}</label>
+                    {{ form.effect(id="effect", required=True) }}
+                </div>
+            </div>
+            
+            <!-- Pixel Sorting (Original) -->
+            <div id="pixel_sort_original_fields" class="effect-fields" style="display:none;">
+                <h3>Pixel Sorting Parameters</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.direction.label }}</label>
+                        {{ form.direction(required=True) }}
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.sort_by.label }}</label>
+                        {{ form.sort_by(required=True) }}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">Chunk Size</label>
+                    <div class="chunk-size-inputs">
+                        {{ form.chunk_width(required=True, placeholder="Width", value="32", min=8, step=8) }}
+                        <span>x</span>
+                        {{ form.chunk_height(required=True, placeholder="Height", value="32", min=8, step=8) }}
+                    </div>
+                    <span class="help-text">Values must be multiples of 8 (8, 16, 24, 32, etc.)</span>
+                </div>
+            </div>
+            
+            <!-- Pixel Sorting (Corner-to-Corner) -->
+            <div id="pixel_sort_corner_fields" class="effect-fields" style="display:none;">
+                <h3>Corner-to-Corner Pixel Sorting</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.corner_sort_by.label }}</label>
+                        {{ form.corner_sort_by(required=True) }}
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.starting_corner.label }}</label>
+                        {{ form.starting_corner(required=True) }}
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.corner_direction.label }}</label>
+                        {{ form.corner_direction(required=True) }}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">Chunk Size</label>
+                    <div class="chunk-size-inputs">
+                        {{ form.corner_chunk_width(required=True, placeholder="Width", value="32", min=8, step=8) }}
+                        <span>x</span>
+                        {{ form.corner_chunk_height(required=True, placeholder="Height", value="32", min=8, step=8) }}
+                    </div>
+                    <span class="help-text">Values must be multiples of 8 (8, 16, 24, 32, etc.)</span>
+                </div>
+            </div>
+            
+            <!-- Color Channel Manipulation -->
+            <div id="color_channel_fields" class="effect-fields" style="display:none;">
+                <h3>Color Channel Manipulation</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.manipulation_type.label }}</label>
+                    {{ form.manipulation_type(id="manipulation_type", required=True) }}
+                </div>
+                <div id="swap_fields" class="effect-fields" style="display:none;">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.swap_choice.label }}</label>
+                        {{ form.swap_choice(required=True) }}
+                    </div>
+                </div>
+                <div id="invert_fields" class="effect-fields" style="display:none;">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.invert_choice.label }}</label>
+                        {{ form.invert_choice(required=True) }}
+                    </div>
+                </div>
+                <div id="adjust_fields" class="effect-fields" style="display:none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="required-field">{{ form.adjust_choice.label }}</label>
+                            {{ form.adjust_choice(required=True) }}
+                        </div>
+                        <div class="form-group">
+                            <label class="required-field">{{ form.intensity_factor.label }}</label>
+                            {{ form.intensity_factor(required=True, placeholder="1.5", value="1.5") }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Data Moshing -->
+            <div id="data_moshing_fields" class="effect-fields" style="display:none;">
+                <h3>Double Expose</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.secondary_image.label }}</label>
+                    {{ form.secondary_image(id="secondary-image-input", required=True) }}
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.blend_mode.label }}</label>
+                        {{ form.blend_mode(required=True) }}
+                        <span class="help-text">Different blend modes create different visual effects</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.opacity.label }}</label>
+                        {{ form.opacity(required=True, min=0.1, max=1.0, step=0.1, type="number") }}
+                        <span class="help-text">Strength of the blend (0.1-1.0)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pixel Drift -->
+            <div id="pixel_drift_fields" class="effect-fields" style="display:none;">
+                <h3>Pixel Drift</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.drift_direction.label }}</label>
+                    {{ form.drift_direction(required=True) }}
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.drift_bands.label }}</label>
+                    {{ form.drift_bands(required=True, min=8, max=48, step=8, type="number") }}
+                    <span class="help-text">Must be a multiple of 8 (8-48)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.drift_intensity.label }}</label>
+                    {{ form.drift_intensity(required=True, min=0.1, max=10, step=0.1, type="number") }}
+                    <span class="help-text">Higher values = more extreme drift (0.1-10)</span>
+                </div>
+            </div>
+            
+            <!-- Spiral Sort -->
+            <div id="spiral_sort_fields" class="effect-fields" style="display:none;">
+                <h3>Spiral Sort</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.spiral_chunk_size.label }}</label>
+                    {{ form.spiral_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
+                    <span class="help-text">Size of square chunks (8-128, multiples of 8)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.spiral_order.label }}</label>
+                    {{ form.spiral_order(required=True) }}
+                </div>
+            </div>
+            
+            <!-- Bit Manipulation (no additional fields) -->
+            <div id="bit_manipulation_fields" class="effect-fields" style="display:none;">
+                <h3>Bit Manipulation</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.bit_chunk_size.label }}</label>
+                    {{ form.bit_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
+                    <span class="help-text">Size of chunks to process (8-128, multiples of 8)</span>
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <button type="button" id="process-button">Process Image</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Image Preview Section -->
+    <div class="image-preview" id="image-preview">
+        <h2>Image Preview</h2>
+        <div class="preview-container">
+            <div class="preview-box">
+                <h3>Original Image</h3>
+                <img id="original-preview" src="" alt="Original Image">
+            </div>
+            <div class="preview-box" id="processed-container" style="display:none;">
+                <h3>Processed Image</h3>
+                <img id="processed-preview" src="" alt="Processed Image">
+                <div class="action-buttons">
+                    <a id="download-link" href="" download>Download Processed Image</a>
+                    <button id="use-processed-button" type="button">Use as Input Image</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Debug Info Section -->
+    <div class="debug-info" id="debug-info">
+        <h3>Debug Information</h3>
+        <div id="debug-content"></div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
