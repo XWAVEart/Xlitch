@@ -6,6 +6,7 @@ import logging
 import numpy as np
 from forms import ImageProcessForm
 from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort
+from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-for-testing')  # Use environment variable in production
@@ -13,6 +14,8 @@ app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['PROCESSED_FOLDER'] = 'processed/'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 app.config['WTF_CSRF_ENABLED'] = True  # Enable CSRF protection
+app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # Extend CSRF token validity to 1 hour
+app.config['WTF_CSRF_CHECK_DEFAULT'] = False  # We'll check it manually for AJAX
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -22,7 +25,16 @@ logger = logging.getLogger(__name__)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['PROCESSED_FOLDER'], exist_ok=True)
 
+# Import CSRF protection after app is created
+csrf = CSRFProtect(app)
+
+# Add CSRF exempt for AJAX requests
+@csrf.exempt
+def csrf_exempt(view):
+    return view
+
 @app.route('/', methods=['GET', 'POST'])
+@csrf_exempt
 def index():
     """Handle the main page with image upload and effect selection."""
     form = ImageProcessForm()

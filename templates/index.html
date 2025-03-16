@@ -343,11 +343,11 @@
                 <div class="form-group">
                     <label class="required-field">Chunk Size</label>
                     <div class="chunk-size-inputs">
-                        {{ form.chunk_width(required=True, placeholder="Width", value="32", min=8, step=8) }}
+                        {{ form.chunk_width(required=True, placeholder="Width", value="32", min=8, max=2048, step=8) }}
                         <span>x</span>
-                        {{ form.chunk_height(required=True, placeholder="Height", value="32", min=8, step=8) }}
+                        {{ form.chunk_height(required=True, placeholder="Height", value="32", min=8, max=2048, step=8) }}
                     </div>
-                    <span class="help-text">Values must be multiples of 8 (8, 16, 24, 32, etc.)</span>
+                    <span class="help-text">Values must be multiples of 8 (8-2048)</span>
                 </div>
             </div>
             
@@ -369,11 +369,11 @@
                 <div class="form-group">
                     <label class="required-field">Chunk Size</label>
                     <div class="chunk-size-inputs">
-                        {{ form.corner_chunk_width(required=True, placeholder="Width", value="32", min=8, step=8) }}
+                        {{ form.corner_chunk_width(required=True, placeholder="Width", value="32", min=8, max=2048, step=8) }}
                         <span>x</span>
-                        {{ form.corner_chunk_height(required=True, placeholder="Height", value="32", min=8, step=8) }}
+                        {{ form.corner_chunk_height(required=True, placeholder="Height", value="32", min=8, max=2048, step=8) }}
                     </div>
-                    <span class="help-text">Values must be multiples of 8 (8, 16, 24, 32, etc.)</span>
+                    <span class="help-text">Values must be multiples of 8 (8-2048)</span>
                 </div>
             </div>
             

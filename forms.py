@@ -47,27 +47,39 @@ class ImageProcessForm(FlaskForm):
     ], default='horizontal', validators=[Optional()])
     chunk_width = IntegerField('Chunk Width', 
                               default=32,
-                              validators=[Optional(), NumberRange(min=8, max=1000), validate_multiple_of_8])
+                              validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
     chunk_height = IntegerField('Chunk Height', 
                                default=32,
-                               validators=[Optional(), NumberRange(min=8, max=1000), validate_multiple_of_8])
+                               validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
     sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color'), 
+        ('color', 'Color (R+G+B)'), 
         ('brightness', 'Brightness'), 
-        ('hue', 'Hue')
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
     ], default='brightness', validators=[Optional()])
     
     # Pixel Sorting (Corner-to-Corner)
     corner_chunk_width = IntegerField('Chunk Width', 
                                      default=32,
-                                     validators=[Optional(), NumberRange(min=8, max=1000), validate_multiple_of_8])
+                                     validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
     corner_chunk_height = IntegerField('Chunk Height', 
                                       default=32,
-                                      validators=[Optional(), NumberRange(min=8, max=1000), validate_multiple_of_8])
+                                      validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
     corner_sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color'), 
+        ('color', 'Color (R+G+B)'), 
         ('brightness', 'Brightness'), 
-        ('hue', 'Hue')
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
     ], default='brightness', validators=[Optional()])
     starting_corner = SelectField('Starting Corner', choices=[
         ('top-left', 'Top-Left'), 
@@ -161,7 +173,10 @@ class ImageProcessForm(FlaskForm):
         ('hue', 'Hue'),
         ('red', 'Red Channel'),
         ('green', 'Green Channel'),
-        ('blue', 'Blue Channel')
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
     ], default='brightness', validators=[Optional()])
     full_frame_reverse = SelectField('Sort Order', choices=[
         ('false', 'Ascending (Low to High)'), 

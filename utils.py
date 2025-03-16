@@ -21,27 +21,63 @@ def load_image(file_path):
 
 def brightness(pixel):
     """
-    Calculate the perceived brightness of a pixel using the luminance formula.
+    Calculate the perceived brightness of a pixel using the luminosity formula.
     
     Args:
-        pixel (tuple): RGB tuple (red, green, blue).
+        pixel (tuple): RGB pixel values.
     
     Returns:
         float: Brightness value.
     """
-    return pixel[0] * 0.299 + pixel[1] * 0.587 + pixel[2] * 0.114
+    return 0.299 * pixel[0] + 0.587 * pixel[1] + 0.114 * pixel[2]
 
 def hue(pixel):
     """
-    Calculate the hue of a pixel by converting RGB to HSV.
+    Calculate the hue of a pixel.
     
     Args:
-        pixel (tuple): RGB tuple (red, green, blue).
+        pixel (tuple): RGB pixel values.
     
     Returns:
         int: Hue value (0-360).
     """
     return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[0]
+
+def saturation(pixel):
+    """
+    Calculate the saturation of a pixel.
+    
+    Args:
+        pixel (tuple): RGB pixel values.
+    
+    Returns:
+        int: Saturation value (0-100).
+    """
+    return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[1]
+
+def luminance(pixel):
+    """
+    Calculate the luminance (value in HSV) of a pixel.
+    
+    Args:
+        pixel (tuple): RGB pixel values.
+    
+    Returns:
+        int: Luminance value (0-100).
+    """
+    return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[2]
+
+def contrast(pixel):
+    """
+    Calculate a contrast value based on the difference between max and min RGB values.
+    
+    Args:
+        pixel (tuple): RGB pixel values.
+    
+    Returns:
+        int: Contrast value.
+    """
+    return max(pixel[:3]) - min(pixel[:3])
 
 def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
     """
@@ -51,7 +87,8 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
         image (Image): PIL Image object to process.
         direction (str): 'horizontal' or 'vertical' sorting direction.
         chunk_size (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
-        sort_by (str): Property to sort by ('color', 'brightness', 'hue').
+        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue', 
+                       'saturation', 'luminance', 'contrast').
         starting_corner (str, optional): Starting corner for corner-to-corner sorting.
     
     Returns:
@@ -74,7 +111,13 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
     sort_function = {
         'color': lambda p: sum(p[:3]),
         'brightness': brightness,
-        'hue': hue
+        'hue': hue,
+        'red': lambda p: p[0],     # Sort by red channel only
+        'green': lambda p: p[1],   # Sort by green channel only
+        'blue': lambda p: p[2],     # Sort by blue channel only
+        'saturation': saturation,  # Sort by color saturation
+        'luminance': luminance,    # Sort by luminance (value in HSV)
+        'contrast': contrast       # Sort by contrast (max-min RGB)
     }.get(sort_by, lambda p: sum(p[:3]))  # Default to sum of RGB if invalid
 
     pixels = list(image.getdata())
@@ -138,7 +181,8 @@ def pixel_sorting_corner_to_corner(image, chunk_size, sort_by, corner, horizonta
     Args:
         image (Image): PIL Image object to process.
         chunk_size (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
-        sort_by (str): Property to sort by ('color', 'brightness', 'hue').
+        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue',
+                       'saturation', 'luminance', 'contrast').
         corner (str): Starting corner ('top-left', 'top-right', 'bottom-left', 'bottom-right').
         horizontal (bool): True for horizontal sorting, False for vertical.
     
@@ -152,7 +196,13 @@ def pixel_sorting_corner_to_corner(image, chunk_size, sort_by, corner, horizonta
     sort_function = {
         'color': lambda p: sum(p[:3]),
         'brightness': brightness,
-        'hue': hue
+        'hue': hue,
+        'red': lambda p: p[0],     # Sort by red channel only
+        'green': lambda p: p[1],   # Sort by green channel only
+        'blue': lambda p: p[2],     # Sort by blue channel only
+        'saturation': saturation,  # Sort by color saturation
+        'luminance': luminance,    # Sort by luminance (value in HSV)
+        'contrast': contrast       # Sort by contrast (max-min RGB)
     }.get(sort_by, lambda p: sum(p[:3]))
 
     # Create a copy of the image to work with
@@ -590,7 +640,8 @@ def full_frame_sort(image, direction='vertical', sort_by='brightness', reverse=F
     Args:
         image (Image): PIL Image object to process.
         direction (str): Direction of sorting ('vertical', 'horizontal').
-        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue').
+        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue',
+                       'saturation', 'luminance', 'contrast').
         reverse (bool): Whether to reverse the sort order.
     
     Returns:
@@ -611,7 +662,10 @@ def full_frame_sort(image, direction='vertical', sort_by='brightness', reverse=F
         'hue': hue,
         'red': lambda p: p[0],     # Sort by red channel only
         'green': lambda p: p[1],   # Sort by green channel only
-        'blue': lambda p: p[2]     # Sort by blue channel only
+        'blue': lambda p: p[2],     # Sort by blue channel only
+        'saturation': saturation,  # Sort by color saturation
+        'luminance': luminance,    # Sort by luminance (value in HSV)
+        'contrast': contrast       # Sort by contrast (max-min RGB)
     }.get(sort_by, lambda p: sum(p[:3]))
     
     if direction == 'vertical':

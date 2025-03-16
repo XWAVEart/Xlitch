@@ -22,10 +22,9 @@ $(document).ready(function() {
     $.ajaxSetup({
         beforeSend: function(xhr, settings) {
             if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                // Get the token from the form
+                var csrftoken = $('input[name=csrf_token]').val();
                 xhr.setRequestHeader("X-CSRFToken", csrftoken);
-                if (debugMode) {
-                    addDebugInfo("Setting X-CSRFToken header for " + settings.type + " request");
-                }
             }
         }
     });
@@ -331,6 +330,11 @@ $(document).ready(function() {
         
         // Create FormData object
         var formData = new FormData(form);
+        
+        // Ensure we have the latest CSRF token
+        var csrftoken = $('input[name=csrf_token]').val();
+        console.log("Using CSRF token:", csrftoken);
+        addDebugInfo("Using CSRF token: " + csrftoken);
         
         // Debug form data
         console.log("Form data:");
