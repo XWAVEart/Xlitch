@@ -5,3 +5,4 @@ gunicorn==21.2.0
 Werkzeug==2.3.7
 WTForms==3.0.1
 numpy==1.25.2
+opencv-python-headless==4.8.0.76

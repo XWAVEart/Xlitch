@@ -2,6 +2,7 @@ from PIL import Image, ImageColor
 import os
 import random
 import numpy as np
+import cv2
 
 def load_image(file_path):
     """
@@ -510,41 +511,29 @@ def bit_manipulation(image, chunk_size=1):
 
 def spiral_coords(size):
     """
-    Generate coordinates for a spiral pattern starting from the center.
+    Generate coordinates in spiral order starting from the center of a square chunk.
     
     Args:
-        size (int): Size of the square grid.
-    
+        size (int): Size of the square chunk.
+        
     Yields:
         tuple: (x, y) coordinates in spiral order.
     """
-    start_point = ((size - 1) // 2, (size - 1) // 2)
-    yield start_point
-    
-    # Generate spiral coordinates
-    for square in range(1, size, 2):
-        for dx, dy in [(0, -1), (-1, 0), (0, 1), (1, 0)]:
-            if dx:
-                for _ in range(square):
-                    start_point = (start_point[0] + dx, start_point[1])
-                    yield start_point
-            else:
-                for _ in range(square):
-                    start_point = (start_point[0], start_point[1] + dy)
-                    yield start_point
-    
-    # Handle any remaining coordinates if size is even
-    from itertools import cycle
-    dirs = cycle(((0, 1), (1, 0), (0, -1), (-1, 0)))
-    for radius in range(1, size):
-        for _ in range(2):
-            direction = next(dirs)
-            for _ in range(radius):
-                start_point = (start_point[0] + direction[0], start_point[1] + direction[1])
-                if 0 <= start_point[0] < size and 0 <= start_point[1] < size:
-                    yield start_point
-        if radius == size - 1:
-            break
+    x, y = size // 2, size // 2  # Start at the center
+    yield (x, y)
+    directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # right, down, left, up
+    steps = 1
+    dir_idx = 0
+    while steps < size:
+        for _ in range(2):  # Two sides per step increase (e.g., right then down)
+            dx, dy = directions[dir_idx % 4]
+            for _ in range(steps):
+                x += dx
+                y += dy
+                if 0 <= x < size and 0 <= y < size:
+                    yield (x, y)
+            dir_idx += 1
+        steps += 1
 
 def spiral_sort(image, chunk_size=32, order='lightest-to-darkest'):
     """
@@ -617,6 +606,97 @@ def spiral_sort(image, chunk_size=32, order='lightest-to-darkest'):
     
     # Convert back to PIL image
     return Image.fromarray(result)
+
+def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
+    """
+    Apply spiral sorting starting from the center of each chunk, with pixels sorted by the specified property.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        chunk_size (int): Size of square chunks to process.
+        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue',
+                       'saturation', 'luminance', 'contrast').
+        reverse (bool): Whether to reverse the sort order.
+        
+    Returns:
+        Image: Processed image with spiral sorting.
+    """
+    # Convert PIL Image to OpenCV format (BGR)
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    img_array = np.array(image)
+    # Convert RGB to BGR (OpenCV format)
+    img_array = img_array[:, :, ::-1].copy()
+    
+    # Define the sort function based on the sort_by parameter
+    sort_function = {
+        'color': lambda p: np.sum(p),
+        'brightness': lambda p: 0.299 * p[2] + 0.587 * p[1] + 0.114 * p[0],  # RGB is BGR in OpenCV
+        'hue': lambda p: cv2.cvtColor(np.array([[p]]), cv2.COLOR_BGR2HSV)[0, 0, 0],
+        'red': lambda p: p[2],  # Red is at index 2 in BGR
+        'green': lambda p: p[1],  # Green is at index 1 in BGR
+        'blue': lambda p: p[0],  # Blue is at index 0 in BGR
+        'saturation': lambda p: cv2.cvtColor(np.array([[p]]), cv2.COLOR_BGR2HSV)[0, 0, 1],
+        'luminance': lambda p: cv2.cvtColor(np.array([[p]]), cv2.COLOR_BGR2HSV)[0, 0, 2],
+        'contrast': lambda p: np.max(p) - np.min(p)
+    }.get(sort_by, lambda p: np.sum(p))
+    
+    # Pad the image to make dimensions multiples of chunk_size
+    height, width = img_array.shape[:2]
+    pad_height = (chunk_size - height % chunk_size) % chunk_size
+    pad_width = (chunk_size - width % chunk_size) % chunk_size
+    padded_image = np.pad(img_array, ((0, pad_height), (0, pad_width), (0, 0)), 
+                         mode='constant', constant_values=0)
+    
+    # Split the padded image into chunks
+    padded_height, padded_width = padded_image.shape[:2]
+    chunks = []
+    for y in range(0, padded_height, chunk_size):
+        for x in range(0, padded_width, chunk_size):
+            chunk = padded_image[y:y+chunk_size, x:x+chunk_size]
+            chunks.append((chunk, (y, x)))
+    
+    # Sort each chunk in spiral order
+    for chunk, (y_offset, x_offset) in chunks:
+        # Get spiral order coordinates
+        spiral_coords_list = list(spiral_coords(chunk_size))
+        
+        # Collect pixels in spiral order
+        pixels = [chunk[coord] for coord in spiral_coords_list]
+        
+        # Calculate sort values
+        sort_values = np.array([sort_function(pixel) for pixel in pixels])
+        
+        # Sort pixels based on the sort values
+        sorted_indices = np.argsort(sort_values)
+        if reverse:
+            sorted_indices = sorted_indices[::-1]
+        
+        # Create sorted pixel list
+        sorted_pixels = [pixels[idx] for idx in sorted_indices]
+        
+        # Place sorted pixels back into the chunk in spiral order
+        for (y_coord, x_coord), pixel in zip(spiral_coords_list, sorted_pixels):
+            chunk[y_coord, x_coord] = pixel
+    
+    # Combine chunks back into the full image
+    num_cols = padded_width // chunk_size
+    rows = []
+    for i in range(0, len(chunks), num_cols):
+        row_chunks = [chunk[0] for chunk in chunks[i:i + num_cols]]
+        row = np.concatenate(row_chunks, axis=1)
+        rows.append(row)
+    sorted_image = np.concatenate(rows, axis=0)
+    
+    # Crop to original size if padded
+    sorted_image = sorted_image[:height, :width]
+    
+    # Convert back to PIL Image (RGB)
+    sorted_image_rgb = sorted_image[:, :, ::-1]  # BGR to RGB
+    result_image = Image.fromarray(sorted_image_rgb)
+    
+    return result_image
 
 def generate_output_filename(original_filename, effect, settings):
     """

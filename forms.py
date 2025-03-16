@@ -37,6 +37,7 @@ class ImageProcessForm(FlaskForm):
         ('data_moshing', 'Double Expose'),
         ('pixel_drift', 'Pixel Drift'),
         ('spiral_sort', 'Spiral Sort'),
+        ('spiral_sort_2', 'Spiral Sort 2'),
         ('bit_manipulation', 'Bit Manipulation')
     ], validators=[DataRequired()])
     
@@ -156,6 +157,26 @@ class ImageProcessForm(FlaskForm):
         ('lightest-to-darkest', 'Lightest to Darkest'), 
         ('darkest-to-lightest', 'Darkest to Lightest')
     ], default='lightest-to-darkest', validators=[Optional()])
+    
+    # Spiral Sort 2
+    spiral2_chunk_size = IntegerField('Chunk Size', 
+                                   default=64,
+                                   validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
+    spiral2_sort_by = SelectField('Sort By', choices=[
+        ('color', 'Color (R+G+B)'), 
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
+    ], default='brightness', validators=[Optional()])
+    spiral2_reverse = SelectField('Sort Order', choices=[
+        ('false', 'Ascending (Low to High)'), 
+        ('true', 'Descending (High to Low)')
+    ], default='false', validators=[Optional()])
     
     # Bit Manipulation
     bit_chunk_size = IntegerField('Chunk Size', 
@@ -293,6 +314,20 @@ class ImageProcessForm(FlaskForm):
             if not self.spiral_order.data:
                 self.spiral_order.errors = ['Sort order is required for Spiral Sort']
                 logger.debug("Missing spiral_order for spiral_sort")
+                return False
+                
+        elif effect == 'spiral_sort_2':
+            if not self.spiral2_chunk_size.data:
+                self.spiral2_chunk_size.errors = ['Chunk size is required for Spiral Sort 2']
+                logger.debug("Missing spiral2_chunk_size for spiral_sort_2")
+                return False
+            if not self.spiral2_sort_by.data:
+                self.spiral2_sort_by.errors = ['Sort by is required for Spiral Sort 2']
+                logger.debug("Missing spiral2_sort_by for spiral_sort_2")
+                return False
+            if not self.spiral2_reverse.data:
+                self.spiral2_reverse.errors = ['Sort order is required for Spiral Sort 2']
+                logger.debug("Missing spiral2_reverse for spiral_sort_2")
                 return False
                 
         elif effect == 'bit_manipulation':

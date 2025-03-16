@@ -5,7 +5,7 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort
+from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2
 from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
@@ -154,6 +154,13 @@ def index():
                     logger.debug(f"Full frame sort params: direction={direction}, sort_by={sort_by}, reverse={reverse}")
                     processed_image = full_frame_sort(image, direction, sort_by, reverse)
                     settings = f"fullframe_{direction}_{sort_by}_{'desc' if reverse else 'asc'}"
+                elif effect == 'spiral_sort_2':
+                    chunk_size = form.spiral2_chunk_size.data
+                    sort_by = form.spiral2_sort_by.data
+                    reverse = form.spiral2_reverse.data == 'true'
+                    logger.debug(f"Spiral sort 2 params: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
+                    processed_image = spiral_sort_2(image, chunk_size, sort_by, reverse)
+                    settings = f"spiral2_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
                 
                 # Save the processed image
                 output_filename = generate_output_filename(filename, effect, settings)
