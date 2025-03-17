@@ -5,7 +5,7 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from utils import load_image, pixel_sorting, color_channel_manipulation, data_moshing, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, draw_concentric_squares
+from utils import load_image, pixel_sorting, color_channel_manipulation, double_expose, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, color_shift_expansion, perlin_noise_displacement, data_mosh_blocks
 from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
@@ -102,13 +102,17 @@ def index():
                         logger.debug(f"Invert choice: {choice}")
                         processed_image = color_channel_manipulation(image, manipulation_type, choice)
                         settings = f"invert_{choice}"
+                    elif manipulation_type == 'negative':
+                        logger.debug("Creating negative image")
+                        processed_image = color_channel_manipulation(image, manipulation_type, None)
+                        settings = "negative"
                     else:  # adjust
                         choice = form.adjust_choice.data
                         factor = form.intensity_factor.data
                         logger.debug(f"Adjust params: choice={choice}, factor={factor}")
                         processed_image = color_channel_manipulation(image, manipulation_type, choice, factor)
                         settings = f"adjust_{choice}_{factor}"
-                elif effect == 'data_moshing':
+                elif effect == 'double_expose':
                     secondary_image = form.secondary_image.data
                     blend_mode = form.blend_mode.data
                     opacity = form.opacity.data
@@ -126,7 +130,7 @@ def index():
                         logger.error(f"Failed to load secondary image from {secondary_path}")
                         error_msg = "Error loading secondary image"
                         return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                    processed_image = data_moshing(image, secondary_img, blend_mode, opacity)
+                    processed_image = double_expose(image, secondary_img, blend_mode, opacity)
                     settings = f"doubleexpose_{blend_mode}_{opacity}"
                 elif effect == 'perlin_merge':
                     secondary_image = form.perlin_merge_secondary.data
@@ -168,6 +172,26 @@ def index():
                     logger.debug(f"Bit manipulation chunk size: {chunk_size}")
                     processed_image = bit_manipulation(image, chunk_size)
                     settings = f"bitmanip_{chunk_size}"
+                elif effect == 'data_mosh_blocks':
+                    num_operations = form.data_mosh_operations.data
+                    max_block_size = form.data_mosh_block_size.data
+                    block_movement = form.data_mosh_movement.data
+                    color_swap = form.data_mosh_color_swap.data
+                    invert = form.data_mosh_invert.data
+                    shift = form.data_mosh_shift.data
+                    flip = form.data_mosh_flip.data
+                    seed = form.data_mosh_seed.data
+                    
+                    logger.debug(f"Data mosh blocks params: operations={num_operations}, block_size={max_block_size}, "
+                                f"movement={block_movement}, color_swap={color_swap}, invert={invert}, "
+                                f"shift={shift}, flip={flip}, seed={seed}")
+                    
+                    processed_image = data_mosh_blocks(image, num_operations, max_block_size, block_movement,
+                                                    color_swap, invert, shift, flip, seed)
+                    
+                    settings = f"datamosh_{num_operations}_{max_block_size}_{block_movement}_{color_swap}_{invert}_{shift}_{flip}"
+                    if seed:
+                        settings += f"_{seed}"
                 elif effect == 'full_frame_sort':
                     direction = form.full_frame_direction.data
                     sort_by = form.full_frame_sort_by.data
@@ -216,13 +240,34 @@ def index():
                     logger.debug(f"Pixelate params: width={pixel_width}, height={pixel_height}, attribute={attribute}, bins={num_bins}")
                     processed_image = pixelate_by_mode(image, pixel_width, pixel_height, attribute, num_bins)
                     settings = f"pixelate_{pixel_width}x{pixel_height}_{attribute}_{num_bins}"
-                elif effect == 'concentric_squares':
+                elif effect == 'concentric_shapes':
                     num_points = form.concentric_num_points.data
-                    num_squares = form.concentric_num_squares.data
+                    shape_type = form.shape_type.data
                     thickness = form.concentric_thickness.data
-                    logger.debug(f"Concentric squares params: points={num_points}, squares={num_squares}, thickness={thickness}")
-                    processed_image = draw_concentric_squares(image, num_points, num_squares, thickness)
-                    settings = f"concentric_{num_points}_{num_squares}_{thickness}"
+                    spacing = form.spacing.data
+                    rotation_angle = form.rotation_angle.data
+                    darken_step = form.darken_step.data
+                    color_shift = form.color_shift.data
+                    logger.debug(f"Concentric shapes params: points={num_points}, shape_type={shape_type}, thickness={thickness}, spacing={spacing}, rotation={rotation_angle}, darken={darken_step}, color_shift={color_shift}")
+                    processed_image = concentric_shapes(image, num_points, shape_type, thickness, spacing, rotation_angle, darken_step, color_shift)
+                    settings = f"concentric_{shape_type}_{num_points}_{thickness}_{spacing}_{rotation_angle}_{darken_step}_{color_shift}"
+                elif effect == 'color_shift_expansion':
+                    num_points = form.color_shift_num_points.data
+                    shift_amount = form.color_shift_amount.data
+                    expansion_type = form.expansion_type.data
+                    mode = form.color_shift_mode.data
+                    logger.debug(f"Color shift expansion params: points={num_points}, shift_amount={shift_amount}, expansion_type={expansion_type}, mode={mode}")
+                    processed_image = color_shift_expansion(image, num_points, shift_amount, expansion_type, mode)
+                    settings = f"colorshift_{num_points}_{shift_amount}_{expansion_type}_{mode}"
+                elif effect == 'perlin_displacement':
+                    scale = form.perlin_displacement_scale.data
+                    intensity = form.perlin_displacement_intensity.data
+                    octaves = form.perlin_displacement_octaves.data
+                    persistence = form.perlin_displacement_persistence.data
+                    lacunarity = form.perlin_displacement_lacunarity.data
+                    logger.debug(f"Perlin displacement params: scale={scale}, intensity={intensity}, octaves={octaves}, persistence={persistence}, lacunarity={lacunarity}")
+                    processed_image = perlin_noise_displacement(image, scale, intensity, octaves, persistence, lacunarity)
+                    settings = f"perlindisplace_{scale}_{intensity}_{octaves}_{persistence}_{lacunarity}"
                 
                 # Save the processed image
                 output_filename = generate_output_filename(filename, effect, settings)

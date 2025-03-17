@@ -56,7 +56,7 @@ $(document).ready(function() {
         addDebugInfo("Manipulation type changed to: " + type);
         
         // Hide all manipulation type fields first
-        $('#swap_fields, #invert_fields, #adjust_fields').hide();
+        $('#swap_fields, #invert_fields, #adjust_fields, #negative_fields').hide();
         
         if (type) {
             // Show the fields for the selected manipulation type
@@ -189,6 +189,17 @@ $(document).ready(function() {
             if (!$('[name="perlin_merge_seed"]').val()) {
                 $('[name="perlin_merge_seed"]').val('42');
                 addDebugInfo("Set default perlin_merge_seed to 42");
+            }
+        }
+        
+        if ($('#data_mosh_blocks_fields').is(':visible')) {
+            if (!$('[name="data_mosh_operations"]').val()) {
+                $('[name="data_mosh_operations"]').val('10');
+                addDebugInfo("Set default data_mosh_operations to 10");
+            }
+            if (!$('[name="data_mosh_block_size"]').val()) {
+                $('[name="data_mosh_block_size"]').val('50');
+                addDebugInfo("Set default data_mosh_block_size to 50");
             }
         }
         

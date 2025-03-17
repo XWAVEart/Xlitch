@@ -4,23 +4,135 @@ import random
 import numpy as np
 import cv2
 import colorsys
+import math
+import heapq
+import noise  # Import the noise module for Perlin noise
 
-def load_image(file_path):
-    """
-    Load an image from the specified file path.
+# Centralized pixel attribute calculations
+class PixelAttributes:
+    """Central module for all pixel attribute calculations to avoid duplicates."""
     
-    Args:
-        file_path (str): Path to the image file.
+    @staticmethod
+    def brightness(pixel):
+        """
+        Calculate the perceived brightness of a pixel using the luminosity formula.
+        
+        Args:
+            pixel (tuple): RGB pixel values.
+        
+        Returns:
+            float: Brightness value.
+        """
+        return 0.299 * pixel[0] + 0.587 * pixel[1] + 0.114 * pixel[2]
     
-    Returns:
-        Image or None: The loaded PIL Image object, or None if loading fails.
-    """
-    try:
-        return Image.open(file_path)
-    except Exception as e:
-        print(f"Error loading image {file_path}: {e}")
-        return None
+    @staticmethod
+    def hue(pixel):
+        """
+        Calculate the hue of a pixel.
+        
+        Args:
+            pixel (tuple): RGB pixel values.
+        
+        Returns:
+            int or float: Hue value (0-360 or 0-1 depending on context).
+        """
+        # Handle both PIL and NumPy contexts
+        if isinstance(pixel, (list, tuple)) and len(pixel) >= 3:
+            # Check if values are in 0-1 range (likely NumPy normalized context)
+            if all(0 <= p <= 1 for p in pixel[:3]):
+                r, g, b = pixel[:3]
+                h, _, _ = colorsys.rgb_to_hsv(r, g, b)
+                return h
+            else:
+                # Standard PIL context with 0-255 values
+                r, g, b = [p/255.0 for p in pixel[:3]]
+                h, _, _ = colorsys.rgb_to_hsv(r, g, b)
+                return h * 360
 
+        # Fall back to ImageColor for complex cases
+        return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[0]
+    
+    @staticmethod
+    def saturation(pixel):
+        """
+        Calculate the saturation of a pixel.
+        
+        Args:
+            pixel (tuple): RGB pixel values.
+        
+        Returns:
+            int or float: Saturation value (0-100 or 0-1 depending on context).
+        """
+        # Handle both PIL and NumPy contexts
+        if isinstance(pixel, (list, tuple)) and len(pixel) >= 3:
+            # Check if values are in 0-1 range (likely NumPy normalized context)
+            if all(0 <= p <= 1 for p in pixel[:3]):
+                r, g, b = pixel[:3]
+                _, s, _ = colorsys.rgb_to_hsv(r, g, b)
+                return s
+            else:
+                # Standard PIL context with 0-255 values
+                r, g, b = [p/255.0 for p in pixel[:3]]
+                _, s, _ = colorsys.rgb_to_hsv(r, g, b)
+                return s
+
+        # Fall back to ImageColor for complex cases
+        return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[1]
+    
+    @staticmethod
+    def luminance(pixel):
+        """
+        Calculate the luminance (value in HSV) of a pixel.
+        
+        Args:
+            pixel (tuple): RGB pixel values.
+        
+        Returns:
+            int or float: Luminance value (0-100 or 0-1 depending on context).
+        """
+        # Handle both PIL and NumPy contexts
+        if isinstance(pixel, (list, tuple)) and len(pixel) >= 3:
+            # Check if values are in 0-1 range (likely NumPy normalized context)
+            if all(0 <= p <= 1 for p in pixel[:3]):
+                r, g, b = pixel[:3]
+                _, _, v = colorsys.rgb_to_hsv(r, g, b)
+                return v
+            else:
+                # Standard PIL context with 0-255 values
+                r, g, b = [p/255.0 for p in pixel[:3]]
+                _, _, v = colorsys.rgb_to_hsv(r, g, b)
+                return v
+
+        # Fall back to ImageColor for complex cases
+        return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[2]
+    
+    @staticmethod
+    def contrast(pixel):
+        """
+        Calculate a contrast value based on the difference between max and min RGB values.
+        
+        Args:
+            pixel (tuple): RGB pixel values.
+        
+        Returns:
+            int: Contrast value.
+        """
+        return max(pixel[:3]) - min(pixel[:3])
+    
+    @staticmethod
+    def color_sum(pixel):
+        """
+        Calculate the sum of RGB values.
+        
+        Args:
+            pixel (tuple): RGB pixel values.
+        
+        Returns:
+            int: Sum of RGB values.
+        """
+        return int(pixel[0]) + int(pixel[1]) + int(pixel[2])
+
+# Replace all individual function implementations with references to the centralized class
 def brightness(pixel):
     """
     Calculate the perceived brightness of a pixel using the luminosity formula.
@@ -31,7 +143,7 @@ def brightness(pixel):
     Returns:
         float: Brightness value.
     """
-    return 0.299 * pixel[0] + 0.587 * pixel[1] + 0.114 * pixel[2]
+    return PixelAttributes.brightness(pixel)
 
 def hue(pixel):
     """
@@ -43,7 +155,7 @@ def hue(pixel):
     Returns:
         int: Hue value (0-360).
     """
-    return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[0]
+    return PixelAttributes.hue(pixel)
 
 def saturation(pixel):
     """
@@ -55,7 +167,7 @@ def saturation(pixel):
     Returns:
         int: Saturation value (0-100).
     """
-    return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[1]
+    return PixelAttributes.saturation(pixel)
 
 def luminance(pixel):
     """
@@ -67,7 +179,7 @@ def luminance(pixel):
     Returns:
         int: Luminance value (0-100).
     """
-    return ImageColor.getcolor(f"#{pixel[0]:02x}{pixel[1]:02x}{pixel[2]:02x}", "HSV")[2]
+    return PixelAttributes.luminance(pixel)
 
 def contrast(pixel):
     """
@@ -79,7 +191,7 @@ def contrast(pixel):
     Returns:
         int: Contrast value.
     """
-    return max(pixel[:3]) - min(pixel[:3])
+    return PixelAttributes.contrast(pixel)
 
 def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
     """
@@ -268,12 +380,13 @@ def pixel_sorting_corner_to_corner(image, chunk_size, sort_by, corner, horizonta
 
 def color_channel_manipulation(image, manipulation_type, choice, factor=None):
     """
-    Manipulate the image's color channels (swap, invert, or adjust intensity).
+    Manipulate the image's color channels (swap, invert, adjust intensity, or create negative).
     
     Args:
         image (Image): PIL Image object to process.
-        manipulation_type (str): 'swap', 'invert', or 'adjust'.
+        manipulation_type (str): 'swap', 'invert', 'adjust', or 'negative'.
         choice (str): Specific channel or swap pair (e.g., 'red-green', 'red').
+                     Not used for 'negative' type.
         factor (float, optional): Intensity adjustment factor (required for 'adjust').
     
     Returns:
@@ -300,6 +413,12 @@ def color_channel_manipulation(image, manipulation_type, choice, factor=None):
         elif choice == 'blue':
             b = b.point(lambda i: 255 - i)
         image = Image.merge(image.mode, (r, g, b))
+    elif manipulation_type == 'negative':
+        # Create a negative by inverting all channels
+        r = r.point(lambda i: 255 - i)
+        g = g.point(lambda i: 255 - i)
+        b = b.point(lambda i: 255 - i)
+        image = Image.merge(image.mode, (r, g, b))
     elif manipulation_type == 'adjust':
         if factor is None:
             raise ValueError("Factor is required for adjust manipulation")
@@ -312,7 +431,7 @@ def color_channel_manipulation(image, manipulation_type, choice, factor=None):
         image = Image.merge(image.mode, (r, g, b))
     return image
 
-def data_moshing(image, secondary_image, blend_mode='classic', opacity=0.5):
+def double_expose(image, secondary_image, blend_mode='classic', opacity=0.5):
     """
     Apply a double expose effect by blending two images with various blend modes.
     
@@ -332,7 +451,7 @@ def data_moshing(image, secondary_image, blend_mode='classic', opacity=0.5):
         secondary_image = secondary_image.convert('RGB')
         
     secondary_image = secondary_image.resize(image.size)
-    
+
     # Convert to numpy arrays for more advanced blending
     img1 = np.array(image).astype(float)
     img2 = np.array(secondary_image).astype(float)
@@ -373,9 +492,129 @@ def data_moshing(image, secondary_image, blend_mode='classic', opacity=0.5):
     
     # Clip values to valid range and convert back to uint8
     blended = np.clip(blended, 0, 255).astype(np.uint8)
-    
+
     # Create a new image from the blended array
     return Image.fromarray(blended)
+
+def data_mosh_blocks(image, num_operations=64, max_block_size=50, block_movement='swap',
+                color_swap='random', invert='never', shift='never', flip='never', seed=None):
+    """
+    Applies data moshing effects to an image for glitch art purposes.
+
+    Args:
+        image (Image): PIL Image object to be manipulated.
+        num_operations (int): Number of manipulation operations to perform (default: 64).
+        max_block_size (int): Maximum size for block width and height (default: 50).
+        block_movement (str): 'swap' to swap blocks or 'in_place' to modify blocks in place (default: 'swap').
+        color_swap (str): 'never', 'always', or 'random' to control color channel swapping (default: 'random').
+        invert (str): 'never', 'always', or 'random' to control color inversion (default: 'never').
+        shift (str): 'never', 'always', or 'random' to control channel value shifting (default: 'never').
+        flip (str): 'never', 'vertical', 'horizontal', or 'random' to control block flipping (default: 'never').
+        seed (int or None): Random seed for reproducibility (default: None).
+
+    Returns:
+        Image: PIL Image object with the applied glitch effects.
+    """
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+        
+    # Set random seeds for reproducibility
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+    # Convert PIL Image to NumPy array
+    image_np = np.array(image)
+    height, width, channels = image_np.shape
+
+    # Perform the specified number of operations
+    for _ in range(num_operations):
+        # Determine block dimensions (non-square blocks)
+        block_width = random.randint(1, min(max_block_size, width))
+        block_height = random.randint(1, min(max_block_size, height))
+
+        # Select first block position
+        x1 = random.randint(0, width - block_width)
+        y1 = random.randint(0, height - block_height)
+
+        if block_movement == 'swap':
+            # Select second block position, ensuring it's different from the first
+            attempts = 0
+            max_attempts = 10
+            while attempts < max_attempts:
+                x2 = random.randint(0, width - block_width)
+                y2 = random.randint(0, height - block_height)
+                if (x2, y2) != (x1, y1):
+                    break
+                attempts += 1
+            else:
+                # Could not find a different position, skip this operation
+                continue
+
+            # Swap the blocks
+            block1 = np.copy(image_np[y1:y1 + block_height, x1:x1 + block_width, :])
+            block2 = np.copy(image_np[y2:y2 + block_height, x2:x2 + block_width, :])
+            image_np[y1:y1 + block_height, x1:x1 + block_width, :] = block2
+            image_np[y2:y2 + block_height, x2:x2 + block_width, :] = block1
+
+            # Define regions for transformation (both swapped blocks)
+            regions = [
+                (y1, y1 + block_height, x1, x1 + block_width),
+                (y2, y2 + block_height, x2, x2 + block_width)
+            ]
+        elif block_movement == 'in_place':
+            # Define region for transformation (single block)
+            regions = [(y1, y1 + block_height, x1, x1 + block_width)]
+        else:
+            raise ValueError("block_movement must be 'swap' or 'in_place'")
+
+        # Apply transformations to each region
+        for region in regions:
+            y_start, y_end, x_start, x_end = region
+
+            # Color channel swapping
+            if color_swap == 'always' or (color_swap == 'random' and random.random() < 0.5):
+                swap_choice = random.choice(['red-green', 'red-blue', 'green-blue'])
+                if swap_choice == 'red-green':
+                    image_np[y_start:y_end, x_start:x_end, [0, 1]] = \
+                        image_np[y_start:y_end, x_start:x_end, [1, 0]]
+                elif swap_choice == 'red-blue':
+                    image_np[y_start:y_end, x_start:x_end, [0, 2]] = \
+                        image_np[y_start:y_end, x_start:x_end, [2, 0]]
+                elif swap_choice == 'green-blue':
+                    image_np[y_start:y_end, x_start:x_end, [1, 2]] = \
+                        image_np[y_start:y_end, x_start:x_end, [2, 1]]
+
+            # Color inversion
+            if invert == 'always' or (invert == 'random' and random.random() < 0.5):
+                image_np[y_start:y_end, x_start:x_end, :] = \
+                    255 - image_np[y_start:y_end, x_start:x_end, :]
+
+            # Channel value shifting
+            if shift == 'always' or (shift == 'random' and random.random() < 0.5):
+                offsets = np.random.randint(-50, 51, size=(3,))
+                temp_block = image_np[y_start:y_end, x_start:x_end, :].astype(np.int16)
+                temp_block += offsets
+                image_np[y_start:y_end, x_start:x_end, :] = \
+                    np.clip(temp_block, 0, 255).astype(np.uint8)
+
+            # Block flipping
+            if flip != 'never':
+                if flip == 'random':
+                    flip_type = random.choice(['vertical', 'horizontal'])
+                else:
+                    flip_type = flip
+                if flip_type == 'vertical':
+                    image_np[y_start:y_end, x_start:x_end, :] = \
+                        np.flipud(image_np[y_start:y_end, x_start:x_end, :])
+                elif flip_type == 'horizontal':
+                    image_np[y_start:y_end, x_start:x_end, :] = \
+                        np.fliplr(image_np[y_start:y_end, x_start:x_end, :])
+
+    # Convert back to PIL Image and return
+    moshed_image = Image.fromarray(image_np)
+    return moshed_image
 
 def perlin_noise_replacement(image, secondary_image, noise_scale=0.1, threshold=0.5, seed=None):
     """
@@ -675,82 +914,86 @@ def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
     Returns:
         Image: Processed image with spiral sorting.
     """
-    # Convert PIL Image to OpenCV format (BGR)
+    # Convert PIL Image to NumPy array (RGB)
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
     img_array = np.array(image)
-    # Convert RGB to BGR (OpenCV format)
-    img_array = img_array[:, :, ::-1].copy()
     
-    # Define the sort function based on the sort_by parameter
+    # Get image dimensions
+    height, width, channels = img_array.shape
+    
+    # Calculate padding needed to make dimensions multiples of chunk_size
+    pad_y = (chunk_size - (height % chunk_size)) % chunk_size
+    pad_x = (chunk_size - (width % chunk_size)) % chunk_size
+    
+    # Pad the image if necessary using edge padding (better for visual continuity)
+    if pad_y != 0 or pad_x != 0:
+        img_array = np.pad(img_array, ((0, pad_y), (0, pad_x), (0, 0)), mode='edge')
+        padded_height, padded_width = img_array.shape[:2]
+    else:
+        padded_height, padded_width = height, width
+    
+    # Map sort_by parameter to the appropriate function from our centralized class
     sort_function = {
-        'color': lambda p: np.sum(p),
-        'brightness': lambda p: 0.299 * p[2] + 0.587 * p[1] + 0.114 * p[0],  # RGB is BGR in OpenCV
-        'hue': lambda p: cv2.cvtColor(np.array([[p]]), cv2.COLOR_BGR2HSV)[0, 0, 0],
-        'red': lambda p: p[2],  # Red is at index 2 in BGR
-        'green': lambda p: p[1],  # Green is at index 1 in BGR
-        'blue': lambda p: p[0],  # Blue is at index 0 in BGR
-        'saturation': lambda p: cv2.cvtColor(np.array([[p]]), cv2.COLOR_BGR2HSV)[0, 0, 1],
-        'luminance': lambda p: cv2.cvtColor(np.array([[p]]), cv2.COLOR_BGR2HSV)[0, 0, 2],
-        'contrast': lambda p: np.max(p) - np.min(p)
-    }.get(sort_by, lambda p: np.sum(p))
+        'color': PixelAttributes.color_sum,
+        'brightness': PixelAttributes.brightness,
+        'hue': PixelAttributes.hue,
+        'red': lambda p: p[0],
+        'green': lambda p: p[1],
+        'blue': lambda p: p[2],
+        'saturation': PixelAttributes.saturation,
+        'luminance': PixelAttributes.luminance,
+        'contrast': PixelAttributes.contrast
+    }.get(sort_by, PixelAttributes.brightness)  # Default to brightness if invalid choice
     
-    # Pad the image to make dimensions multiples of chunk_size
-    height, width = img_array.shape[:2]
-    pad_height = (chunk_size - height % chunk_size) % chunk_size
-    pad_width = (chunk_size - width % chunk_size) % chunk_size
-    padded_image = np.pad(img_array, ((0, pad_height), (0, pad_width), (0, 0)), 
-                         mode='constant', constant_values=0)
+    # Calculate number of chunks
+    num_chunks_y = padded_height // chunk_size
+    num_chunks_x = padded_width // chunk_size
     
-    # Split the padded image into chunks
-    padded_height, padded_width = padded_image.shape[:2]
-    chunks = []
-    for y in range(0, padded_height, chunk_size):
-        for x in range(0, padded_width, chunk_size):
-            chunk = padded_image[y:y+chunk_size, x:x+chunk_size]
-            chunks.append((chunk, (y, x)))
+    # Generate spiral coordinates once
+    spiral_coords_list = list(spiral_coords(chunk_size))
+    total_pixels = chunk_size * chunk_size
     
-    # Sort each chunk in spiral order
-    for chunk, (y_offset, x_offset) in chunks:
-        # Get spiral order coordinates
-        spiral_coords_list = list(spiral_coords(chunk_size))
-        
-        # Collect pixels in spiral order
-        pixels = [chunk[coord] for coord in spiral_coords_list]
-        
-        # Calculate sort values
-        sort_values = np.array([sort_function(pixel) for pixel in pixels])
-        
-        # Sort pixels based on the sort values
-        sorted_indices = np.argsort(sort_values)
-        if reverse:
-            sorted_indices = sorted_indices[::-1]
-        
-        # Create sorted pixel list
-        sorted_pixels = [pixels[idx] for idx in sorted_indices]
-        
-        # Place sorted pixels back into the chunk in spiral order
-        for (y_coord, x_coord), pixel in zip(spiral_coords_list, sorted_pixels):
-            chunk[y_coord, x_coord] = pixel
+    # Sort each chunk
+    sorted_chunks = []
+    for y in range(num_chunks_y):
+        for x in range(num_chunks_x):
+            # Extract chunk
+            chunk = img_array[y*chunk_size:(y+1)*chunk_size, x*chunk_size:(x+1)*chunk_size]
+            
+            # Flatten the chunk and calculate sort values
+            flattened_chunk = chunk.reshape(-1, channels)
+            sort_values = np.array([sort_function(p) for p in flattened_chunk])
+            
+            # Sort pixels based on the sort values
+            sorted_indices = np.argsort(sort_values)
+            if reverse:
+                sorted_indices = sorted_indices[::-1]
+            
+            # Create a new chunk with pixels arranged in a spiral
+            sorted_chunk = np.zeros_like(chunk)
+            
+            # Place sorted pixels in spiral order
+            for idx, (row, col) in zip(sorted_indices[:total_pixels], spiral_coords_list):
+                sorted_chunk[row, col] = flattened_chunk[idx]
+            
+            sorted_chunks.append(sorted_chunk)
     
-    # Combine chunks back into the full image
-    num_cols = padded_width // chunk_size
-    rows = []
-    for i in range(0, len(chunks), num_cols):
-        row_chunks = [chunk[0] for chunk in chunks[i:i + num_cols]]
-        row = np.concatenate(row_chunks, axis=1)
-        rows.append(row)
-    sorted_image = np.concatenate(rows, axis=0)
+    # Recombine chunks into the final image
+    result = np.zeros((padded_height, padded_width, channels), dtype=img_array.dtype)
+    chunk_idx = 0
+    for y in range(num_chunks_y):
+        for x in range(num_chunks_x):
+            result[y*chunk_size:(y+1)*chunk_size, x*chunk_size:(x+1)*chunk_size] = sorted_chunks[chunk_idx]
+            chunk_idx += 1
     
     # Crop to original size if padded
-    sorted_image = sorted_image[:height, :width]
+    if pad_y != 0 or pad_x != 0:
+        result = result[:height, :width]
     
-    # Convert back to PIL Image (RGB)
-    sorted_image_rgb = sorted_image[:, :, ::-1]  # BGR to RGB
-    result_image = Image.fromarray(sorted_image_rgb)
-    
-    return result_image
+    # Convert back to PIL image
+    return Image.fromarray(result)
 
 def generate_output_filename(original_filename, effect, settings):
     """
@@ -791,16 +1034,16 @@ def full_frame_sort(image, direction='vertical', sort_by='brightness', reverse=F
     
     # Define the sort function based on the sort_by parameter
     sort_function = {
-        'color': lambda p: sum(p[:3]),
-        'brightness': brightness,
-        'hue': hue,
+        'color': PixelAttributes.color_sum,
+        'brightness': PixelAttributes.brightness,
+        'hue': PixelAttributes.hue,
         'red': lambda p: p[0],     # Sort by red channel only
         'green': lambda p: p[1],   # Sort by green channel only
         'blue': lambda p: p[2],     # Sort by blue channel only
-        'saturation': saturation,  # Sort by color saturation
-        'luminance': luminance,    # Sort by luminance (value in HSV)
-        'contrast': contrast       # Sort by contrast (max-min RGB)
-    }.get(sort_by, lambda p: sum(p[:3]))
+        'saturation': PixelAttributes.saturation,  # Sort by color saturation
+        'luminance': PixelAttributes.luminance,    # Sort by luminance (value in HSV)
+        'contrast': PixelAttributes.contrast       # Sort by contrast (max-min RGB)
+    }.get(sort_by, PixelAttributes.brightness)
     
     if direction == 'vertical':
         # Sort each column from top to bottom
@@ -1058,16 +1301,16 @@ def perlin_full_frame_sort(image, noise_scale=0.01, sort_by='brightness', revers
     
     # Define the sort function based on the sort_by parameter
     sort_function = {
-        'color': lambda p: sum(p[:3]),
-        'brightness': brightness,
-        'hue': hue,
+        'color': PixelAttributes.color_sum,
+        'brightness': PixelAttributes.brightness,
+        'hue': PixelAttributes.hue,
         'red': lambda p: p[0],     # Sort by red channel only
         'green': lambda p: p[1],   # Sort by green channel only
         'blue': lambda p: p[2],     # Sort by blue channel only
-        'saturation': saturation,  # Sort by color saturation
-        'luminance': luminance,    # Sort by luminance (value in HSV)
-        'contrast': contrast       # Sort by contrast (max-min RGB)
-    }.get(sort_by, lambda p: sum(p[:3]))
+        'saturation': PixelAttributes.saturation,  # Sort by color saturation
+        'luminance': PixelAttributes.luminance,    # Sort by luminance (value in HSV)
+        'contrast': PixelAttributes.contrast       # Sort by contrast (max-min RGB)
+    }.get(sort_by, PixelAttributes.brightness)  # Default to brightness if invalid choice
     
     # Generate Perlin noise map for the entire image
     noise_map = np.zeros((height, width))
@@ -1134,16 +1377,16 @@ def pixelate_by_mode(image, pixel_width=8, pixel_height=8, attribute='color', nu
             return pixel
     elif attribute == 'brightness':
         def attr_func(pixel):
-            return brightness(pixel)
+            return PixelAttributes.brightness(pixel)
     elif attribute == 'hue':
         def attr_func(pixel):
-            return hue(pixel)
+            return PixelAttributes.hue(pixel)
     elif attribute == 'saturation':
         def attr_func(pixel):
-            return saturation(pixel)
+            return PixelAttributes.saturation(pixel)
     elif attribute == 'luminance':
         def attr_func(pixel):
-            return luminance(pixel)
+            return PixelAttributes.luminance(pixel)
     
     # Process each pixel block
     for y in range(0, height, pixel_height):
@@ -1192,48 +1435,393 @@ def pixelate_by_mode(image, pixel_width=8, pixel_height=8, attribute='color', nu
     
     return result
 
-def draw_concentric_squares(image, num_points=10, num_squares=5, thickness=2):
+def concentric_shapes(image, num_points=5, shape_type='circle', thickness=3, spacing=10,
+                      rotation_angle=0, darken_step=0, color_shift=0):
     """
-    Draw concentric squares around randomly chosen points on an image, starting from points closest to the edge.
+    Generates concentric shapes from random points in the image.
+
+    :param image: The PIL Image to process.
+    :param num_points: Number of random pixels to select.
+    :param shape_type: Type of shape ('square', 'circle', 'hexagon', 'triangle').
+    :param thickness: Thickness of the shapes in pixels.
+    :param spacing: Spacing between shapes in pixels.
+    :param rotation_angle: Incremental rotation angle in degrees for each subsequent shape.
+    :param darken_step: Amount to darken the color for each subsequent shape (0-255).
+    :param color_shift: Amount to shift the hue for each shape (0-360 degrees).
+    :return: The processed image.
+    """
+    from PIL import ImageDraw
+
+    width, height = image.size
+    image = image.convert('RGBA')  # Ensure image has an alpha channel
+
+    # Create a base image to draw on
+    base_image = image.copy()
+
+    # Select random points
+    xs = np.random.randint(0, width, size=num_points)
+    ys = np.random.randint(0, height, size=num_points)
+    points = list(zip(xs, ys))
+
+    # For each point
+    for x0, y0 in points:
+        # Get the color of the pixel
+        original_color = base_image.getpixel((x0, y0))
+
+        # Initialize variables
+        current_size = spacing
+        current_rotation = 0  # Initialize cumulative rotation
+
+        # Initialize HSV color from the original color
+        r, g, b = original_color[:3]
+        h_original, s_original, v_original = rgb_to_hsv(r, g, b)
+        current_hue = h_original  # Start with the original hue
+
+        max_dimension = max(width, height) * 1.5  # Set a maximum size to prevent infinite loops
+
+        while current_size < max_dimension:
+            # Adjust the hue for the current shape
+            if color_shift != 0:
+                current_hue = (current_hue + color_shift) % 360
+            # Convert HSV back to RGB
+            current_color = hsv_to_rgb(current_hue, s_original, v_original)
+
+            # Darken the color if darken_step is set
+            if darken_step != 0:
+                current_color = darken_color(current_color, darken_step)
+
+            # Create a shape image to draw the shape
+            shape_image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+            shape_draw = ImageDraw.Draw(shape_image)
+
+            # Calculate the points of the shape
+            if shape_type == 'circle':
+                bbox = [x0 - current_size, y0 - current_size, x0 + current_size, y0 + current_size]
+                shape_draw.ellipse(bbox, outline=current_color, width=thickness)
+                shape_bbox = bbox
+            else:
+                if shape_type == 'square':
+                    half_size = current_size
+                    points_list = [
+                        (x0 - half_size, y0 - half_size),
+                        (x0 + half_size, y0 - half_size),
+                        (x0 + half_size, y0 + half_size),
+                        (x0 - half_size, y0 + half_size)
+                    ]
+                elif shape_type == 'triangle':
+                    half_size = current_size
+                    height_triangle = half_size * math.sqrt(3)
+                    points_list = [
+                        (x0, y0 - 2 * half_size / math.sqrt(3)),
+                        (x0 - half_size, y0 + height_triangle / 3),
+                        (x0 + half_size, y0 + height_triangle / 3)
+                    ]
+                elif shape_type == 'hexagon':
+                    half_size = current_size
+                    points_list = []
+                    for angle in range(0, 360, 60):
+                        rad = math.radians(angle + current_rotation)
+                        px = x0 + half_size * math.cos(rad)
+                        py = y0 + half_size * math.sin(rad)
+                        points_list.append((px, py))
+                else:
+                    print(f"Unsupported shape type: {shape_type}")
+                    return base_image.convert('RGB')
+
+                # Apply cumulative rotation
+                if current_rotation != 0 and shape_type != 'hexagon':
+                    points_list = rotate_points(points_list, (x0, y0), current_rotation)
+
+                # Draw the shape
+                shape_draw.polygon(points_list, outline=current_color, width=thickness)
+
+                # Calculate the bounding box of the shape
+                xs_list = [p[0] for p in points_list]
+                ys_list = [p[1] for p in points_list]
+                shape_bbox = [min(xs_list), min(ys_list), max(xs_list), max(ys_list)]
+
+            # Check if the shape is completely outside the image bounds
+            if (shape_bbox[2] < 0 or shape_bbox[0] > width or
+                    shape_bbox[3] < 0 or shape_bbox[1] > height):
+                break
+
+            # Composite the shape onto the base image
+            base_image = Image.alpha_composite(base_image, shape_image)
+
+            # Update variables
+            current_size += spacing + thickness
+
+            # Increment the rotation angle
+            current_rotation += rotation_angle
+
+        # No need to update previous_image or use ImageChops.difference
+
+    return base_image.convert('RGB')
+
+def rgb_to_hsv(r, g, b):
+    """
+    Convert RGB color to HSV.
 
     Args:
-        image (Image): PIL Image object to process.
-        num_points (int): Number of random points to select.
-        num_squares (int): Number of concentric squares per point.
-        thickness (int): Thickness of each square's outline and spacing between squares.
+        r (int): Red component (0-255)
+        g (int): Green component (0-255)
+        b (int): Blue component (0-255)
 
     Returns:
-        Image: A new image with concentric squares drawn over the original.
+        tuple: (hue, saturation, value) in degrees (0-360), and 0-1 ranges
     """
-    # Create a copy of the image
-    im = image.copy()
-    draw = ImageDraw.Draw(im)
-    width, height = im.size
+    h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+    return h * 360, s, v
 
-    # Calculate the image center
-    center_x = width // 2
-    center_y = height // 2
+def hsv_to_rgb(h, s, v):
+    """
+    Convert HSV color to RGB.
+    
+    Args:
+        h (float): Hue in degrees (0-360)
+        s (float): Saturation (0-1)
+        v (float): Value (0-1)
+        
+    Returns:
+        tuple: (r, g, b) values in 0-255 range
+    """
+    r, g, b = colorsys.hsv_to_rgb(h/360, s, v)
+    return (int(r * 255), int(g * 255), int(b * 255))
 
-    # Generate random points within image boundaries
-    points = [(random.randint(0, width - 1), random.randint(0, height - 1)) for _ in range(num_points)]
+def darken_color(color, amount):
+    """
+    Darken a color by a specified amount.
+    
+    Args:
+        color (tuple): RGB color tuple
+        amount (int): Amount to darken (0-255)
+        
+    Returns:
+        tuple: Darkened RGB color
+    """
+    r, g, b = color
+    return (
+        max(0, r - amount),
+        max(0, g - amount),
+        max(0, b - amount)
+    )
 
-    # Sort points by distance from center, farthest first (descending order)
-    sorted_points = sorted(points, key=lambda p: (p[0] - center_x)**2 + (p[1] - center_y)**2, reverse=True)
+def rotate_points(points, center, angle_degrees):
+    """
+    Rotate a list of points around a center point by a specified angle.
+    
+    Args:
+        points (list): List of (x, y) tuples
+        center (tuple): (x, y) center point for rotation
+        angle_degrees (float): Rotation angle in degrees
+        
+    Returns:
+        list: Rotated points
+    """
+    angle_rad = math.radians(angle_degrees)
+    cx, cy = center
+    rotated_points = []
+    
+    for x, y in points:
+        # Translate point to origin
+        tx = x - cx
+        ty = y - cy
+        
+        # Rotate point
+        rx = tx * math.cos(angle_rad) - ty * math.sin(angle_rad)
+        ry = tx * math.sin(angle_rad) + ty * math.cos(angle_rad)
+        
+        # Translate back
+        rotated_points.append((rx + cx, ry + cy))
+    
+    return rotated_points
 
-    # Process each point in sorted order
-    for cx, cy in sorted_points:
-        # Get the color at the point's pixel
-        color = im.getpixel((cx, cy))
+def color_shift_expansion(image, num_points=5, shift_amount=5, expansion_type='square', mode='xtreme'):
+    """
+    Expands color shifts from seed points across the image, shifting the existing pixel colors.
 
-        # Draw concentric squares centered on (cx, cy)
-        for k in range(1, num_squares + 1):
-            # Calculate the half-side length for the k-th square
-            S = k * 2 * thickness
-            left = cx - S
-            top = cy - S
-            right = cx + S
-            bottom = cy + S
-            # Draw the square as an outline with specified thickness
-            draw.rectangle([left, top, right, bottom], outline=color, width=thickness)
+    :param image: The PIL Image to process.
+    :param num_points: Number of seed points to generate.
+    :param shift_amount: Amount to shift the hue per unit distance.
+    :param expansion_type: Type of expansion ('square', 'cross', 'circular').
+    :param mode: 'classic' or 'xtreme' mode.
+    :return: The processed image.
+    """
+    width, height = image.size
+    image = image.convert('RGB')
+    image_np = np.array(image)
 
-    return im
+    # Convert image to HSV
+    image_hsv = np.zeros((height, width, 3), dtype=float)
+    for y in range(height):
+        for x in range(width):
+            r, g, b = image_np[y, x]
+            h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+            image_hsv[y, x] = [h * 360, s, v]
+
+    # Initialize assigned pixels mask
+    assigned = np.full((height, width), False, dtype=bool)
+
+    # Generate seed points
+    xs = np.random.randint(0, width, size=num_points)
+    ys = np.random.randint(0, height, size=num_points)
+    seed_points = list(zip(xs, ys))
+
+    # Initialize distance map with infinity
+    distance_map = np.full((height, width), np.inf)
+    # Initialize shift direction map
+    shift_direction_map = np.full((height, width), '', dtype=object)
+    # Create a queue for BFS
+    queue = []
+
+    for idx, (x0, y0) in enumerate(seed_points):
+        # Randomly choose shift direction for each seed point
+        shift_direction = random.choice(['add', 'subtract'])
+        # Initialize seed point
+        assigned[y0, x0] = True
+        distance_map[y0, x0] = 0
+        shift_direction_map[y0, x0] = shift_direction
+        # Enqueue the seed point
+        heapq.heappush(queue, (0, x0, y0))
+
+    # Define neighbor offsets
+    if expansion_type == 'square':
+        neighbor_offsets = [(-1, -1), (-1, 0), (-1, 1),
+                            (0, -1),          (0, 1),
+                            (1, -1),  (1, 0), (1, 1)]
+    elif expansion_type == 'cross':
+        neighbor_offsets = [(-1, 0),
+                            (0, -1),        (0, 1),
+                            (1, 0)]
+    elif expansion_type == 'circular':
+        neighbor_offsets = [(-1, -1), (-1, 0), (-1, 1),
+                            (0, -1),          (0, 1),
+                            (1, -1),  (1, 0), (1, 1)]
+    else:
+        print(f"Invalid expansion type: {expansion_type}. Defaulting to square.")
+        neighbor_offsets = [(-1, -1), (-1, 0), (-1, 1),
+                            (0, -1),          (0, 1),
+                            (1, -1),  (1, 0), (1, 1)]
+
+    # Perform BFS
+    while queue:
+        current_distance, x, y = heapq.heappop(queue)
+        current_distance = distance_map[y, x]
+        shift_direction = shift_direction_map[y, x]
+
+        for dx, dy in neighbor_offsets:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                new_distance = current_distance + np.hypot(dx, dy) if expansion_type == 'circular' else current_distance + 1
+                if not assigned[ny, nx] or new_distance < distance_map[ny, nx]:
+                    assigned[ny, nx] = True
+                    distance_map[ny, nx] = new_distance
+                    shift_direction_map[ny, nx] = shift_direction
+                    heapq.heappush(queue, (new_distance, nx, ny))
+
+    # Apply hue shifts
+    for y in range(height):
+        for x in range(width):
+            existing_h, existing_s, existing_v = image_hsv[y, x]
+            shift_direction = shift_direction_map[y, x]
+            distance = distance_map[y, x]
+            if mode == 'xtreme':
+                hue_shift = shift_amount * distance
+            else:  # classic
+                hue_shift = shift_amount
+            if shift_direction == 'add':
+                new_hue = (existing_h + hue_shift) % 360
+            else:
+                new_hue = (existing_h - hue_shift) % 360
+            image_hsv[y, x] = [new_hue, existing_s, existing_v]
+
+    # Convert back to RGB
+    for y in range(height):
+        for x in range(width):
+            h, s, v = image_hsv[y, x]
+            r, g, b = colorsys.hsv_to_rgb(h / 360.0, s, v)
+            image_np[y, x] = [int(r * 255), int(g * 255), int(b * 255)]
+
+    # Convert back to PIL Image
+    processed_image = Image.fromarray(image_np.astype(np.uint8))
+    return processed_image
+
+def perlin_noise_displacement(image, scale=100, intensity=30, octaves=6, persistence=0.5, lacunarity=2.0):
+    """
+    Applies a Perlin noise-based displacement to the image.
+
+    :param image: PIL Image to process.
+    :param scale: Scale of the Perlin noise.
+    :param intensity: Maximum displacement in pixels.
+    :param octaves: Number of layers of noise.
+    :param persistence: Amplitude of each octave.
+    :param lacunarity: Frequency of each octave.
+    :return: Displaced PIL Image.
+    """
+    width, height = image.size
+    image_np = np.array(image)
+    displaced_image = np.zeros_like(image_np)
+
+    # Generate Perlin noise for both x and y displacements
+    perlin_x = np.zeros((height, width))
+    perlin_y = np.zeros((height, width))
+
+    for y in range(height):
+        for x in range(width):
+            perlin_x[y][x] = noise.pnoise2(
+                x / scale,
+                y / scale,
+                octaves=octaves,
+                persistence=persistence,
+                lacunarity=lacunarity,
+                repeatx=width,
+                repeaty=height,
+                base=0
+            )
+            perlin_y[y][x] = noise.pnoise2(
+                (x + 100) / scale,  # Offset to generate different noise
+                (y + 100) / scale,
+                octaves=octaves,
+                persistence=persistence,
+                lacunarity=lacunarity,
+                repeatx=width,
+                repeaty=height,
+                base=0
+            )
+
+    # Normalize noise to range [-1, 1]
+    perlin_x = perlin_x / np.max(np.abs(perlin_x))
+    perlin_y = perlin_y / np.max(np.abs(perlin_y))
+
+    # Apply displacement
+    # Vectorized approach for better performance
+    displacement_x = (perlin_x * intensity).astype(int)
+    displacement_y = (perlin_y * intensity).astype(int)
+
+    # Create coordinate grids
+    x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height))
+
+    # Calculate source coordinates with displacement
+    src_x = np.clip(x_coords + displacement_x, 0, width - 1)
+    src_y = np.clip(y_coords + displacement_y, 0, height - 1)
+
+    # Apply displacement
+    displaced_image = image_np[src_y, src_x]
+
+    return Image.fromarray(displaced_image)
+
+def load_image(file_path):
+    """
+    Load an image from the specified file path.
+    
+    Args:
+        file_path (str): Path to the image file.
+    
+    Returns:
+        Image or None: The loaded PIL Image object, or None if loading fails.
+    """
+    try:
+        return Image.open(file_path)
+    except Exception as e:
+        print(f"Error loading image {file_path}: {e}")
+        return None

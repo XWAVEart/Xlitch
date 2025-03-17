@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XWAVE XLITCH XORT</title>
+    <title>XWAVE XLITCH ART</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
@@ -92,7 +92,7 @@
         }
         
         .required-field::after {
-            content: " *";
+            content: "";
             color: var(--accent-color);
         }
         
@@ -308,10 +308,23 @@
                 font-size: 1.2rem;
             }
         }
+        
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
+        @media (max-width: 768px) {
+            .form-container {
+                padding: 10px;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>XWAVE XLITCH XORT</h1>
+    <h1>XWAVE XLITCH ART</h1>
     <div class="form-container">
         <form method="POST" action="/" enctype="multipart/form-data" id="image-form">
             {{ form.hidden_tag() }}
@@ -525,9 +538,9 @@
                 </div>
             </div>
             
-            <!-- Concentric Squares -->
-            <div id="concentric_squares_fields" class="effect-fields" style="display:none;">
-                <h3>Concentric Squares</h3>
+            <!-- Concentric Shapes -->
+            <div id="concentric_shapes_fields" class="effect-fields" style="display:none;">
+                <h3>Concentric Shapes</h3>
                 <div class="form-row">
                     <div class="form-group">
                         <label class="required-field">{{ form.concentric_num_points.label }}</label>
@@ -535,15 +548,35 @@
                         <span class="help-text">Number of random points to select (1-100)</span>
                     </div>
                     <div class="form-group">
-                        <label class="required-field">{{ form.concentric_num_squares.label }}</label>
-                        {{ form.concentric_num_squares(required=True, min=1, max=20) }}
-                        <span class="help-text">Number of concentric squares per point (1-20)</span>
+                        <label class="required-field">{{ form.shape_type.label }}</label>
+                        {{ form.shape_type(required=True) }}
+                        <span class="help-text">Type of shape to draw</span>
                     </div>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.concentric_thickness.label }}</label>
                     {{ form.concentric_thickness(required=True, min=1, max=10) }}
-                    <span class="help-text">Thickness of each square's outline (1-10)</span>
+                    <span class="help-text">Thickness of each shape's outline (1-10)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.spacing.label }}</label>
+                    {{ form.spacing(required=True, min=1, max=50) }}
+                    <span class="help-text">Spacing between shapes (1-50)</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.rotation_angle.label }}</label>
+                    {{ form.rotation_angle(min=0, max=360) }}
+                    <span class="help-text">Rotation angle for each subsequent shape (0-360)</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.darken_step.label }}</label>
+                    {{ form.darken_step(min=0, max=255) }}
+                    <span class="help-text">Amount to darken each subsequent shape (0-255)</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.color_shift.label }}</label>
+                    {{ form.color_shift(min=0, max=360) }}
+                    <span class="help-text">Amount to shift the hue for each shape (0-360)</span>
                 </div>
             </div>
             
@@ -566,6 +599,11 @@
                         {{ form.invert_choice(required=True) }}
                     </div>
                 </div>
+                <div id="negative_fields" class="effect-fields" style="display:none;">
+                    <div class="form-group">
+                        <span class="help-text">Creates a negative of the entire image by inverting all color channels.</span>
+                    </div>
+                </div>
                 <div id="adjust_fields" class="effect-fields" style="display:none;">
                     <div class="form-row">
                         <div class="form-group">
@@ -580,8 +618,8 @@
                 </div>
             </div>
             
-            <!-- Data Moshing -->
-            <div id="data_moshing_fields" class="effect-fields" style="display:none;">
+            <!-- Double Expose -->
+            <div id="double_expose_fields" class="effect-fields" style="display:none;">
                 <h3>Double Expose</h3>
                 <div class="form-group">
                     <label class="required-field">{{ form.secondary_image.label }}</label>
@@ -659,7 +697,107 @@
                 <div class="form-group">
                     <label class="required-field">{{ form.bit_chunk_size.label }}</label>
                     {{ form.bit_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
-                    <span class="help-text">Size of chunks to process (8-128, multiples of 8)</span>
+                    <span class="help-text">Size of square chunks (8-128, multiples of 8)</span>
+                </div>
+            </div>
+            
+            <!-- Data Mosh Blocks -->
+            <div id="data_mosh_blocks_fields" class="effect-fields" style="display:none;">
+                <h3>Data Mosh Blocks</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.data_mosh_operations.label }}</label>
+                    {{ form.data_mosh_operations(required=True, min=1, max=256, type="number") }}
+                    <span class="help-text">Number of operations to perform (1-256)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.data_mosh_block_size.label }}</label>
+                    {{ form.data_mosh_block_size(required=True, min=1, max=500, type="number") }}
+                    <span class="help-text">Maximum size for block width and height (1-500)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.data_mosh_movement.label }}</label>
+                    {{ form.data_mosh_movement(required=True) }}
+                    <span class="help-text">How blocks should be manipulated</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.data_mosh_color_swap.label }}</label>
+                    {{ form.data_mosh_color_swap(required=True) }}
+                    <span class="help-text">Control color channel swapping</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.data_mosh_invert.label }}</label>
+                    {{ form.data_mosh_invert(required=True) }}
+                    <span class="help-text">Control color inversion</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.data_mosh_shift.label }}</label>
+                    {{ form.data_mosh_shift(required=True) }}
+                    <span class="help-text">Control channel value shifting</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.data_mosh_flip.label }}</label>
+                    {{ form.data_mosh_flip(required=True) }}
+                    <span class="help-text">Control block flipping</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.data_mosh_seed.label }}</label>
+                    {{ form.data_mosh_seed(min=0, type="number") }}
+                    <span class="help-text">Optional: Set for reproducible results</span>
+                </div>
+            </div>
+            
+            <!-- Color Shift Expansion -->
+            <div id="color_shift_expansion_fields" class="effect-fields" style="display:none;">
+                <h3>Color Shift Expansion</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.color_shift_num_points.label }}</label>
+                    {{ form.color_shift_num_points(required=True, min=1, max=100, type="number") }}
+                    <span class="help-text">Number of random seed points (1-100)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.color_shift_amount.label }}</label>
+                    {{ form.color_shift_amount(required=True, min=1, max=30, type="number") }}
+                    <span class="help-text">Amount to shift hue per unit distance (1-30)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.expansion_type.label }}</label>
+                    {{ form.expansion_type(required=True) }}
+                    <span class="help-text">How the color shift expands from seed points</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.color_shift_mode.label }}</label>
+                    {{ form.color_shift_mode(required=True) }}
+                    <span class="help-text">Classic: fixed shift, Xtreme: distance-based shift</span>
+                </div>
+            </div>
+            
+            <!-- Perlin Displacement -->
+            <div id="perlin_displacement_fields" class="effect-fields" style="display:none;">
+                <h3>Perlin Displacement</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_displacement_scale.label }}</label>
+                    {{ form.perlin_displacement_scale(required=True, min=10, max=500, type="number") }}
+                    <span class="help-text">Scale of the noise (10-500, higher = smoother distortion)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_displacement_intensity.label }}</label>
+                    {{ form.perlin_displacement_intensity(required=True, min=1, max=100, type="number") }}
+                    <span class="help-text">Maximum pixel displacement (1-100, higher = more extreme warping)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_displacement_octaves.label }}</label>
+                    {{ form.perlin_displacement_octaves(required=True, min=1, max=10, type="number") }}
+                    <span class="help-text">Number of noise layers (1-10, higher = more detail)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_displacement_persistence.label }}</label>
+                    {{ form.perlin_displacement_persistence(required=True, min=0.1, max=1.0, step=0.1, type="number") }}
+                    <span class="help-text">Amplitude of each octave (0.1-1.0)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_displacement_lacunarity.label }}</label>
+                    {{ form.perlin_displacement_lacunarity(required=True, min=1.0, max=4.0, step=0.1, type="number") }}
+                    <span class="help-text">Frequency of each octave (1.0-4.0)</span>
                 </div>
             </div>
             
