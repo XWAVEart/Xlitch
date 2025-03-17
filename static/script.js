@@ -7,7 +7,7 @@ $(document).ready(function() {
     
     // Add debug info to the page
     function addDebugInfo(message) {
-        $('#debug-content').append('<div>' + new Date().toISOString() + ': ' + message + '</div>');
+        $('#debug-content').prepend('<div>' + new Date().toISOString() + ': ' + message + '</div>');
         $('#debug-info').show();
     }
     
