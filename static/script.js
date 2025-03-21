@@ -46,6 +46,11 @@ $(document).ready(function() {
             if (effect === 'color_channel') {
                 $('#manipulation_type').trigger('change');
             }
+            
+            // Special handling for channel_shift effect
+            if (effect === 'channel_shift') {
+                $('#channel_mode').trigger('change');
+            }
         }
     });
     
@@ -61,6 +66,23 @@ $(document).ready(function() {
         if (type) {
             // Show the fields for the selected manipulation type
             $('#' + type + '_fields').show();
+        }
+    });
+    
+    // Handle channel mode selection for RGB Channel Shift
+    $('#channel_mode').change(function() {
+        var mode = $(this).val();
+        console.log("Channel mode changed to:", mode);
+        addDebugInfo("Channel mode changed to: " + mode);
+        
+        if (mode === 'shift') {
+            $('#shift_mode_fields').show();
+            $('#mirror_mode_info').hide();
+            $('#center_channel_help').text('Channel that stays centered (others will shift away)');
+        } else if (mode === 'mirror') {
+            $('#shift_mode_fields').hide();
+            $('#mirror_mode_info').show();
+            $('#center_channel_help').text('Channel that stays unchanged (others will be mirrored)');
         }
     });
     
@@ -215,6 +237,28 @@ $(document).ready(function() {
             if (!$('[name="pixelate_bins"]').val()) {
                 $('[name="pixelate_bins"]').val('100');
                 addDebugInfo("Set default pixelate_bins to 100");
+            }
+        }
+        
+        if ($('#pixel_scatter_fields').is(':visible')) {
+            if (!$('[name="scatter_min_value"]').val()) {
+                $('[name="scatter_min_value"]').val('100');
+                addDebugInfo("Set default scatter_min_value to 100");
+            }
+            if (!$('[name="scatter_max_value"]').val()) {
+                $('[name="scatter_max_value"]').val('200');
+                addDebugInfo("Set default scatter_max_value to 200");
+            }
+        }
+        
+        if ($('#channel_shift_fields').is(':visible')) {
+            if (!$('[name="channel_shift_amount"]').val()) {
+                $('[name="channel_shift_amount"]').val('10');
+                addDebugInfo("Set default channel_shift_amount to 10");
+            }
+            if (!$('[name="channel_mode"]').val()) {
+                $('[name="channel_mode"]').val('shift');
+                addDebugInfo("Set default channel_mode to shift");
             }
         }
         

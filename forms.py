@@ -30,8 +30,7 @@ class ImageProcessForm(FlaskForm):
         FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
     ])
     effect = SelectField('Effect', choices=[
-        ('pixel_sort_original', 'Pixel Sorting (Original)'),
-        ('pixel_sort_corner', 'Pixel Sorting (Corner-to-Corner)'),
+        ('pixel_sort_chunk', 'Pixel Sort Chunk'),
         ('full_frame_sort', 'Full Frame Sorting'),
         ('polar_sort', 'Polar Sorting'),
         ('perlin_noise_sort', 'Perlin Noise Sorting'),
@@ -47,14 +46,14 @@ class ImageProcessForm(FlaskForm):
         ('pixel_drift', 'Pixel Drift'),
         ('spiral_sort', 'Spiral Sort'),
         ('spiral_sort_2', 'Spiral Sort 2'),
-        ('bit_manipulation', 'Bit Manipulation')
+        ('bit_manipulation', 'Bit Manipulation'),
+        ('voronoi_sort', 'Voronoi Pixel Sort'),
+        ('channel_shift', 'RGB Channel Shift'),
+        ('jpeg_artifacts', 'JPEG Artifacts'),
+        ('pixel_scatter', 'Pixel Scatter')
     ], validators=[DataRequired()])
     
-    # Pixel Sorting (Original)
-    direction = SelectField('Direction', choices=[
-        ('horizontal', 'Horizontal'), 
-        ('vertical', 'Vertical')
-    ], default='horizontal', validators=[Optional()])
+    # Pixel Sort Chunk (Combined pixel_sort_original and pixel_sort_corner)
     chunk_width = IntegerField('Chunk Width', 
                               default=32,
                               validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
@@ -72,35 +71,17 @@ class ImageProcessForm(FlaskForm):
         ('luminance', 'Luminance'),
         ('contrast', 'Contrast')
     ], default='brightness', validators=[Optional()])
-    
-    # Pixel Sorting (Corner-to-Corner)
-    corner_chunk_width = IntegerField('Chunk Width', 
-                                     default=32,
-                                     validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
-    corner_chunk_height = IntegerField('Chunk Height', 
-                                      default=32,
-                                      validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
-    corner_sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color (R+G+B)'), 
-        ('brightness', 'Brightness'), 
-        ('hue', 'Hue'),
-        ('red', 'Red Channel'),
-        ('green', 'Green Channel'),
-        ('blue', 'Blue Channel'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance'),
-        ('contrast', 'Contrast')
-    ], default='brightness', validators=[Optional()])
-    starting_corner = SelectField('Starting Corner', choices=[
+    sort_mode = SelectField('Sort Mode', choices=[
+        ('horizontal', 'Horizontal'), 
+        ('vertical', 'Vertical'),
+        ('diagonal', 'Diagonal')
+    ], default='horizontal', validators=[Optional()])
+    starting_corner = SelectField('Starting Corner (for Diagonal mode)', choices=[
         ('top-left', 'Top-Left'), 
         ('top-right', 'Top-Right'),
         ('bottom-left', 'Bottom-Left'), 
         ('bottom-right', 'Bottom-Right')
     ], default='top-left', validators=[Optional()])
-    corner_direction = SelectField('Direction', choices=[
-        ('horizontal', 'Horizontal'), 
-        ('vertical', 'Vertical')
-    ], default='horizontal', validators=[Optional()])
     
     # Color Channel Manipulation
     manipulation_type = SelectField('Manipulation Type', choices=[
@@ -398,7 +379,94 @@ class ImageProcessForm(FlaskForm):
         ('random', 'Random')
     ], default='never', validators=[Optional()])
     data_mosh_seed = IntegerField('Random Seed', 
-                                validators=[Optional()])
+                                validators=[Optional(), NumberRange(min=1, max=9999)])
+    
+    # Voronoi Pixel Sort
+    voronoi_num_cells = IntegerField('Number of Cells',
+                                  default=100,
+                                  validators=[Optional(), NumberRange(min=10, max=1000)])
+    voronoi_size_variation = FloatField('Size Variation',
+                                     default=0.5,
+                                     validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    voronoi_sort_by = SelectField('Sort By', choices=[
+        ('color', 'Color (R+G+B)'), 
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
+    ], default='brightness', validators=[Optional()])
+    voronoi_sort_order = SelectField('Sort Order', choices=[
+        ('clockwise', 'Clockwise'), 
+        ('counter-clockwise', 'Counter-Clockwise')
+    ], default='clockwise', validators=[Optional()])
+    voronoi_orientation = SelectField('Line Orientation', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical'),
+        ('radial', 'Radial'),
+        ('spiral', 'Spiral')
+    ], default='horizontal', validators=[Optional()])
+    voronoi_start_position = SelectField('Start Position', choices=[
+        ('left', 'Left'),
+        ('right', 'Right'),
+        ('top', 'Top'),
+        ('bottom', 'Bottom'),
+        ('center', 'Center')
+    ], default='left', validators=[Optional()])
+    voronoi_seed = IntegerField('Random Seed',
+                             default=42,
+                             validators=[Optional(), NumberRange(min=1, max=9999)])
+    
+    # RGB Channel Shift
+    channel_shift_amount = IntegerField('Shift Amount', 
+                                   default=10,
+                                   validators=[Optional(), NumberRange(min=1, max=500)])
+    channel_shift_direction = SelectField('Shift Direction', choices=[
+        ('horizontal', 'Horizontal'), 
+        ('vertical', 'Vertical')
+    ], default='horizontal', validators=[Optional()])
+    channel_shift_center = SelectField('Centered Channel', choices=[
+        ('red', 'Red'), 
+        ('green', 'Green'), 
+        ('blue', 'Blue')
+    ], default='green', validators=[Optional()])
+    channel_mode = SelectField('Mode', choices=[
+        ('shift', 'Shift Channels'), 
+        ('mirror', 'Mirror Channels')
+    ], default='shift', validators=[Optional()])
+    
+    # JPEG Artifacts
+    jpeg_intensity = FloatField('Artifact Intensity', 
+                               default=0.5,
+                               validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    # Pixel Scatter
+    scatter_direction = SelectField('Scatter Direction', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical')
+    ], default='horizontal', validators=[Optional()])
+    
+    scatter_select_by = SelectField('Select Pixels By', choices=[
+        ('brightness', 'Brightness'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('hue', 'Hue'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
+    ], default='brightness', validators=[Optional()])
+    
+    scatter_min_value = FloatField('Minimum Value',
+                              default=100,
+                              validators=[Optional(), NumberRange(min=0, max=360)])
+    
+    scatter_max_value = FloatField('Maximum Value',
+                              default=200,
+                              validators=[Optional(), NumberRange(min=0, max=360)])
     
     def validate(self, extra_validators=None):
         """Custom validation based on the selected effect."""
@@ -414,155 +482,28 @@ class ImageProcessForm(FlaskForm):
         logger.debug(f"Selected effect: {effect}")
         
         # Validate fields based on the selected effect
-        if effect == 'pixel_sort_original':
-            if not self.direction.data:
-                self.direction.errors = ['Direction is required for Pixel Sorting']
-                logger.debug("Missing direction for pixel_sort_original")
-                return False
+        if effect == 'pixel_sort_chunk':
             if not self.chunk_width.data:
-                self.chunk_width.errors = ['Chunk width is required for Pixel Sorting']
-                logger.debug("Missing chunk_width for pixel_sort_original")
+                self.chunk_width.errors = ['Chunk width is required for Pixel Sort Chunk']
+                logger.debug("Missing chunk_width for pixel_sort_chunk")
                 return False
             if not self.chunk_height.data:
-                self.chunk_height.errors = ['Chunk height is required for Pixel Sorting']
-                logger.debug("Missing chunk_height for pixel_sort_original")
+                self.chunk_height.errors = ['Chunk height is required for Pixel Sort Chunk']
+                logger.debug("Missing chunk_height for pixel_sort_chunk")
                 return False
             if not self.sort_by.data:
-                self.sort_by.errors = ['Sort by is required for Pixel Sorting']
-                logger.debug("Missing sort_by for pixel_sort_original")
+                self.sort_by.errors = ['Sort by is required for Pixel Sort Chunk']
+                logger.debug("Missing sort_by for pixel_sort_chunk")
                 return False
-                
-        elif effect == 'pixel_sort_corner':
-            if not self.corner_chunk_width.data:
-                self.corner_chunk_width.errors = ['Chunk width is required for Corner Pixel Sorting']
-                logger.debug("Missing corner_chunk_width for pixel_sort_corner")
+            if not self.sort_mode.data:
+                self.sort_mode.errors = ['Sort mode is required for Pixel Sort Chunk']
+                logger.debug("Missing sort_mode for pixel_sort_chunk")
                 return False
-            if not self.corner_chunk_height.data:
-                self.corner_chunk_height.errors = ['Chunk height is required for Corner Pixel Sorting']
-                logger.debug("Missing corner_chunk_height for pixel_sort_corner")
-                return False
-            if not self.corner_sort_by.data:
-                self.corner_sort_by.errors = ['Sort by is required for Corner Pixel Sorting']
-                logger.debug("Missing corner_sort_by for pixel_sort_corner")
-                return False
-            if not self.starting_corner.data:
-                self.starting_corner.errors = ['Starting corner is required for Corner Pixel Sorting']
-                logger.debug("Missing starting_corner for pixel_sort_corner")
-                return False
-            if not self.corner_direction.data:
-                self.corner_direction.errors = ['Direction is required for Corner Pixel Sorting']
-                logger.debug("Missing corner_direction for pixel_sort_corner")
-                return False
-                
-        elif effect == 'color_channel':
-            if not self.manipulation_type.data:
-                self.manipulation_type.errors = ['Manipulation type is required for Color Channel Manipulation']
-                logger.debug("Missing manipulation_type for color_channel")
-                return False
-                
-            # Validate based on manipulation type
-            manipulation_type = self.manipulation_type.data
-            logger.debug(f"Manipulation type: {manipulation_type}")
             
-            if manipulation_type == 'swap' and not self.swap_choice.data:
-                self.swap_choice.errors = ['Swap choice is required for Color Channel Swap']
-                logger.debug("Missing swap_choice for swap manipulation")
-                return False
-            elif manipulation_type == 'invert' and not self.invert_choice.data:
-                self.invert_choice.errors = ['Invert choice is required for Color Channel Invert']
-                logger.debug("Missing invert_choice for invert manipulation")
-                return False
-            elif manipulation_type == 'negative':
-                # Negative doesn't require any additional parameters
-                pass
-            elif manipulation_type == 'adjust':
-                if not self.adjust_choice.data:
-                    self.adjust_choice.errors = ['Adjust choice is required for Color Channel Adjust']
-                    logger.debug("Missing adjust_choice for adjust manipulation")
-                    return False
-                if not self.intensity_factor.data:
-                    self.intensity_factor.errors = ['Intensity factor is required for Color Channel Adjust']
-                    logger.debug("Missing intensity_factor for adjust manipulation")
-                    return False
-                    
-        elif effect == 'double_expose':
-            if not self.secondary_image.data:
-                self.secondary_image.errors = ['Secondary image is required for Double Expose']
-                logger.debug("Missing secondary_image for double_expose")
-                return False
-            if not self.blend_mode.data:
-                self.blend_mode.errors = ['Blend mode is required for Double Expose']
-                logger.debug("Missing blend_mode for double_expose")
-                return False
-            if not self.opacity.data:
-                self.opacity.errors = ['Opacity is required for Double Expose']
-                logger.debug("Missing opacity for double_expose")
-                return False
-                
-        elif effect == 'data_mosh_blocks':
-            if not self.data_mosh_operations.data:
-                self.data_mosh_operations.errors = ['Number of operations is required for Data Mosh Blocks']
-                logger.debug("Missing data_mosh_operations for data_mosh_blocks")
-                return False
-            if not self.data_mosh_block_size.data:
-                self.data_mosh_block_size.errors = ['Max block size is required for Data Mosh Blocks']
-                logger.debug("Missing data_mosh_block_size for data_mosh_blocks")
-                return False
-            if not self.data_mosh_movement.data:
-                self.data_mosh_movement.errors = ['Block movement is required for Data Mosh Blocks']
-                logger.debug("Missing data_mosh_movement for data_mosh_blocks")
-                return False
-            if not self.data_mosh_color_swap.data:
-                self.data_mosh_color_swap.errors = ['Color channel swap is required for Data Mosh Blocks']
-                logger.debug("Missing data_mosh_color_swap for data_mosh_blocks")
-                return False
-            if not self.data_mosh_invert.data:
-                self.data_mosh_invert.errors = ['Color inversion is required for Data Mosh Blocks']
-                logger.debug("Missing data_mosh_invert for data_mosh_blocks")
-                return False
-            if not self.data_mosh_shift.data:
-                self.data_mosh_shift.errors = ['Channel value shift is required for Data Mosh Blocks']
-                logger.debug("Missing data_mosh_shift for data_mosh_blocks")
-                return False
-            if not self.data_mosh_flip.data:
-                self.data_mosh_flip.errors = ['Block flipping is required for Data Mosh Blocks']
-                logger.debug("Missing data_mosh_flip for data_mosh_blocks")
-                return False
-                
-        elif effect == 'pixel_drift':
-            if not self.drift_direction.data:
-                self.drift_direction.errors = ['Drift direction is required for Pixel Drift']
-                logger.debug("Missing drift_direction for pixel_drift")
-                return False
-                
-        elif effect == 'spiral_sort':
-            if not self.spiral_chunk_size.data:
-                self.spiral_chunk_size.errors = ['Chunk size is required for Spiral Sort']
-                logger.debug("Missing spiral_chunk_size for spiral_sort")
-                return False
-            if not self.spiral_order.data:
-                self.spiral_order.errors = ['Sort order is required for Spiral Sort']
-                logger.debug("Missing spiral_order for spiral_sort")
-                return False
-                
-        elif effect == 'spiral_sort_2':
-            if not self.spiral2_chunk_size.data:
-                self.spiral2_chunk_size.errors = ['Chunk size is required for Spiral Sort 2']
-                logger.debug("Missing spiral2_chunk_size for spiral_sort_2")
-                return False
-            if not self.spiral2_sort_by.data:
-                self.spiral2_sort_by.errors = ['Sort by is required for Spiral Sort 2']
-                logger.debug("Missing spiral2_sort_by for spiral_sort_2")
-                return False
-            if not self.spiral2_reverse.data:
-                self.spiral2_reverse.errors = ['Sort order is required for Spiral Sort 2']
-                logger.debug("Missing spiral2_reverse for spiral_sort_2")
-                return False
-                
-        elif effect == 'bit_manipulation':
-            if not self.bit_chunk_size.data:
-                self.bit_chunk_size.errors = ['Chunk size is required for Bit Manipulation']
-                logger.debug("Missing bit_chunk_size for bit_manipulation")
+            # Validate starting_corner when sort_mode is diagonal
+            if self.sort_mode.data == 'diagonal' and not self.starting_corner.data:
+                self.starting_corner.errors = ['Starting corner is required for Diagonal sort mode']
+                logger.debug("Missing starting_corner for diagonal sort mode")
                 return False
                 
         elif effect == 'full_frame_sort':
@@ -726,6 +667,77 @@ class ImageProcessForm(FlaskForm):
             if not self.perlin_displacement_lacunarity.data:
                 self.perlin_displacement_lacunarity.errors = ['Lacunarity is required for Perlin Displacement']
                 logger.debug("Missing perlin_displacement_lacunarity for perlin_displacement")
+                return False
+                
+        elif effect == 'voronoi_sort':
+            logger.debug("Validating voronoi_sort fields")
+            if not self.voronoi_num_cells.data:
+                self.voronoi_num_cells.errors = ['Number of cells is required for Voronoi Pixel Sort']
+                logger.debug("Missing voronoi_num_cells for voronoi_sort")
+                return False
+            if not self.voronoi_size_variation.data and self.voronoi_size_variation.data != 0:
+                self.voronoi_size_variation.errors = ['Size variation is required for Voronoi Pixel Sort']
+                logger.debug("Missing voronoi_size_variation for voronoi_sort")
+                return False
+            if not self.voronoi_sort_by.data:
+                self.voronoi_sort_by.errors = ['Sort by is required for Voronoi Pixel Sort']
+                logger.debug("Missing voronoi_sort_by for voronoi_sort")
+                return False
+            if not self.voronoi_sort_order.data:
+                self.voronoi_sort_order.errors = ['Sort order is required for Voronoi Pixel Sort']
+                logger.debug("Missing voronoi_sort_order for voronoi_sort")
+                return False
+            if not self.voronoi_orientation.data:
+                self.voronoi_orientation.errors = ['Line orientation is required for Voronoi Pixel Sort']
+                logger.debug("Missing voronoi_orientation for voronoi_sort")
+                return False
+            if not self.voronoi_start_position.data:
+                self.voronoi_start_position.errors = ['Start position is required for Voronoi Pixel Sort']
+                logger.debug("Missing voronoi_start_position for voronoi_sort")
+                return False
+        
+        # Check if channel_shift is valid        
+        elif effect == 'channel_shift':
+            logger.debug("Validating channel_shift fields")
+            if not self.channel_shift_amount.data:
+                self.channel_shift_amount.errors = ['Shift amount is required for RGB Channel Shift']
+                logger.debug("Missing channel_shift_amount for channel_shift")
+                return False
+            if not self.channel_shift_direction.data:
+                self.channel_shift_direction.errors = ['Shift direction is required for RGB Channel Shift']
+                logger.debug("Missing channel_shift_direction for channel_shift")
+                return False
+            if not self.channel_shift_center.data:
+                self.channel_shift_center.errors = ['Centered channel is required for RGB Channel Shift']
+                logger.debug("Missing channel_shift_center for channel_shift")
+                return False
+            if not self.channel_mode.data:
+                self.channel_mode.errors = ['Mode is required for RGB Channel Shift']
+                logger.debug("Missing channel_mode for channel_shift")
+                return False
+                
+        # Check if pixel_scatter is valid
+        elif effect == 'pixel_scatter':
+            logger.debug("Validating pixel_scatter fields")
+            if not self.scatter_direction.data:
+                self.scatter_direction.errors = ['Scatter direction is required for Pixel Scatter']
+                logger.debug("Missing scatter_direction for pixel_scatter")
+                return False
+            if not self.scatter_select_by.data:
+                self.scatter_select_by.errors = ['Select by is required for Pixel Scatter']
+                logger.debug("Missing scatter_select_by for pixel_scatter")
+                return False
+            if self.scatter_min_value.data is None:
+                self.scatter_min_value.errors = ['Minimum value is required for Pixel Scatter']
+                logger.debug("Missing scatter_min_value for pixel_scatter")
+                return False
+            if self.scatter_max_value.data is None:
+                self.scatter_max_value.errors = ['Maximum value is required for Pixel Scatter']
+                logger.debug("Missing scatter_max_value for pixel_scatter")
+                return False
+            if self.scatter_min_value.data >= self.scatter_max_value.data:
+                self.scatter_min_value.errors = ['Minimum value must be less than maximum value']
+                logger.debug("Invalid value range for pixel_scatter")
                 return False
                 
         # If we get here, validation passed

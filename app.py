@@ -5,8 +5,9 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from utils import load_image, pixel_sorting, color_channel_manipulation, double_expose, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, color_shift_expansion, perlin_noise_displacement, data_mosh_blocks
+from utils import load_image, pixel_sorting, color_channel_manipulation, double_expose, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, color_shift_expansion, perlin_noise_displacement, data_mosh_blocks, voronoi_pixel_sort, split_and_shift_channels, simulate_jpeg_artifacts, pixel_scatter
 from flask_wtf.csrf import CSRFProtect
+import random
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-for-testing')  # Use environment variable in production
@@ -70,25 +71,26 @@ def index():
                 effect = form.effect.data
                 logger.debug(f"Selected effect: {effect}")
                 
-                if effect == 'pixel_sort_original':
-                    direction = form.direction.data
+                if effect == 'pixel_sort_chunk':
+                    # Get common parameters
                     chunk_width = form.chunk_width.data
                     chunk_height = form.chunk_height.data
                     chunk_size = f"{chunk_width}x{chunk_height}"
                     sort_by = form.sort_by.data
-                    logger.debug(f"Pixel sort params: direction={direction}, chunk_size={chunk_size}, sort_by={sort_by}")
-                    processed_image = pixel_sorting(image, direction, chunk_size, sort_by)
-                    settings = f"{direction}_{chunk_size}_{sort_by}"
-                elif effect == 'pixel_sort_corner':
-                    chunk_width = form.corner_chunk_width.data
-                    chunk_height = form.corner_chunk_height.data
-                    chunk_size = f"{chunk_width}x{chunk_height}"
-                    sort_by = form.corner_sort_by.data
-                    starting_corner = form.starting_corner.data
-                    direction = form.corner_direction.data
-                    logger.debug(f"Corner pixel sort params: chunk_size={chunk_size}, sort_by={sort_by}, starting_corner={starting_corner}, direction={direction}")
-                    processed_image = pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=starting_corner)
-                    settings = f"corner_{chunk_size}_{sort_by}_{starting_corner}_{direction}"
+                    sort_mode = form.sort_mode.data
+                    
+                    # Process based on sort mode
+                    if sort_mode == 'diagonal':
+                        # Diagonal pixel sorting
+                        starting_corner = form.starting_corner.data
+                        logger.debug(f"Diagonal pixel sort params: chunk_size={chunk_size}, sort_by={sort_by}, starting_corner={starting_corner}")
+                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by, starting_corner=starting_corner)
+                        settings = f"chunk_diagonal_{chunk_size}_{sort_by}_{starting_corner}"
+                    else:
+                        # Regular pixel sorting (horizontal or vertical)
+                        logger.debug(f"Regular pixel sort params: mode={sort_mode}, chunk_size={chunk_size}, sort_by={sort_by}")
+                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by)
+                        settings = f"chunk_{sort_mode}_{chunk_size}_{sort_by}"
                 elif effect == 'color_channel':
                     manipulation_type = form.manipulation_type.data
                     logger.debug(f"Color channel manipulation type: {manipulation_type}")
@@ -256,7 +258,7 @@ def index():
                     shift_amount = form.color_shift_amount.data
                     expansion_type = form.expansion_type.data
                     mode = form.color_shift_mode.data
-                    logger.debug(f"Color shift expansion params: points={num_points}, shift_amount={shift_amount}, expansion_type={expansion_type}, mode={mode}")
+                    logger.debug(f"Color shift expansion params: num_points={num_points}, shift_amount={shift_amount}, expansion_type={expansion_type}, mode={mode}")
                     processed_image = color_shift_expansion(image, num_points, shift_amount, expansion_type, mode)
                     settings = f"colorshift_{num_points}_{shift_amount}_{expansion_type}_{mode}"
                 elif effect == 'perlin_displacement':
@@ -267,7 +269,60 @@ def index():
                     lacunarity = form.perlin_displacement_lacunarity.data
                     logger.debug(f"Perlin displacement params: scale={scale}, intensity={intensity}, octaves={octaves}, persistence={persistence}, lacunarity={lacunarity}")
                     processed_image = perlin_noise_displacement(image, scale, intensity, octaves, persistence, lacunarity)
-                    settings = f"perlindisplace_{scale}_{intensity}_{octaves}_{persistence}_{lacunarity}"
+                    settings = f"perlindisplacement_{scale}_{intensity}_{octaves}_{persistence}_{lacunarity}"
+                elif effect == 'voronoi_sort':
+                    num_cells = form.voronoi_num_cells.data
+                    size_variation = form.voronoi_size_variation.data
+                    sort_by = form.voronoi_sort_by.data
+                    sort_order = form.voronoi_sort_order.data
+                    orientation = form.voronoi_orientation.data
+                    start_position = form.voronoi_start_position.data
+                    seed = form.voronoi_seed.data
+                    
+                    logger.debug(f"Voronoi sort params: num_cells={num_cells}, size_variation={size_variation}, "
+                               f"sort_by={sort_by}, sort_order={sort_order}, orientation={orientation}, "
+                               f"start_position={start_position}, seed={seed}")
+                    
+                    processed_image = voronoi_pixel_sort(image, num_cells, size_variation, sort_by, sort_order, seed, 
+                                                       orientation, start_position)
+                    
+                    settings = f"voronoi_{num_cells}_{size_variation}_{sort_by}_{sort_order}_{orientation}_{start_position}"
+                    if seed:
+                        settings += f"_{seed}"
+                elif effect == 'channel_shift':
+                    shift_amount = form.channel_shift_amount.data
+                    direction = form.channel_shift_direction.data
+                    centered_channel = form.channel_shift_center.data
+                    mode = form.channel_mode.data
+                    
+                    if mode == 'mirror':
+                        logger.debug(f"Channel shift params (mirror mode): centered_channel={centered_channel}, mode={mode}")
+                        # Direction is ignored in mirror mode, shift_amount is also ignored
+                        processed_image = split_and_shift_channels(image, 0, 'horizontal', centered_channel, mode)
+                        settings = f"channelshift_{mode}_{centered_channel}"
+                    else:  # shift mode
+                        logger.debug(f"Channel shift params (shift mode): amount={shift_amount}, direction={direction}, centered_channel={centered_channel}")
+                        processed_image = split_and_shift_channels(image, shift_amount, direction, centered_channel, mode)
+                        settings = f"channelshift_{shift_amount}_{direction}_{centered_channel}_{mode}"
+                elif effect == 'jpeg_artifacts':
+                    intensity = form.jpeg_intensity.data
+                    logger.debug(f"JPEG artifacts params: intensity={intensity}")
+                    
+                    processed_image = simulate_jpeg_artifacts(image, intensity)
+                    settings = f"jpeg_artifacts_{intensity}"
+                elif effect == 'pixel_scatter':
+                    direction = form.scatter_direction.data
+                    select_by = form.scatter_select_by.data
+                    min_val = form.scatter_min_value.data
+                    max_val = form.scatter_max_value.data
+                    logger.debug(f"Pixel scatter params: direction={direction}, select_by={select_by}, min_val={min_val}, max_val={max_val}")
+                    
+                    processed_image = pixel_scatter(image, direction, select_by, min_val, max_val)
+                    settings = f"pixel_scatter_{direction}_{select_by}_{min_val}_{max_val}"
+                else:
+                    logger.error(f"Unknown effect: {effect}")
+                    error_msg = f"Unknown effect: {effect}"
+                    return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
                 
                 # Save the processed image
                 output_filename = generate_output_filename(filename, effect, settings)

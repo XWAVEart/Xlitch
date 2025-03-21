@@ -7,6 +7,8 @@ import colorsys
 import math
 import heapq
 import noise  # Import the noise module for Perlin noise
+from scipy.spatial import cKDTree
+from io import BytesIO
 
 # Centralized pixel attribute calculations
 class PixelAttributes:
@@ -199,11 +201,11 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
     
     Args:
         image (Image): PIL Image object to process.
-        direction (str): 'horizontal' or 'vertical' sorting direction.
+        direction (str): 'horizontal', 'vertical', or 'diagonal' sorting direction.
         chunk_size (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
         sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue', 
                        'saturation', 'luminance', 'contrast').
-        starting_corner (str, optional): Starting corner for corner-to-corner sorting.
+        starting_corner (str, optional): Starting corner for corner-to-corner or diagonal sorting.
     
     Returns:
         Image: Processed image with sorted pixels.
@@ -211,9 +213,9 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
     # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
-        
-    # Handle corner-to-corner sorting if starting_corner is provided
-    if starting_corner:
+    
+    # Handle corner-to-corner sorting if starting_corner is provided and direction isn't diagonal
+    if starting_corner and direction != 'diagonal':
         return pixel_sorting_corner_to_corner(
             image, 
             chunk_size, 
@@ -222,6 +224,13 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
             direction == 'horizontal'
         )
     
+    # Handle diagonal sorting
+    if direction == 'diagonal':
+        if not starting_corner:
+            starting_corner = 'top-left'  # Default corner if not specified
+        return diagonal_pixel_sort(image, chunk_size, sort_by, starting_corner)
+    
+    # Handle horizontal and vertical sorting
     sort_function = {
         'color': lambda p: sum(p[:3]),
         'brightness': brightness,
@@ -237,54 +246,166 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None):
     pixels = list(image.getdata())
     width, height = image.size
     chunk_width, chunk_height = map(int, chunk_size.split('x'))
-    sorted_pixels = []
-
-    for chunk_row in range(0, height, chunk_height):
-        for chunk_col in range(0, width, chunk_width):
+    
+    # Create result image and get pixel access object for direct pixel manipulation
+    result_image = Image.new(image.mode, image.size)
+    
+    # Calculate how many full chunks we can fit and the remainder
+    num_chunks_x = width // chunk_width
+    num_chunks_y = height // chunk_height
+    remainder_x = width % chunk_width
+    remainder_y = height % chunk_height
+    
+    # Process standard chunks (full sized)
+    for chunk_row in range(num_chunks_y):
+        for chunk_col in range(num_chunks_x):
             # Extract chunk pixels
             chunk_pixels = []
-            for y in range(chunk_row, min(chunk_row + chunk_height, height)):
-                for x in range(chunk_col, min(chunk_col + chunk_width, width)):
+            start_y = chunk_row * chunk_height
+            start_x = chunk_col * chunk_width
+            
+            for y in range(start_y, start_y + chunk_height):
+                for x in range(start_x, start_x + chunk_width):
                     chunk_pixels.append(pixels[y * width + x])
             
             # Sort chunk
             if direction == 'horizontal':
                 sorted_chunk = sorted(chunk_pixels, key=sort_function)
+                
+                # Place sorted pixels back in horizontal order
+                for i, pixel in enumerate(sorted_chunk):
+                    x = start_x + (i % chunk_width)
+                    y = start_y + (i // chunk_width)
+                    result_image.putpixel((x, y), pixel)
             else:  # vertical
-                # Sorting columns instead of rows
-                sorted_chunk = []
-                chunk_width_actual = min(chunk_width, width - chunk_col)
-                chunk_height_actual = min(chunk_height, height - chunk_row)
-                
-                # Reshape chunk pixels into a 2D array for easier column extraction
+                # Reshape the chunk for column-wise sorting
                 chunk_2d = []
-                for i in range(0, len(chunk_pixels), chunk_width_actual):
-                    chunk_2d.append(chunk_pixels[i:i + chunk_width_actual])
+                for i in range(0, len(chunk_pixels), chunk_width):
+                    chunk_2d.append(chunk_pixels[i:i + chunk_width])
                 
-                # Extract and sort each column
-                for x in range(chunk_width_actual):
-                    column = [chunk_2d[y][x] for y in range(chunk_height_actual)]
+                # For each column in the chunk
+                for x in range(chunk_width):
+                    # Extract column
+                    column = [chunk_2d[y][x] for y in range(chunk_height)]
+                    # Sort column
                     sorted_column = sorted(column, key=sort_function)
-                    sorted_chunk.extend(sorted_column)
-
-            # Place sorted chunk back into image
-            for i, pixel in enumerate(sorted_chunk):
-                if i < (min(chunk_width, width - chunk_col) * min(chunk_height, height - chunk_row)):
-                    x = i % min(chunk_width, width - chunk_col) + chunk_col
-                    y = i // min(chunk_width, width - chunk_col) + chunk_row
-                    if x < width and y < height:
-                        sorted_pixels.append((x, y, pixel))
-
-    # Create a new image and place the sorted pixels
-    result_image = Image.new(image.mode, image.size)
+                    
+                    # Place sorted column back
+                    for y, pixel in enumerate(sorted_column):
+                        result_image.putpixel((start_x + x, start_y + y), pixel)
     
-    # Fill with black first (in case there are any missing pixels)
-    black_pixels = [(0, 0, 0)] * (width * height)
-    result_image.putdata(black_pixels)
+    # Process right edge (if there's a remainder in width)
+    if remainder_x > 0:
+        for chunk_row in range(num_chunks_y):
+            # Extract the right edge chunk
+            start_y = chunk_row * chunk_height
+            start_x = num_chunks_x * chunk_width
+            
+            edge_chunk = []
+            for y in range(start_y, start_y + chunk_height):
+                for x in range(start_x, start_x + remainder_x):
+                    edge_chunk.append(pixels[y * width + x])
+            
+            # Sort the edge chunk
+            if direction == 'horizontal':
+                sorted_edge = sorted(edge_chunk, key=sort_function)
+                
+                # Place sorted pixels back
+                for i, pixel in enumerate(sorted_edge):
+                    x = start_x + (i % remainder_x)
+                    y = start_y + (i // remainder_x)
+                    result_image.putpixel((x, y), pixel)
+            else:  # vertical
+                # Reshape for column-wise sorting
+                edge_2d = []
+                for i in range(0, len(edge_chunk), remainder_x):
+                    edge_2d.append(edge_chunk[i:i + remainder_x])
+                
+                # For each column in the edge chunk
+                for x in range(remainder_x):
+                    # Extract column
+                    column = [edge_2d[y][x] for y in range(chunk_height)]
+                    # Sort column
+                    sorted_column = sorted(column, key=sort_function)
+                    
+                    # Place sorted column back
+                    for y, pixel in enumerate(sorted_column):
+                        result_image.putpixel((start_x + x, start_y + y), pixel)
     
-    # Place the sorted pixels
-    for x, y, pixel in sorted_pixels:
-        result_image.putpixel((x, y), pixel)
+    # Process bottom edge (if there's a remainder in height)
+    if remainder_y > 0:
+        for chunk_col in range(num_chunks_x):
+            # Extract the bottom edge chunk
+            start_y = num_chunks_y * chunk_height
+            start_x = chunk_col * chunk_width
+            
+            edge_chunk = []
+            for y in range(start_y, start_y + remainder_y):
+                for x in range(start_x, start_x + chunk_width):
+                    edge_chunk.append(pixels[y * width + x])
+            
+            # Sort the edge chunk
+            if direction == 'horizontal':
+                sorted_edge = sorted(edge_chunk, key=sort_function)
+                
+                # Place sorted pixels back
+                for i, pixel in enumerate(sorted_edge):
+                    x = start_x + (i % chunk_width)
+                    y = start_y + (i // chunk_width)
+                    result_image.putpixel((x, y), pixel)
+            else:  # vertical
+                # Reshape for column-wise sorting
+                edge_2d = []
+                for i in range(0, len(edge_chunk), chunk_width):
+                    edge_2d.append(edge_chunk[i:i + chunk_width])
+                
+                # For each column in the edge chunk
+                for x in range(chunk_width):
+                    # Extract column
+                    column = [row[x] for row in edge_2d if x < len(row)]
+                    # Sort column
+                    sorted_column = sorted(column, key=sort_function)
+                    
+                    # Place sorted column back
+                    for y, pixel in enumerate(sorted_column):
+                        result_image.putpixel((start_x + x, start_y + y), pixel)
+    
+    # Process bottom-right corner (if there's remainder in both width and height)
+    if remainder_x > 0 and remainder_y > 0:
+        # Extract the corner chunk
+        start_y = num_chunks_y * chunk_height
+        start_x = num_chunks_x * chunk_width
+        
+        corner_chunk = []
+        for y in range(start_y, start_y + remainder_y):
+            for x in range(start_x, start_x + remainder_x):
+                corner_chunk.append(pixels[y * width + x])
+        
+        # Sort the corner chunk
+        if direction == 'horizontal':
+            sorted_corner = sorted(corner_chunk, key=sort_function)
+            
+            # Place sorted pixels back
+            for i, pixel in enumerate(sorted_corner):
+                x = start_x + (i % remainder_x)
+                y = start_y + (i // remainder_x)
+                result_image.putpixel((x, y), pixel)
+        else:  # vertical
+            # Reshape for column-wise sorting
+            corner_2d = []
+            for i in range(0, len(corner_chunk), remainder_x):
+                corner_2d.append(corner_chunk[i:i + remainder_x])
+            
+            # For each column in the corner chunk
+            for x in range(remainder_x):
+                # Extract column
+                column = [corner_2d[y][x] for y in range(len(corner_2d)) if x < len(corner_2d[y])]
+                # Sort column
+                sorted_column = sorted(column, key=sort_function)
+                
+                # Place sorted column back
+                for y, pixel in enumerate(sorted_column):
+                    result_image.putpixel((start_x + x, start_y + y), pixel)
     
     return result_image
 
@@ -319,8 +440,8 @@ def pixel_sorting_corner_to_corner(image, chunk_size, sort_by, corner, horizonta
         'contrast': contrast       # Sort by contrast (max-min RGB)
     }.get(sort_by, lambda p: sum(p[:3]))
 
-    # Create a copy of the image to work with
-    result_image = image.copy()
+    # Create a result image to work with
+    result_image = Image.new(image.mode, image.size)
     width, height = image.size
     chunk_width, chunk_height = map(int, chunk_size.split('x'))
     
@@ -333,26 +454,89 @@ def pixel_sorting_corner_to_corner(image, chunk_size, sort_by, corner, horizonta
             row.append(pixels[y * width + x])
         pixels_2d.append(row)
     
-    # Determine chunk processing order based on corner
-    x_range = range(0, width, chunk_width)
-    y_range = range(0, height, chunk_height)
+    # Initialize result_image with a copy of the original image data
+    # This ensures no black regions if any pixels are missed
+    for y in range(height):
+        for x in range(width):
+            result_image.putpixel((x, y), pixels_2d[y][x])
     
-    if corner in ['top-right', 'bottom-right']:
-        x_range = range(width - chunk_width, -1, -chunk_width)
+    # Calculate how many full chunks and the remainder
+    full_chunks_x = width // chunk_width
+    full_chunks_y = height // chunk_height
+    remainder_x = width % chunk_width
+    remainder_y = height % chunk_height
     
-    if corner in ['bottom-left', 'bottom-right']:
-        y_range = range(height - chunk_height, -1, -chunk_height)
+    # Create step values based on the corner
+    x_step = chunk_width
+    y_step = chunk_height
+    
+    # Determine chunk processing start points and ranges based on corner
+    if corner == 'top-left':
+        x_start_val = 0
+        y_start_val = 0
+        x_end_val = width
+        y_end_val = height
+        x_step = chunk_width
+        y_step = chunk_height
+    elif corner == 'top-right':
+        x_start_val = width - chunk_width
+        y_start_val = 0
+        x_end_val = -chunk_width
+        y_end_val = height
+        x_step = -chunk_width
+        y_step = chunk_height
+    elif corner == 'bottom-left':
+        x_start_val = 0
+        y_start_val = height - chunk_height
+        x_end_val = width
+        y_end_val = -chunk_height
+        x_step = chunk_width
+        y_step = -chunk_height
+    elif corner == 'bottom-right':
+        x_start_val = width - chunk_width
+        y_start_val = height - chunk_height
+        x_end_val = -chunk_width
+        y_end_val = -chunk_height
+        x_step = -chunk_width
+        y_step = -chunk_height
+    
+    # Create ranges based on the corner - ensure we include all pixels
+    x_range = list(range(x_start_val, x_end_val, x_step))
+    y_range = list(range(y_start_val, y_end_val, y_step))
+    
+    # Handle edge cases where ranges might be empty
+    if not x_range and x_step > 0:
+        x_range = [0]
+    elif not x_range and x_step < 0:
+        x_range = [width - chunk_width]
+        
+    if not y_range and y_step > 0:
+        y_range = [0]
+    elif not y_range and y_step < 0:
+        y_range = [height - chunk_height]
     
     # Process each chunk
     for y_start in y_range:
         for x_start in x_range:
             # Calculate chunk boundaries
-            y_end = min(y_start + chunk_height, height)
-            x_end = min(x_start + chunk_width, width)
+            y_end = min(y_start + abs(y_step), height) if y_step > 0 else max(y_start + y_step, 0)
+            x_end = min(x_start + abs(x_step), width) if x_step > 0 else max(x_start + x_step, 0)
             
             # Make sure we're not going out of bounds
             if x_start < 0: x_start = 0
             if y_start < 0: y_start = 0
+            if x_end > width: x_end = width
+            if y_end > height: y_end = height
+            if x_end <= 0: x_end = 1
+            if y_end <= 0: y_end = 1
+            
+            # Ensure chunks always process from lower to higher indices
+            x_start, x_end = min(x_start, x_end), max(x_start, x_end)
+            y_start, y_end = min(y_start, y_end), max(y_start, y_end)
+            
+            # Skip empty chunks
+            if x_start == x_end or y_start == y_end:
+                continue
             
             # Extract all pixels in this chunk
             chunk_pixels = []
@@ -370,8 +554,200 @@ def pixel_sorting_corner_to_corner(image, chunk_size, sort_by, corner, horizonta
             
             # Put the sorted pixels back
             pixel_index = 0
+            if horizontal:
+                # Sort horizontally within chunk
+                for y in range(y_start, y_end):
+                    for x in range(x_start, x_end):
+                        if pixel_index < len(sorted_pixels):
+                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
+                            pixel_index += 1
+            else:
+                # Sort vertically within chunk
+                for x in range(x_start, x_end):
+                    for y in range(y_start, y_end):
+                        if pixel_index < len(sorted_pixels):
+                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
+                            pixel_index += 1
+    
+    # Ensure we process any remaining edge pixels not covered by the chunks
+    
+    # Adjust x_range and y_range for remainder handling
+    x_range_rem = []
+    y_range_rem = []
+    
+    # Add remainder chunks based on image dimensions and chunk size
+    if remainder_x > 0:
+        if x_step > 0:
+            x_range_rem.append(width - remainder_x)
+        else:
+            x_range_rem.append(0)
+    
+    if remainder_y > 0:
+        if y_step > 0:
+            y_range_rem.append(height - remainder_y)
+        else:
+            y_range_rem.append(0)
+    
+    # Process right/left edge
+    for y_start in y_range:
+        for x_start in x_range_rem:
+            # Calculate appropriate bounds
+            y_end = min(y_start + abs(y_step), height) if y_step > 0 else max(y_start + y_step, 0)
+            x_end = x_start + remainder_x if x_step > 0 else x_start + chunk_width
+            
+            # Ensure valid boundaries
+            if x_start < 0: x_start = 0
+            if y_start < 0: y_start = 0
+            if x_end > width: x_end = width
+            if y_end > height: y_end = height
+            if x_end <= 0: x_end = 1
+            if y_end <= 0: y_end = 1
+            
+            # Ensure chunks always process from lower to higher indices
+            x_start, x_end = min(x_start, x_end), max(x_start, x_end)
+            y_start, y_end = min(y_start, y_end), max(y_start, y_end)
+            
+            # Skip empty chunks
+            if x_start == x_end or y_start == y_end:
+                continue
+            
+            # Extract all pixels in this chunk
+            chunk_pixels = []
             for y in range(y_start, y_end):
                 for x in range(x_start, x_end):
+                    chunk_pixels.append(pixels_2d[y][x])
+            
+            # Sort the chunk pixels
+            sorted_pixels = sorted(chunk_pixels, key=sort_function)
+            
+            # Reverse the order if needed based on corner
+            if (corner in ['bottom-left', 'bottom-right'] and horizontal) or \
+               (corner in ['top-right', 'bottom-right'] and not horizontal):
+                sorted_pixels = sorted_pixels[::-1]
+            
+            # Put the sorted pixels back
+            pixel_index = 0
+            if horizontal:
+                # Sort horizontally within chunk
+                for y in range(y_start, y_end):
+                    for x in range(x_start, x_end):
+                        if pixel_index < len(sorted_pixels):
+                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
+                            pixel_index += 1
+            else:
+                # Sort vertically within chunk
+                for x in range(x_start, x_end):
+                    for y in range(y_start, y_end):
+                        if pixel_index < len(sorted_pixels):
+                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
+                            pixel_index += 1
+    
+    # Process bottom/top edge
+    for x_start in x_range:
+        for y_start in y_range_rem:
+            # Calculate appropriate bounds
+            x_end = min(x_start + abs(x_step), width) if x_step > 0 else max(x_start + x_step, 0)
+            y_end = y_start + remainder_y if y_step > 0 else y_start + chunk_height
+            
+            # Ensure valid boundaries
+            if x_start < 0: x_start = 0
+            if y_start < 0: y_start = 0
+            if x_end > width: x_end = width
+            if y_end > height: y_end = height
+            if x_end <= 0: x_end = 1
+            if y_end <= 0: y_end = 1
+            
+            # Ensure chunks always process from lower to higher indices
+            x_start, x_end = min(x_start, x_end), max(x_start, x_end)
+            y_start, y_end = min(y_start, y_end), max(y_start, y_end)
+            
+            # Skip empty chunks
+            if x_start == x_end or y_start == y_end:
+                continue
+            
+            # Extract all pixels in this chunk
+            chunk_pixels = []
+            for y in range(y_start, y_end):
+                for x in range(x_start, x_end):
+                    chunk_pixels.append(pixels_2d[y][x])
+            
+            # Sort the chunk pixels
+            sorted_pixels = sorted(chunk_pixels, key=sort_function)
+            
+            # Reverse the order if needed based on corner
+            if (corner in ['bottom-left', 'bottom-right'] and horizontal) or \
+               (corner in ['top-right', 'bottom-right'] and not horizontal):
+                sorted_pixels = sorted_pixels[::-1]
+            
+            # Put the sorted pixels back
+            pixel_index = 0
+            if horizontal:
+                # Sort horizontally within chunk
+                for y in range(y_start, y_end):
+                    for x in range(x_start, x_end):
+                        if pixel_index < len(sorted_pixels):
+                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
+                            pixel_index += 1
+            else:
+                # Sort vertically within chunk
+                for x in range(x_start, x_end):
+                    for y in range(y_start, y_end):
+                        if pixel_index < len(sorted_pixels):
+                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
+                            pixel_index += 1
+    
+    # Process corner edge (if there's remainder in both width and height)
+    if remainder_x > 0 and remainder_y > 0:
+        # Determine corner position based on sort direction
+        if corner == 'top-left':
+            x_start = width - remainder_x
+            y_start = height - remainder_y
+        elif corner == 'top-right':
+            x_start = 0
+            y_start = height - remainder_y
+        elif corner == 'bottom-left':
+            x_start = width - remainder_x
+            y_start = 0
+        elif corner == 'bottom-right':
+            x_start = 0
+            y_start = 0
+        
+        x_end = x_start + remainder_x
+        y_end = y_start + remainder_y
+        
+        # Ensure valid boundaries
+        if x_start < 0: x_start = 0
+        if y_start < 0: y_start = 0
+        if x_end > width: x_end = width
+        if y_end > height: y_end = height
+        
+        # Extract all pixels in this chunk
+        chunk_pixels = []
+        for y in range(y_start, y_end):
+            for x in range(x_start, x_end):
+                chunk_pixels.append(pixels_2d[y][x])
+        
+        # Sort the chunk pixels
+        sorted_pixels = sorted(chunk_pixels, key=sort_function)
+        
+        # Reverse the order if needed based on corner
+        if (corner in ['bottom-left', 'bottom-right'] and horizontal) or \
+           (corner in ['top-right', 'bottom-right'] and not horizontal):
+            sorted_pixels = sorted_pixels[::-1]
+        
+        # Put the sorted pixels back
+        pixel_index = 0
+        if horizontal:
+            # Sort horizontally within chunk
+            for y in range(y_start, y_end):
+                for x in range(x_start, x_end):
+                    if pixel_index < len(sorted_pixels):
+                        result_image.putpixel((x, y), sorted_pixels[pixel_index])
+                        pixel_index += 1
+        else:
+            # Sort vertically within chunk
+            for x in range(x_start, x_end):
+                for y in range(y_start, y_end):
                     if pixel_index < len(sorted_pixels):
                         result_image.putpixel((x, y), sorted_pixels[pixel_index])
                         pixel_index += 1
@@ -1825,3 +2201,754 @@ def load_image(file_path):
     except Exception as e:
         print(f"Error loading image {file_path}: {e}")
         return None
+
+def voronoi_pixel_sort(image, num_cells=100, size_variation=0.5, sort_by='color', sort_order='clockwise', seed=None, orientation='horizontal', start_position='left'):
+    """
+    Applies a Voronoi-based pixel sorting effect to the image.
+
+    :param image: The PIL Image to process.
+    :param num_cells: Approximate number of Voronoi cells.
+    :param size_variation: Variability in cell sizes (0 to 1).
+    :param sort_by: Property to sort by ('color', 'brightness', 'hue').
+    :param sort_order: Sorting order ('clockwise' or 'counter-clockwise').
+    :param seed: Random seed for reproducibility.
+    :param orientation: Direction for sorting within cells ('horizontal', 'vertical', 'radial', 'spiral').
+    :param start_position: Starting position for the sort ('left', 'right', 'top', 'bottom', 'center').
+    :return: The processed image.
+    """
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    # Set random seed if provided
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+
+    # Convert image to NumPy array
+    image_np = np.array(image)
+    height, width, channels = image_np.shape
+
+    # Generate seed points for Voronoi cells
+    num_points = num_cells
+    # Adjust for size variation
+    variation = int(num_points * size_variation)
+    point_counts = num_points + random.randint(-variation, variation)
+    xs = np.random.randint(0, width, size=point_counts)
+    ys = np.random.randint(0, height, size=point_counts)
+    points = np.vstack((xs, ys)).T
+
+    # Assign each pixel to the nearest seed point
+    # Create a grid of pixel coordinates
+    xv, yv = np.meshgrid(np.arange(width), np.arange(height))
+    pixel_coords = np.column_stack((xv.ravel(), yv.ravel()))
+
+    # Build a KD-Tree for efficient nearest-neighbor search
+    tree = cKDTree(points)
+    _, regions = tree.query(pixel_coords)
+
+    # Reshape regions to the image shape
+    regions = regions.reshape((height, width))
+
+    # Define sorting functions based on PixelAttributes class
+    sort_function = {
+        'color': lambda p: np.sum(p[:3], dtype=int),
+        'brightness': PixelAttributes.brightness,
+        'hue': PixelAttributes.hue,
+        'saturation': PixelAttributes.saturation,
+        'luminance': PixelAttributes.luminance,
+        'contrast': PixelAttributes.contrast,
+        'red': lambda p: p[0],
+        'green': lambda p: p[1],
+        'blue': lambda p: p[2]
+    }.get(sort_by, lambda p: np.sum(p[:3], dtype=int))
+
+    # Process each cell
+    for region_id in np.unique(regions):
+        # Get the mask for the current region
+        mask = regions == region_id
+
+        # Get the coordinates of pixels in the cell
+        ys_cell, xs_cell = np.where(mask)
+
+        # Get the pixels in the cell
+        pixels = image_np[ys_cell, xs_cell]
+
+        # Skip regions with only one pixel
+        if len(pixels) <= 1:
+            continue
+
+        # Compute the centroid of the cell
+        centroid_x = np.mean(xs_cell)
+        centroid_y = np.mean(ys_cell)
+
+        # Sort the pixels based on the sorting property
+        pixel_values = np.array([sort_function(p) for p in pixels])
+        pixel_order = np.argsort(pixel_values)
+        sorted_pixels = pixels[pixel_order]
+        
+        # Determine position ordering based on orientation parameter
+        if orientation == 'horizontal':
+            # Order pixels horizontally
+            if start_position == 'left':
+                # Left to right (default)
+                position_order = np.argsort(xs_cell)
+            elif start_position == 'right':
+                # Right to left
+                position_order = np.argsort(-xs_cell)
+            elif start_position == 'center':
+                # Order from center horizontally outward
+                dist_from_center_x = np.abs(xs_cell - centroid_x)
+                position_order = np.argsort(-dist_from_center_x) # Start from periphery
+            else:
+                # Default to left-to-right
+                position_order = np.argsort(xs_cell)
+                
+        elif orientation == 'vertical':
+            # Order pixels vertically
+            if start_position == 'top':
+                # Top to bottom
+                position_order = np.argsort(ys_cell)
+            elif start_position == 'bottom':
+                # Bottom to top
+                position_order = np.argsort(-ys_cell)
+            elif start_position == 'center':
+                # Order from center vertically outward
+                dist_from_center_y = np.abs(ys_cell - centroid_y)
+                position_order = np.argsort(-dist_from_center_y) # Start from periphery
+            else:
+                # Default to top-to-bottom
+                position_order = np.argsort(ys_cell)
+                
+        elif orientation == 'radial':
+            # Compute distance from centroid
+            dist_from_center = np.sqrt((xs_cell - centroid_x)**2 + (ys_cell - centroid_y)**2)
+            
+            if start_position == 'center':
+                # Order from center outward
+                position_order = np.argsort(dist_from_center)
+            else:
+                # Order from edge inward
+                position_order = np.argsort(-dist_from_center)
+                
+        elif orientation == 'spiral':
+            # Calculate angle for each pixel relative to the centroid
+            angles = np.arctan2(ys_cell - centroid_y, xs_cell - centroid_x)
+            # Calculate distance from centroid
+            dist_from_center = np.sqrt((xs_cell - centroid_x)**2 + (ys_cell - centroid_y)**2)
+            
+            # Combine angle and distance for a spiral ordering
+            # Scale angles to [0, 10] for appropriate weight
+            scaled_angles = (angles + np.pi) / (2 * np.pi) * 10
+            # Scale distances to [0, 1] relative to max distance
+            max_dist = np.max(dist_from_center) if np.max(dist_from_center) > 0 else 1
+            scaled_dist = dist_from_center / max_dist
+            
+            # Combine for spiral: angle + weight*distance
+            spiral_metric = scaled_angles + scaled_dist
+            
+            if sort_order == 'clockwise':
+                position_order = np.argsort(spiral_metric)
+            else:
+                position_order = np.argsort(-spiral_metric)
+                
+        else:
+            # Default: sort by angle around centroid (original behavior)
+            angles = np.arctan2(ys_cell - centroid_y, xs_cell - centroid_x)
+            if sort_order == 'clockwise':
+                angles = -angles  # Reverse the angle for clockwise sorting
+            position_order = np.argsort(angles)
+
+        # Get the sorted coordinates based on position_order
+        sorted_ys = ys_cell[position_order]
+        sorted_xs = xs_cell[position_order]
+
+        # Assign sorted pixels to positions
+        image_np[sorted_ys, sorted_xs] = sorted_pixels
+
+    # Reset random seeds
+    if seed is not None:
+        np.random.seed(None)
+        random.seed(None)
+
+    # Convert back to PIL Image
+    processed_image = Image.fromarray(image_np)
+    return processed_image
+
+def shift_channel(channel, shift, direction):
+    """
+    Shift a 2D array (channel) in a specified direction.
+
+    Args:
+        channel (numpy.ndarray): The channel to shift.
+        shift (int): Number of pixels to shift (can be negative).
+        direction (str): 'horizontal' or 'vertical'.
+
+    Returns:
+        numpy.ndarray: The shifted channel.
+    """
+    height, width = channel.shape
+    shifted = np.zeros_like(channel)
+    
+    if direction == 'horizontal':
+        if shift < 0:
+            shifted[:, :width+shift] = channel[:, -shift:]
+        elif shift > 0:
+            shifted[:, shift:] = channel[:, :width-shift]
+        else:
+            shifted = channel.copy()
+    elif direction == 'vertical':
+        if shift < 0:
+            shifted[:height+shift, :] = channel[-shift:, :]
+        elif shift > 0:
+            shifted[shift:, :] = channel[:height-shift, :]
+        else:
+            shifted = channel.copy()
+    else:
+        raise ValueError("Direction must be 'horizontal' or 'vertical'.")
+
+    return shifted
+
+def mirror_channel(channel, direction):
+    """
+    Mirror a 2D array (channel) horizontally or vertically.
+
+    Args:
+        channel (numpy.ndarray): The channel to mirror.
+        direction (str): 'horizontal' or 'vertical'.
+
+    Returns:
+        numpy.ndarray: The mirrored channel.
+    """
+    if direction == 'horizontal':
+        return np.fliplr(channel)
+    elif direction == 'vertical':
+        return np.flipud(channel)
+    else:
+        raise ValueError("Direction must be 'horizontal' or 'vertical'.")
+
+def split_and_shift_channels(image, shift_amount, direction, centered_channel, mode='shift'):
+    """
+    Split an RGB image into its channels, shift or mirror the channels based on mode,
+    and recombine into a new image.
+
+    Args:
+        image (Image): PIL Image object in RGB mode.
+        shift_amount (int): Number of pixels to shift the non-centered channels (for shift mode).
+        direction (str): 'horizontal' or 'vertical' for shift mode (ignored in mirror mode).
+        centered_channel (str): 'R', 'G', or 'B' to specify which channel stays centered/unchanged.
+        mode (str): 'shift' to shift channels away or 'mirror' to mirror channels.
+
+    Returns:
+        Image: New PIL Image with shifted/mirrored channels.
+    """
+    # Convert to RGB mode if not already
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+        
+    # Convert image to numpy array
+    pixels = np.array(image)
+    
+    # Extract channels
+    R = pixels[:, :, 0]
+    G = pixels[:, :, 1]
+    B = pixels[:, :, 2]
+    
+    # Map the centered_channel string to the appropriate channel variable
+    channel_dict = {'R': R, 'G': G, 'B': B}
+    centered_channel = centered_channel.upper()[0]  # Convert 'red' to 'R', etc.
+    
+    if mode == 'shift':
+        # Define shifts: centered channel stays at 0, others shift by -X and +X
+        if centered_channel == 'R':
+            shifts = {'R': 0, 'G': -shift_amount, 'B': shift_amount}
+        elif centered_channel == 'G':
+            shifts = {'R': -shift_amount, 'G': 0, 'B': shift_amount}
+        elif centered_channel == 'B':
+            shifts = {'R': -shift_amount, 'G': shift_amount, 'B': 0}
+        
+        # Apply shifts to each channel
+        R_processed = shift_channel(R, shifts['R'], direction)
+        G_processed = shift_channel(G, shifts['G'], direction)
+        B_processed = shift_channel(B, shifts['B'], direction)
+    
+    elif mode == 'mirror':
+        # Always mirror horizontally and vertically regardless of direction parameter
+        # Define which channels to mirror
+        if centered_channel == 'R':
+            # R stays the same, G mirrors horizontally, B mirrors vertically
+            R_processed = R.copy()
+            G_processed = mirror_channel(G, 'horizontal')
+            B_processed = mirror_channel(B, 'vertical')
+        elif centered_channel == 'G':
+            # G stays the same, R mirrors horizontally, B mirrors vertically
+            R_processed = mirror_channel(R, 'horizontal')
+            G_processed = G.copy()
+            B_processed = mirror_channel(B, 'vertical')
+        elif centered_channel == 'B':
+            # B stays the same, R mirrors horizontally, G mirrors vertically
+            R_processed = mirror_channel(R, 'horizontal')
+            G_processed = mirror_channel(G, 'vertical')
+            B_processed = B.copy()
+    else:
+        raise ValueError("Mode must be 'shift' or 'mirror'.")
+
+    # Combine processed channels
+    processed_pixels = np.stack([R_processed, G_processed, B_processed], axis=2)
+
+    # Convert back to PIL Image
+    processed_image = Image.fromarray(processed_pixels)
+
+    return processed_image
+
+def simulate_jpeg_artifacts(image, intensity):
+    """
+    Simulate JPEG compression artifacts by repeatedly compressing the image at low quality.
+
+    Args:
+        image (PIL.Image): The original image to process.
+        intensity (float): A value between 0 and 1 controlling the intensity of the effect.
+                           0 for minimal artifacts, 1 for extreme artifacts.
+
+    Returns:
+        PIL.Image: The image with simulated JPEG artifacts.
+    """
+    if not 0 <= intensity <= 1:
+        raise ValueError("Intensity must be between 0 and 1.")
+
+    # Map intensity to number of iterations and quality
+    # More extreme - up to 30 iterations (was 20)
+    iterations = int(1 + 29 * intensity)  # 1 to 30 iterations
+    # Allow quality to go down to 1 (was 10)
+    quality = int(90 - 89 * intensity)    # 90 to 1 quality
+
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        # Create a white background for RGBA images
+        if image.mode == 'RGBA':
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            # Paste the image on the background using the alpha channel as mask
+            background.paste(image, mask=image.split()[3])
+            current_image = background
+        else:
+            current_image = image.convert('RGB')
+    else:
+        current_image = image.copy()
+
+    for _ in range(iterations):
+        # Save the image to a BytesIO object with the specified quality
+        buffer = BytesIO()
+        current_image.save(buffer, format="JPEG", quality=quality)
+        # Reload the image from the buffer
+        buffer.seek(0)
+        current_image = Image.open(buffer)
+        current_image.load()  # Make sure the image data is loaded
+
+    return current_image
+
+def pixel_scatter(image, direction, select_by, min_val, max_val):
+    """
+    Scatter selected pixels horizontally or vertically based on a specified criterion.
+
+    Args:
+        image (PIL.Image): The input image.
+        direction (str): 'horizontal' to scatter within rows, 'vertical' to scatter within columns.
+        select_by (str): Criterion for selecting pixels ('brightness', 'red', 'green', 'blue', 'hue', 
+                         'saturation', 'luminance', 'contrast').
+        min_val (float): Minimum value for selection (e.g., 0-255 for brightness, 0-360 for hue).
+        max_val (float): Maximum value for selection.
+
+    Returns:
+        PIL.Image: The image with scattered pixels.
+    """
+    # Convert image to RGB mode if necessary
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+        
+    # Convert image to NumPy array
+    arr = np.array(image)
+    height, width, _ = arr.shape
+
+    # Define selection function based on select_by parameter
+    if select_by == 'brightness':
+        # Calculate brightness using the standard formula
+        brightness = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
+        mask = (brightness >= min_val) & (brightness <= max_val)
+    elif select_by == 'red':
+        mask = (arr[:, :, 0] >= min_val) & (arr[:, :, 0] <= max_val)
+    elif select_by == 'green':
+        mask = (arr[:, :, 1] >= min_val) & (arr[:, :, 1] <= max_val)
+    elif select_by == 'blue':
+        mask = (arr[:, :, 2] >= min_val) & (arr[:, :, 2] <= max_val)
+    elif select_by == 'hue':
+        # Compute hue for each pixel
+        def rgb_to_hue(pixel):
+            r, g, b = pixel / 255.0
+            h, _, _ = colorsys.rgb_to_hsv(r, g, b)
+            return h * 360  # Hue in degrees
+        
+        # Apply function to each pixel
+        hue = np.apply_along_axis(rgb_to_hue, 2, arr)
+        mask = (hue >= min_val) & (hue <= max_val)
+    elif select_by == 'saturation':
+        # Compute saturation for each pixel
+        def rgb_to_saturation(pixel):
+            r, g, b = pixel / 255.0
+            _, s, _ = colorsys.rgb_to_hsv(r, g, b)
+            return s * 100  # Scale to 0-100
+        
+        saturation = np.apply_along_axis(rgb_to_saturation, 2, arr)
+        mask = (saturation >= min_val) & (saturation <= max_val)
+    elif select_by == 'luminance':
+        # Compute luminance (value in HSV) for each pixel
+        def rgb_to_luminance(pixel):
+            r, g, b = pixel / 255.0
+            _, _, v = colorsys.rgb_to_hsv(r, g, b)
+            return v * 100  # Scale to 0-100
+        
+        luminance = np.apply_along_axis(rgb_to_luminance, 2, arr)
+        mask = (luminance >= min_val) & (luminance <= max_val)
+    elif select_by == 'contrast':
+        # Compute contrast for each pixel
+        def calculate_contrast(pixel):
+            return max(pixel) - min(pixel)
+        
+        contrast = np.apply_along_axis(calculate_contrast, 2, arr)
+        mask = (contrast >= min_val) & (contrast <= max_val)
+    else:
+        raise ValueError("Invalid select_by. Choose 'brightness', 'red', 'green', 'blue', 'hue', 'saturation', 'luminance', or 'contrast'.")
+
+    # Perform scattering
+    if direction == 'horizontal':
+        for y in range(height):
+            selected_xs = np.where(mask[y, :])[0]
+            if len(selected_xs) > 0:  # Only process if there are selected pixels
+                for x in selected_xs:
+                    x_prime = np.random.randint(0, width)
+                    arr[y, x], arr[y, x_prime] = arr[y, x_prime].copy(), arr[y, x].copy()
+    elif direction == 'vertical':
+        for x in range(width):
+            selected_ys = np.where(mask[:, x])[0]
+            if len(selected_ys) > 0:  # Only process if there are selected pixels
+                for y in selected_ys:
+                    y_prime = np.random.randint(0, height)
+                    arr[y, x], arr[y_prime, x] = arr[y_prime, x].copy(), arr[y, x].copy()
+    else:
+        raise ValueError("Direction must be 'horizontal' or 'vertical'.")
+
+    # Convert back to PIL Image
+    return Image.fromarray(arr)
+
+def contrast(pixel):
+    """Calculate the contrast of a pixel"""
+    return max(pixel[:3]) - min(pixel[:3])
+
+def diagonal_pixel_sort(image, chunk_size, sort_by, corner):
+    """
+    Apply pixel sorting diagonally within each chunk, starting from a specified corner.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        chunk_size (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
+        sort_by (str): Property to sort by ('color', 'brightness', 'hue', etc.).
+        corner (str): Starting corner ('top-left', 'top-right', 'bottom-left', 'bottom-right').
+    
+    Returns:
+        Image: Processed image with diagonally sorted pixels.
+    """
+    # Convert to RGB mode if needed
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Define sort function based on sort_by parameter
+    sort_function = {
+        'color': lambda p: sum(p[:3]),
+        'brightness': brightness,
+        'hue': hue,
+        'red': lambda p: p[0],
+        'green': lambda p: p[1],
+        'blue': lambda p: p[2],
+        'saturation': saturation,
+        'luminance': luminance,
+        'contrast': contrast
+    }.get(sort_by, lambda p: sum(p[:3]))
+    
+    # Create a new image for the result
+    result_image = Image.new(image.mode, image.size)
+    width, height = image.size
+    chunk_width, chunk_height = map(int, chunk_size.split('x'))
+    
+    # Get pixel data
+    pixels = list(image.getdata())
+    pixels_2d = []
+    for y in range(height):
+        row = []
+        for x in range(width):
+            row.append(pixels[y * width + x])
+        pixels_2d.append(row)
+    
+    # Calculate chunks
+    num_chunks_x = width // chunk_width
+    num_chunks_y = height // chunk_height
+    remainder_x = width % chunk_width
+    remainder_y = height % chunk_height
+    
+    # Process each chunk
+    for chunk_row in range(num_chunks_y):
+        for chunk_col in range(num_chunks_x):
+            start_y = chunk_row * chunk_height
+            start_x = chunk_col * chunk_width
+            
+            # Get diagonal lines within this chunk based on corner
+            diagonals = []
+            
+            if corner == 'top-left':
+                # Get all diagonals from top-left to bottom-right
+                for offset in range(chunk_width + chunk_height - 1):
+                    diagonal = []
+                    for d in range(max(offset - chunk_height + 1, 0), min(offset + 1, chunk_width)):
+                        x = start_x + d
+                        y = start_y + offset - d
+                        if (0 <= y < start_y + chunk_height and 
+                            0 <= x < start_x + chunk_width):
+                            diagonal.append(pixels_2d[y][x])
+                    diagonals.append(diagonal)
+            
+            elif corner == 'top-right':
+                # Get all diagonals from top-right to bottom-left
+                for offset in range(chunk_width + chunk_height - 1):
+                    diagonal = []
+                    for d in range(max(offset - chunk_height + 1, 0), min(offset + 1, chunk_width)):
+                        x = start_x + chunk_width - 1 - d
+                        y = start_y + offset - d
+                        if (0 <= y < start_y + chunk_height and 
+                            start_x <= x < start_x + chunk_width):
+                            diagonal.append(pixels_2d[y][x])
+                    diagonals.append(diagonal)
+            
+            elif corner == 'bottom-left':
+                # Get all diagonals from bottom-left to top-right
+                for offset in range(chunk_width + chunk_height - 1):
+                    diagonal = []
+                    for d in range(max(offset - chunk_height + 1, 0), min(offset + 1, chunk_width)):
+                        x = start_x + d
+                        y = start_y + chunk_height - 1 - (offset - d)
+                        if (start_y <= y < start_y + chunk_height and 
+                            0 <= x < start_x + chunk_width):
+                            diagonal.append(pixels_2d[y][x])
+                    diagonals.append(diagonal)
+            
+            elif corner == 'bottom-right':
+                # Get all diagonals from bottom-right to top-left
+                for offset in range(chunk_width + chunk_height - 1):
+                    diagonal = []
+                    for d in range(max(offset - chunk_height + 1, 0), min(offset + 1, chunk_width)):
+                        x = start_x + chunk_width - 1 - d
+                        y = start_y + chunk_height - 1 - (offset - d)
+                        if (start_y <= y < start_y + chunk_height and 
+                            start_x <= x < start_x + chunk_width):
+                            diagonal.append(pixels_2d[y][x])
+                    diagonals.append(diagonal)
+            
+            # Sort each diagonal
+            sorted_diagonals = []
+            for diagonal in diagonals:
+                if diagonal:  # Only sort non-empty diagonals
+                    sorted_diagonal = sorted(diagonal, key=sort_function)
+                    sorted_diagonals.append(sorted_diagonal)
+                else:
+                    sorted_diagonals.append([])
+            
+            # Place the sorted diagonals back
+            if corner == 'top-left':
+                for i, diagonal in enumerate(sorted_diagonals):
+                    idx = 0
+                    for d in range(max(i - chunk_height + 1, 0), min(i + 1, chunk_width)):
+                        x = start_x + d
+                        y = start_y + i - d
+                        if (0 <= y < start_y + chunk_height and 
+                            0 <= x < start_x + chunk_width and 
+                            idx < len(diagonal)):
+                            result_image.putpixel((x, y), diagonal[idx])
+                            idx += 1
+            
+            elif corner == 'top-right':
+                for i, diagonal in enumerate(sorted_diagonals):
+                    idx = 0
+                    for d in range(max(i - chunk_height + 1, 0), min(i + 1, chunk_width)):
+                        x = start_x + chunk_width - 1 - d
+                        y = start_y + i - d
+                        if (0 <= y < start_y + chunk_height and 
+                            start_x <= x < start_x + chunk_width and 
+                            idx < len(diagonal)):
+                            result_image.putpixel((x, y), diagonal[idx])
+                            idx += 1
+            
+            elif corner == 'bottom-left':
+                for i, diagonal in enumerate(sorted_diagonals):
+                    idx = 0
+                    for d in range(max(i - chunk_height + 1, 0), min(i + 1, chunk_width)):
+                        x = start_x + d
+                        y = start_y + chunk_height - 1 - (i - d)
+                        if (start_y <= y < start_y + chunk_height and 
+                            0 <= x < start_x + chunk_width and 
+                            idx < len(diagonal)):
+                            result_image.putpixel((x, y), diagonal[idx])
+                            idx += 1
+            
+            elif corner == 'bottom-right':
+                for i, diagonal in enumerate(sorted_diagonals):
+                    idx = 0
+                    for d in range(max(i - chunk_height + 1, 0), min(i + 1, chunk_width)):
+                        x = start_x + chunk_width - 1 - d
+                        y = start_y + chunk_height - 1 - (i - d)
+                        if (start_y <= y < start_y + chunk_height and 
+                            start_x <= x < start_x + chunk_width and 
+                            idx < len(diagonal)):
+                            result_image.putpixel((x, y), diagonal[idx])
+                            idx += 1
+    
+    # Handle remainder chunks on right edge
+    if remainder_x > 0:
+        for chunk_row in range(num_chunks_y):
+            start_y = chunk_row * chunk_height
+            start_x = num_chunks_x * chunk_width
+            
+            # Apply the same diagonal sorting but with adjusted width
+            process_remainder_chunk(result_image, pixels_2d, start_x, start_y, 
+                                   remainder_x, chunk_height, corner, sort_function)
+    
+    # Handle remainder chunks on bottom edge
+    if remainder_y > 0:
+        for chunk_col in range(num_chunks_x):
+            start_y = num_chunks_y * chunk_height
+            start_x = chunk_col * chunk_width
+            
+            # Apply the same diagonal sorting but with adjusted height
+            process_remainder_chunk(result_image, pixels_2d, start_x, start_y, 
+                                   chunk_width, remainder_y, corner, sort_function)
+    
+    # Handle corner remainder (if both remainders are non-zero)
+    if remainder_x > 0 and remainder_y > 0:
+        start_x = num_chunks_x * chunk_width
+        start_y = num_chunks_y * chunk_height
+        
+        # Process the corner remainder
+        process_remainder_chunk(result_image, pixels_2d, start_x, start_y, 
+                               remainder_x, remainder_y, corner, sort_function)
+    
+    return result_image
+
+def process_remainder_chunk(result_image, pixels_2d, start_x, start_y, width, height, corner, sort_function):
+    """Helper function to process remainder chunks with diagonal sorting"""
+    # Get diagonal lines within this chunk based on corner
+    diagonals = []
+    
+    if corner == 'top-left':
+        # Get all diagonals from top-left to bottom-right
+        for offset in range(width + height - 1):
+            diagonal = []
+            for d in range(max(offset - height + 1, 0), min(offset + 1, width)):
+                x = start_x + d
+                y = start_y + offset - d
+                if (0 <= y < start_y + height and 
+                    0 <= x < start_x + width):
+                    diagonal.append(pixels_2d[y][x])
+            diagonals.append(diagonal)
+    
+    elif corner == 'top-right':
+        # Get all diagonals from top-right to bottom-left
+        for offset in range(width + height - 1):
+            diagonal = []
+            for d in range(max(offset - height + 1, 0), min(offset + 1, width)):
+                x = start_x + width - 1 - d
+                y = start_y + offset - d
+                if (0 <= y < start_y + height and 
+                    start_x <= x < start_x + width):
+                    diagonal.append(pixels_2d[y][x])
+            diagonals.append(diagonal)
+    
+    elif corner == 'bottom-left':
+        # Get all diagonals from bottom-left to top-right
+        for offset in range(width + height - 1):
+            diagonal = []
+            for d in range(max(offset - height + 1, 0), min(offset + 1, width)):
+                x = start_x + d
+                y = start_y + height - 1 - (offset - d)
+                if (start_y <= y < start_y + height and 
+                    0 <= x < start_x + width):
+                    diagonal.append(pixels_2d[y][x])
+            diagonals.append(diagonal)
+    
+    elif corner == 'bottom-right':
+        # Get all diagonals from bottom-right to top-left
+        for offset in range(width + height - 1):
+            diagonal = []
+            for d in range(max(offset - height + 1, 0), min(offset + 1, width)):
+                x = start_x + width - 1 - d
+                y = start_y + height - 1 - (offset - d)
+                if (start_y <= y < start_y + height and 
+                    start_x <= x < start_x + width):
+                    diagonal.append(pixels_2d[y][x])
+            diagonals.append(diagonal)
+    
+    # Sort each diagonal
+    sorted_diagonals = []
+    for diagonal in diagonals:
+        if diagonal:  # Only sort non-empty diagonals
+            sorted_diagonal = sorted(diagonal, key=sort_function)
+            sorted_diagonals.append(sorted_diagonal)
+        else:
+            sorted_diagonals.append([])
+    
+    # Place the sorted diagonals back
+    if corner == 'top-left':
+        for i, diagonal in enumerate(sorted_diagonals):
+            idx = 0
+            for d in range(max(i - height + 1, 0), min(i + 1, width)):
+                x = start_x + d
+                y = start_y + i - d
+                if (0 <= y < start_y + height and 
+                    0 <= x < start_x + width and 
+                    idx < len(diagonal)):
+                    result_image.putpixel((x, y), diagonal[idx])
+                    idx += 1
+    
+    elif corner == 'top-right':
+        for i, diagonal in enumerate(sorted_diagonals):
+            idx = 0
+            for d in range(max(i - height + 1, 0), min(i + 1, width)):
+                x = start_x + width - 1 - d
+                y = start_y + i - d
+                if (0 <= y < start_y + height and 
+                    start_x <= x < start_x + width and 
+                    idx < len(diagonal)):
+                    result_image.putpixel((x, y), diagonal[idx])
+                    idx += 1
+    
+    elif corner == 'bottom-left':
+        for i, diagonal in enumerate(sorted_diagonals):
+            idx = 0
+            for d in range(max(i - height + 1, 0), min(i + 1, width)):
+                x = start_x + d
+                y = start_y + height - 1 - (i - d)
+                if (start_y <= y < start_y + height and 
+                    0 <= x < start_x + width and 
+                    idx < len(diagonal)):
+                    result_image.putpixel((x, y), diagonal[idx])
+                    idx += 1
+    
+    elif corner == 'bottom-right':
+        for i, diagonal in enumerate(sorted_diagonals):
+            idx = 0
+            for d in range(max(i - height + 1, 0), min(i + 1, width)):
+                x = start_x + width - 1 - d
+                y = start_y + height - 1 - (i - d)
+                if (start_y <= y < start_y + height and 
+                    start_x <= x < start_x + width and 
+                    idx < len(diagonal)):
+                    result_image.putpixel((x, y), diagonal[idx])
+                    idx += 1

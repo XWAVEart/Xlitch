@@ -340,18 +340,18 @@
                 </div>
             </div>
             
-            <!-- Pixel Sorting (Original) -->
-            <div id="pixel_sort_original_fields" class="effect-fields" style="display:none;">
-                <h3>Pixel Sorting Parameters</h3>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.direction.label }}</label>
-                        {{ form.direction(required=True) }}
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.sort_by.label }}</label>
-                        {{ form.sort_by(required=True) }}
-                    </div>
+            <!-- Pixel Sort Chunk (Combined) -->
+            <div id="pixel_sort_chunk_fields" class="effect-fields" style="display:none;">
+                <h3>Pixel Sort Chunk</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.sort_mode.label }}</label>
+                    {{ form.sort_mode(id="sort_mode", required=True) }}
+                    <span class="help-text">Choose the direction of pixel sorting within each chunk</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.sort_by.label }}</label>
+                    {{ form.sort_by(required=True) }}
+                    <span class="help-text">Property to sort pixels by</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">Chunk Size</label>
@@ -362,31 +362,12 @@
                     </div>
                     <span class="help-text">Values must be multiples of 8 (8-2048)</span>
                 </div>
-            </div>
-            
-            <!-- Pixel Sorting (Corner-to-Corner) -->
-            <div id="pixel_sort_corner_fields" class="effect-fields" style="display:none;">
-                <h3>Corner-to-Corner Pixel Sorting</h3>
-                <div class="form-group">
-                    <label class="required-field">{{ form.starting_corner.label }}</label>
-                    {{ form.starting_corner(required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.corner_direction.label }}</label>
-                    {{ form.corner_direction(required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.corner_sort_by.label }}</label>
-                    {{ form.corner_sort_by(required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">Chunk Size</label>
-                    <div class="chunk-size-inputs">
-                        {{ form.corner_chunk_width(required=True, placeholder="Width", value="32", min=8, max=2048, step=8) }}
-                        <span>x</span>
-                        {{ form.corner_chunk_height(required=True, placeholder="Height", value="32", min=8, max=2048, step=8) }}
+                <div id="diagonal_fields" class="sub-effect-fields" style="display:none;">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.starting_corner.label }}</label>
+                        {{ form.starting_corner(required=True) }}
+                        <span class="help-text">Starting point for diagonal sorting</span>
                     </div>
-                    <span class="help-text">Values must be multiples of 8 (8-2048)</span>
                 </div>
             </div>
             
@@ -801,7 +782,119 @@
                 </div>
             </div>
             
-            <div class="button-group">
+            <!-- Voronoi Pixel Sort -->
+            <div id="voronoi_sort_fields" class="effect-fields" style="display:none;">
+                <h3>Voronoi Pixel Sort</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.voronoi_num_cells.label }}</label>
+                    {{ form.voronoi_num_cells(required=True, min=10, max=1000, type="number") }}
+                    <span class="help-text">Number of Voronoi cells (10-1000)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.voronoi_size_variation.label }}</label>
+                    {{ form.voronoi_size_variation(required=True, min=0.0, max=1.0, step=0.1, type="number") }}
+                    <span class="help-text">Variation in cell sizes (0.0-1.0, higher = more random sizes)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.voronoi_sort_by.label }}</label>
+                    {{ form.voronoi_sort_by(required=True) }}
+                    <span class="help-text">Property to sort pixels by within each cell</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.voronoi_sort_order.label }}</label>
+                    {{ form.voronoi_sort_order(required=True) }}
+                    <span class="help-text">Angular ordering around the cell center</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.voronoi_orientation.label }}</label>
+                    {{ form.voronoi_orientation(required=True) }}
+                    <span class="help-text">Direction of sorting lines within each cell</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.voronoi_start_position.label }}</label>
+                    {{ form.voronoi_start_position(required=True) }}
+                    <span class="help-text">Starting position for pixel sorting within each cell</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.voronoi_seed.label }}</label>
+                    {{ form.voronoi_seed(required=True, min=1, max=9999, type="number") }}
+                    <span class="help-text">Seed for cell generation (1-9999, same seed = same pattern)</span>
+                </div>
+            </div>
+            
+            <!-- RGB Channel Shift -->
+            <div id="channel_shift_fields" class="effect-fields" style="display:none;">
+                <h3>RGB Channel Shift</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.channel_mode.label }}</label>
+                    {{ form.channel_mode(required=True, id="channel_mode") }}
+                    <span class="help-text">Choose between shifting channels apart or mirroring them</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.channel_shift_center.label }}</label>
+                    {{ form.channel_shift_center(required=True) }}
+                    <span class="help-text" id="center_channel_help">Channel that stays centered/unchanged (others will be processed)</span>
+                </div>
+                
+                <!-- Shift-specific fields -->
+                <div id="shift_mode_fields">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.channel_shift_amount.label }}</label>
+                        {{ form.channel_shift_amount(required=True, min=1, max=500, type="number") }}
+                        <span class="help-text">Number of pixels to shift non-centered channels (1-500)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.channel_shift_direction.label }}</label>
+                        {{ form.channel_shift_direction(required=True) }}
+                        <span class="help-text">Direction to shift the channels</span>
+                    </div>
+                </div>
+                
+                <!-- Mirror-specific message -->
+                <div id="mirror_mode_info" style="display:none;">
+                    <div class="form-group">
+                        <p class="help-text">In mirror mode, one channel remains unchanged while the other two are mirrored - one horizontally and one vertically.</p>
+                        <p class="help-text">No additional settings needed for mirror mode.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- JPEG Artifacts -->
+            <div id="jpeg_artifacts_fields" class="effect-fields" style="display:none;">
+                <h3>JPEG Artifacts</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.jpeg_intensity.label }}</label>
+                    {{ form.jpeg_intensity(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
+                    <span class="help-text">Intensity of JPEG degradation (0.0-1.0, higher = more artifacts)</span>
+                </div>
+            </div>
+            
+            <!-- Pixel Scatter -->
+            <div id="pixel_scatter_fields" class="effect-fields" style="display:none;">
+                <h3>Pixel Scatter</h3>
+                <div class="form-group">
+                    <label class="required-field">{{ form.scatter_direction.label }}</label>
+                    {{ form.scatter_direction(required=True) }}
+                    <span class="help-text">Direction to scatter pixels within rows or columns</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.scatter_select_by.label }}</label>
+                    {{ form.scatter_select_by(required=True) }}
+                    <span class="help-text">Criterion for selecting which pixels to scatter</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.scatter_min_value.label }}</label>
+                    {{ form.scatter_min_value(required=True, min=0, max=360, step=1, type="number") }}
+                    <span class="help-text">Minimum value for pixel selection (0-360 for hue, 0-255 for brightness)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.scatter_max_value.label }}</label>
+                    {{ form.scatter_max_value(required=True, min=0, max=360, step=1, type="number") }}
+                    <span class="help-text">Maximum value for pixel selection (0-360 for hue, 0-255 for brightness)</span>
+                </div>
+            </div>
+            
+            <div class="form-group submit-group">
                 <button type="button" id="process-button">Process Image</button>
             </div>
         </form>
@@ -811,10 +904,6 @@
     <div class="image-preview" id="image-preview">
         <h2>Image Preview</h2>
         <div class="preview-container">
-            <div class="preview-box">
-                <h3>Original Image</h3>
-                <img id="original-preview" src="" alt="Original Image">
-            </div>
             <div class="preview-box" id="processed-container" style="display:none;">
                 <h3>Processed Image</h3>
                 <img id="processed-preview" src="" alt="Processed Image">
@@ -822,6 +911,10 @@
                     <a id="download-link" href="" download>Download Processed Image</a>
                     <button id="use-processed-button" type="button">Use as Input Image</button>
                 </div>
+            </div>
+            <div class="preview-box">
+                <h3>Original Image</h3>
+                <img id="original-preview" src="" alt="Original Image">
             </div>
         </div>
     </div>
@@ -833,5 +926,24 @@
     </div>
     
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        // Handle sort mode selection to show/hide diagonal fields
+        $(document).ready(function() {
+            $('#sort_mode').change(function() {
+                var sortMode = $(this).val();
+                if (sortMode === 'diagonal') {
+                    $('#diagonal_fields').show();
+                } else {
+                    $('#diagonal_fields').hide();
+                }
+            });
+            
+            // Trigger change on page load to set initial state
+            $('#sort_mode').trigger('change');
+            
+            // Trigger the effect selection change on page load
+            $('#effect').trigger('change');
+        });
+    </script>
 </body>
 </html>
