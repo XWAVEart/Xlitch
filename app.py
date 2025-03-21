@@ -5,9 +5,10 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from utils import load_image, pixel_sorting, color_channel_manipulation, double_expose, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, color_shift_expansion, perlin_noise_displacement, data_mosh_blocks, voronoi_pixel_sort, split_and_shift_channels, simulate_jpeg_artifacts, pixel_scatter
+from utils import load_image, pixel_sorting, color_channel_manipulation, double_expose, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, color_shift_expansion, perlin_noise_displacement, data_mosh_blocks, voronoi_pixel_sort, split_and_shift_channels, simulate_jpeg_artifacts, pixel_scatter, resize_image_if_needed
 from flask_wtf.csrf import CSRFProtect
 import random
+from PIL import Image
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-for-testing')  # Use environment variable in production
@@ -17,6 +18,8 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 app.config['WTF_CSRF_ENABLED'] = True  # Enable CSRF protection
 app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # Extend CSRF token validity to 1 hour
 app.config['WTF_CSRF_CHECK_DEFAULT'] = False  # We'll check it manually for AJAX
+app.config['MAX_IMAGE_WIDTH'] = 1920  # Maximum image width before resizing
+app.config['MAX_IMAGE_HEIGHT'] = 1920  # Maximum image height before resizing - set to same as width for longest dimension resize
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -60,12 +63,20 @@ def index():
                 primary_image.save(primary_path)
                 logger.debug(f"Primary image saved to {primary_path}")
                 
-                # Load the image
+                # Load the image and check if it was resized
+                original_image = Image.open(primary_path)
+                original_size = original_image.size
                 image = load_image(primary_path)
+                
                 if image is None:
                     logger.error(f"Failed to load image from {primary_path}")
                     error_msg = "Error loading image"
                     return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
+                
+                # Check if the image was resized
+                was_resized = original_size != image.size
+                if was_resized:
+                    logger.info(f"Image resized from {original_size} to {image.size} for better performance (longest dimension limited to 1920px)")
                 
                 # Determine the selected effect and process accordingly
                 effect = form.effect.data
@@ -330,21 +341,25 @@ def index():
                 processed_image.save(output_path)
                 logger.debug(f"Processed image saved to {output_path}")
                 
-                # Return appropriate response based on request type
+                # Prepare the response
+                processed_url = url_for('processed_file', filename=output_filename)
+                
+                # Return a success response
                 if is_ajax:
-                    logger.debug("Returning JSON response for AJAX request")
-                    return jsonify({
-                        'success': True,
-                        'original_url': url_for('uploaded_file', filename=filename),
-                        'processed_url': url_for('processed_file', filename=output_filename)
-                    })
+                    response_data = {
+                        "success": True,
+                        "processed_url": processed_url
+                    }
+                    # Add information about resizing if it happened
+                    if was_resized:
+                        response_data["was_resized"] = True
+                        response_data["original_size"] = f"{original_size[0]}x{original_size[1]}"
+                        response_data["new_size"] = f"{image.size[0]}x{image.size[1]}"
+                    
+                    return jsonify(response_data)
                 else:
-                    logger.debug("Rendering result.html template for non-AJAX request")
-                    return render_template('result.html', 
-                                          original=filename, 
-                                          processed=output_filename,
-                                          original_url=url_for('uploaded_file', filename=filename),
-                                          processed_url=url_for('processed_file', filename=output_filename))
+                    # For non-AJAX requests, redirect to the processed image
+                    return redirect(processed_url)
             except Exception as e:
                 logger.error(f"Error processing image: {str(e)}")
                 logger.error(traceback.format_exc())

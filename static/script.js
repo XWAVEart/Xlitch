@@ -347,6 +347,22 @@ $(document).ready(function() {
                         console.log("Setting processed image URL:", data.processed_url);
                         addDebugInfo("Setting processed image URL: " + data.processed_url);
                         
+                        // Show notification if image was resized
+                        if (data.was_resized) {
+                            console.log("Image was automatically resized from", data.original_size, "to", data.new_size);
+                            addDebugInfo("Image was automatically resized from " + data.original_size + " to " + data.new_size);
+                            
+                            // Add a notification about the resize
+                            var resizeMsg = '<div class="alert alert-info resize-notification">Large image detected. Image was automatically resized from ' + 
+                                            data.original_size + ' to ' + data.new_size + ' for better performance (longest dimension limited to 1920px).</div>';
+                            $('#image-form').before(resizeMsg);
+                            
+                            // Set a timeout to remove the notification after 10 seconds
+                            setTimeout(function() {
+                                $('.resize-notification').fadeOut(500, function() { $(this).remove(); });
+                            }, 10000);
+                        }
+                        
                         // Force browser to reload the image by adding a timestamp
                         var timestamp = new Date().getTime();
                         var processedUrl = data.processed_url + '?t=' + timestamp;
@@ -504,6 +520,22 @@ $(document).ready(function() {
                     if (data.processed_url) {
                         console.log("Setting processed image URL:", data.processed_url);
                         addDebugInfo("Setting processed image URL: " + data.processed_url);
+                        
+                        // Show notification if image was resized
+                        if (data.was_resized) {
+                            console.log("Image was automatically resized from", data.original_size, "to", data.new_size);
+                            addDebugInfo("Image was automatically resized from " + data.original_size + " to " + data.new_size);
+                            
+                            // Add a notification about the resize
+                            var resizeMsg = '<div class="alert alert-info resize-notification">Large image detected. Image was automatically resized from ' + 
+                                            data.original_size + ' to ' + data.new_size + ' for better performance (longest dimension limited to 1920px).</div>';
+                            $('#image-form').before(resizeMsg);
+                            
+                            // Set a timeout to remove the notification after 10 seconds
+                            setTimeout(function() {
+                                $('.resize-notification').fadeOut(500, function() { $(this).remove(); });
+                            }, 10000);
+                        }
                         
                         // Force browser to reload the image by adding a timestamp
                         var timestamp = new Date().getTime();
