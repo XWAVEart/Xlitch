@@ -55,10 +55,10 @@ class ImageProcessForm(FlaskForm):
     
     # Pixel Sort Chunk (Combined pixel_sort_original and pixel_sort_corner)
     chunk_width = IntegerField('Chunk Width', 
-                              default=32,
+                              default=48,
                               validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
     chunk_height = IntegerField('Chunk Height', 
-                               default=32,
+                               default=48,
                                validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
     sort_by = SelectField('Sort By', choices=[
         ('color', 'Color (R+G+B)'), 
@@ -71,6 +71,10 @@ class ImageProcessForm(FlaskForm):
         ('luminance', 'Luminance'),
         ('contrast', 'Contrast')
     ], default='brightness', validators=[Optional()])
+    sort_order = SelectField('Sort Order', choices=[
+        ('ascending', 'Ascending (Low to High)'), 
+        ('descending', 'Descending (High to Low)')
+    ], default='descending', validators=[Optional()])
     sort_mode = SelectField('Sort Mode', choices=[
         ('horizontal', 'Horizontal'), 
         ('vertical', 'Vertical'),
@@ -134,10 +138,10 @@ class ImageProcessForm(FlaskForm):
         ('right', 'Right')
     ], default='right', validators=[Optional()])
     drift_bands = IntegerField('Number of Bands', 
-                              default=8,
-                              validators=[Optional(), NumberRange(min=8, max=48), validate_multiple_of_8])
+                              default=12,
+                              validators=[Optional(), NumberRange(min=1, max=48)])
     drift_intensity = FloatField('Drift Intensity Multiplier', 
-                               default=1.0,
+                               default=4.0,
                                validators=[Optional(), NumberRange(min=0.1, max=10.0)])
     
     # Spiral Sort
@@ -171,7 +175,7 @@ class ImageProcessForm(FlaskForm):
     
     # Bit Manipulation
     bit_chunk_size = IntegerField('Chunk Size', 
-                                default=8,
+                                default=24,
                                 validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
     
     # Full Frame Sorting
@@ -189,35 +193,38 @@ class ImageProcessForm(FlaskForm):
         ('saturation', 'Saturation'),
         ('luminance', 'Luminance'),
         ('contrast', 'Contrast')
-    ], default='brightness', validators=[Optional()])
+    ], default='hue', validators=[Optional()])
     full_frame_reverse = SelectField('Sort Order', choices=[
         ('false', 'Ascending (Low to High)'), 
         ('true', 'Descending (High to Low)')
-    ], default='false', validators=[Optional()])
+    ], default='true', validators=[Optional()])
     
     # Polar Sorting
     polar_chunk_size = IntegerField('Chunk Size', 
-                                  default=32,
+                                  default=64,
                                   validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
     polar_sort_by = SelectField('Sort By', choices=[
         ('angle', 'Angle (around center)'), 
         ('radius', 'Radius (distance from center)')
-    ], default='angle', validators=[Optional()])
+    ], default='radius', validators=[Optional()])
     polar_reverse = SelectField('Sort Order', choices=[
         ('false', 'Ascending (Low to High)'), 
         ('true', 'Descending (High to Low)')
-    ], default='false', validators=[Optional()])
+    ], default='true', validators=[Optional()])
     
     # Perlin Noise Sorting
     perlin_chunk_width = IntegerField('Chunk Width', 
-                                   default=32,
-                                   validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
-    perlin_chunk_height = IntegerField('Chunk Height', 
-                                    default=32,
+                                    default=128,
                                     validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
+    perlin_chunk_height = IntegerField('Chunk Height', 
+                                     default=1024,
+                                     validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
     perlin_noise_scale = FloatField('Noise Scale', 
-                                  default=0.01,
+                                  default=0.008,
                                   validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    perlin_seed = IntegerField('Noise Seed', 
+                             default=420,
+                             validators=[Optional(), NumberRange(min=1, max=9999)])
     perlin_direction = SelectField('Direction', choices=[
         ('horizontal', 'Horizontal'), 
         ('vertical', 'Vertical')
@@ -225,14 +232,11 @@ class ImageProcessForm(FlaskForm):
     perlin_reverse = SelectField('Sort Order', choices=[
         ('false', 'Ascending (Low to High)'), 
         ('true', 'Descending (High to Low)')
-    ], default='false', validators=[Optional()])
-    perlin_seed = IntegerField('Noise Seed',
-                             default=42,
-                             validators=[Optional(), NumberRange(min=1, max=9999)])
+    ], default='true', validators=[Optional()])
     
     # Perlin Full Frame
     perlin_full_frame_noise_scale = FloatField('Noise Scale', 
-                                            default=0.01,
+                                            default=0.005,
                                             validators=[Optional(), NumberRange(min=0.001, max=0.1)])
     perlin_full_frame_sort_by = SelectField('Sort By', choices=[
         ('color', 'Color (R+G+B)'), 
@@ -244,13 +248,13 @@ class ImageProcessForm(FlaskForm):
         ('saturation', 'Saturation'),
         ('luminance', 'Luminance'),
         ('contrast', 'Contrast')
-    ], default='brightness', validators=[Optional()])
+    ], default='hue', validators=[Optional()])
     perlin_full_frame_reverse = SelectField('Sort Order', choices=[
         ('false', 'Ascending (Low to High)'), 
         ('true', 'Descending (High to Low)')
     ], default='false', validators=[Optional()])
     perlin_full_frame_seed = IntegerField('Noise Seed',
-                                        default=42,
+                                        default=69,
                                         validators=[Optional(), NumberRange(min=1, max=9999)])
     
     # Perlin Merge
@@ -270,10 +274,10 @@ class ImageProcessForm(FlaskForm):
     
     # Pixelate
     pixelate_width = IntegerField('Pixel Width',
-                                default=8,
+                                default=16,
                                 validators=[Optional(), NumberRange(min=2, max=64)])
     pixelate_height = IntegerField('Pixel Height',
-                                 default=8,
+                                 default=16,
                                  validators=[Optional(), NumberRange(min=2, max=64)])
     pixelate_attribute = SelectField('Attribute', choices=[
         ('color', 'Color (Most Common)'),
@@ -281,66 +285,84 @@ class ImageProcessForm(FlaskForm):
         ('hue', 'Hue'),
         ('saturation', 'Saturation'),
         ('luminance', 'Luminance')
-    ], default='color', validators=[Optional()])
+    ], default='hue', validators=[Optional()])
     pixelate_bins = IntegerField('Number of Bins',
-                               default=100,
+                               default=200,
                                validators=[Optional(), NumberRange(min=10, max=1000)])
     
     # Concentric Shapes
     concentric_num_points = IntegerField('Number of Points',
-                                      default=10,
+                                      default=7,
                                       validators=[Optional(), NumberRange(min=1, max=100)])
     shape_type = SelectField('Shape Type', choices=[
         ('square', 'Square'),
         ('circle', 'Circle'),
         ('hexagon', 'Hexagon'),
         ('triangle', 'Triangle')
-    ], default='square', validators=[Optional()])
+    ], default='triangle', validators=[Optional()])
     concentric_thickness = IntegerField('Line Thickness',
                                      default=2,
                                      validators=[Optional(), NumberRange(min=1, max=10)])
     spacing = IntegerField('Spacing',
-                         default=10,
+                         default=20,
                          validators=[Optional(), NumberRange(min=1, max=50)])
     rotation_angle = IntegerField('Rotation Angle',
-                                default=0,
+                                default=9,
                                 validators=[Optional(), NumberRange(min=0, max=360)])
     darken_step = IntegerField('Darken Step',
                              default=0,
                              validators=[Optional(), NumberRange(min=0, max=255)])
     color_shift = IntegerField('Color Shift',
-                             default=0,
+                             default=15,
                              validators=[Optional(), NumberRange(min=0, max=360)])
     
     # Color Shift Expansion
     color_shift_num_points = IntegerField('Number of Seed Points',
-                                       default=5,
-                                       validators=[Optional(), NumberRange(min=1, max=100)])
+                                 default=7,
+                                 validators=[Optional(), NumberRange(min=1, max=100)])
     color_shift_amount = IntegerField('Shift Amount',
-                                   default=5,
-                                   validators=[Optional(), NumberRange(min=1, max=30)])
+                                 default=7,
+                                 validators=[Optional(), NumberRange(min=1, max=10)])
     expansion_type = SelectField('Expansion Type', choices=[
-        ('square', 'Square (8-way)'),
-        ('cross', 'Cross (4-way)'),
+        ('square', 'Square (8 directions)'),
+        ('cross', 'Cross (4 directions)'),
         ('circular', 'Circular')
-    ], default='square', validators=[Optional()])
-    color_shift_mode = SelectField('Mode', choices=[
-        ('classic', 'Classic (Fixed Shift)'),
-        ('xtreme', 'Xtreme (Distance-based Shift)')
-    ], default='xtreme', validators=[Optional()])
+    ], default='circular', validators=[Optional()])
+    pattern_type = SelectField('Seed Point Pattern', choices=[
+        ('random', 'Random'),
+        ('grid', 'Grid'),
+        ('radial', 'Radial'),
+        ('spiral', 'Spiral')
+    ], default='random', validators=[Optional()])
+    color_theme = SelectField('Color Theme', choices=[
+        ('full-spectrum', 'Full Spectrum'),
+        ('warm', 'Warm Colors'),
+        ('cool', 'Cool Colors'),
+        ('complementary', 'Complementary'),
+        ('analogous', 'Analogous')
+    ], default='complementary', validators=[Optional()])
+    saturation_boost = FloatField('Saturation Boost',
+                              default=0.5,
+                              validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    value_boost = FloatField('Brightness Boost',
+                         default=0.0,
+                         validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    decay_factor = FloatField('Decay Factor',
+                          default=0.2,
+                          validators=[Optional(), NumberRange(min=0.0, max=1.0)])
     
     # Perlin Displacement
     perlin_displacement_scale = IntegerField('Noise Scale',
-                                          default=100,
+                                          default=200,
                                           validators=[Optional(), NumberRange(min=10, max=500)])
     perlin_displacement_intensity = IntegerField('Displacement Intensity',
-                                              default=30,
+                                              default=40,
                                               validators=[Optional(), NumberRange(min=1, max=100)])
     perlin_displacement_octaves = IntegerField('Octaves',
-                                            default=6,
+                                            default=4,
                                             validators=[Optional(), NumberRange(min=1, max=10)])
     perlin_displacement_persistence = FloatField('Persistence',
-                                              default=0.5,
+                                              default=0.6,
                                               validators=[Optional(), NumberRange(min=0.1, max=1.0)])
     perlin_displacement_lacunarity = FloatField('Lacunarity',
                                              default=2.0,
@@ -348,10 +370,10 @@ class ImageProcessForm(FlaskForm):
     
     # Add form fields for Data Mosh Blocks effect
     data_mosh_operations = IntegerField('Number of Operations', 
-                                      default=64,
+                                      default=69,
                                       validators=[Optional(), NumberRange(min=1, max=256)])
     data_mosh_block_size = IntegerField('Max Block Size', 
-                                      default=50,
+                                      default=128,
                                       validators=[Optional(), NumberRange(min=1, max=500)])
     data_mosh_movement = SelectField('Block Movement', choices=[
         ('swap', 'Swap Blocks'), 
@@ -366,27 +388,27 @@ class ImageProcessForm(FlaskForm):
         ('never', 'Never'), 
         ('always', 'Always'),
         ('random', 'Random')
-    ], default='never', validators=[Optional()])
+    ], default='random', validators=[Optional()])
     data_mosh_shift = SelectField('Channel Value Shift', choices=[
         ('never', 'Never'), 
         ('always', 'Always'),
         ('random', 'Random')
-    ], default='never', validators=[Optional()])
+    ], default='random', validators=[Optional()])
     data_mosh_flip = SelectField('Block Flipping', choices=[
         ('never', 'Never'), 
         ('vertical', 'Vertical'),
         ('horizontal', 'Horizontal'),
         ('random', 'Random')
-    ], default='never', validators=[Optional()])
+    ], default='random', validators=[Optional()])
     data_mosh_seed = IntegerField('Random Seed', 
                                 validators=[Optional(), NumberRange(min=1, max=9999)])
     
     # Voronoi Pixel Sort
     voronoi_num_cells = IntegerField('Number of Cells',
-                                  default=100,
+                                  default=69,
                                   validators=[Optional(), NumberRange(min=10, max=1000)])
     voronoi_size_variation = FloatField('Size Variation',
-                                     default=0.5,
+                                     default=0.8,
                                      validators=[Optional(), NumberRange(min=0.0, max=1.0)])
     voronoi_sort_by = SelectField('Sort By', choices=[
         ('color', 'Color (R+G+B)'), 
@@ -398,7 +420,7 @@ class ImageProcessForm(FlaskForm):
         ('saturation', 'Saturation'),
         ('luminance', 'Luminance'),
         ('contrast', 'Contrast')
-    ], default='brightness', validators=[Optional()])
+    ], default='hue', validators=[Optional()])
     voronoi_sort_order = SelectField('Sort Order', choices=[
         ('clockwise', 'Clockwise'), 
         ('counter-clockwise', 'Counter-Clockwise')
@@ -408,21 +430,21 @@ class ImageProcessForm(FlaskForm):
         ('vertical', 'Vertical'),
         ('radial', 'Radial'),
         ('spiral', 'Spiral')
-    ], default='horizontal', validators=[Optional()])
+    ], default='spiral', validators=[Optional()])
     voronoi_start_position = SelectField('Start Position', choices=[
         ('left', 'Left'),
         ('right', 'Right'),
         ('top', 'Top'),
         ('bottom', 'Bottom'),
         ('center', 'Center')
-    ], default='left', validators=[Optional()])
+    ], default='center', validators=[Optional()])
     voronoi_seed = IntegerField('Random Seed',
-                             default=42,
+                             default=420,
                              validators=[Optional(), NumberRange(min=1, max=9999)])
     
     # RGB Channel Shift
     channel_shift_amount = IntegerField('Shift Amount', 
-                                   default=10,
+                                   default=42,
                                    validators=[Optional(), NumberRange(min=1, max=500)])
     channel_shift_direction = SelectField('Shift Direction', choices=[
         ('horizontal', 'Horizontal'), 
@@ -440,7 +462,7 @@ class ImageProcessForm(FlaskForm):
     
     # JPEG Artifacts
     jpeg_intensity = FloatField('Artifact Intensity', 
-                               default=0.5,
+                               default=1.0,
                                validators=[Optional(), NumberRange(min=0.0, max=1.0)])
     
     # Pixel Scatter
@@ -458,14 +480,14 @@ class ImageProcessForm(FlaskForm):
         ('saturation', 'Saturation'),
         ('luminance', 'Luminance'),
         ('contrast', 'Contrast')
-    ], default='brightness', validators=[Optional()])
+    ], default='red', validators=[Optional()])
     
     scatter_min_value = FloatField('Minimum Value',
-                              default=100,
+                              default=180,
                               validators=[Optional(), NumberRange(min=0, max=360)])
     
     scatter_max_value = FloatField('Maximum Value',
-                              default=200,
+                              default=360,
                               validators=[Optional(), NumberRange(min=0, max=360)])
     
     def validate(self, extra_validators=None):
@@ -494,6 +516,10 @@ class ImageProcessForm(FlaskForm):
             if not self.sort_by.data:
                 self.sort_by.errors = ['Sort by is required for Pixel Sort Chunk']
                 logger.debug("Missing sort_by for pixel_sort_chunk")
+                return False
+            if not self.sort_order.data:
+                self.sort_order.errors = ['Sort order is required for Pixel Sort Chunk']
+                logger.debug("Missing sort_order for pixel_sort_chunk")
                 return False
             if not self.sort_mode.data:
                 self.sort_mode.errors = ['Sort mode is required for Pixel Sort Chunk']
@@ -642,10 +668,21 @@ class ImageProcessForm(FlaskForm):
                 self.expansion_type.errors = ['Expansion type is required for Color Shift Expansion']
                 logger.debug("Missing expansion_type for color_shift_expansion")
                 return False
-            if not self.color_shift_mode.data:
-                self.color_shift_mode.errors = ['Mode is required for Color Shift Expansion']
-                logger.debug("Missing color_shift_mode for color_shift_expansion")
+            if not self.pattern_type.data:
+                self.pattern_type.errors = ['Seed point pattern is required for Color Shift Expansion']
+                logger.debug("Missing pattern_type for color_shift_expansion")
                 return False
+            if not self.color_theme.data:
+                self.color_theme.errors = ['Color theme is required for Color Shift Expansion']
+                logger.debug("Missing color_theme for color_shift_expansion")
+                return False
+            # These can have default values
+            if self.saturation_boost.data is None:
+                self.saturation_boost.data = 0.0
+            if self.value_boost.data is None:
+                self.value_boost.data = 0.0
+            if self.decay_factor.data is None:
+                self.decay_factor.data = 0.0
                 
         elif effect == 'perlin_displacement':
             if not self.perlin_displacement_scale.data:

@@ -376,11 +376,16 @@
                     <span class="help-text">Property to sort pixels by</span>
                 </div>
                 <div class="form-group">
+                    <label class="required-field">{{ form.sort_order.label }}</label>
+                    {{ form.sort_order(required=True) }}
+                    <span class="help-text">Sort in ascending (low to high) or descending (high to low) order</span>
+                </div>
+                <div class="form-group">
                     <label class="required-field">Chunk Size</label>
                     <div class="chunk-size-inputs">
-                        {{ form.chunk_width(required=True, placeholder="Width", value="32", min=8, max=2048, step=8) }}
+                        {{ form.chunk_width(required=True, placeholder="Width", value="48", min=8, max=2048, step=8) }}
                         <span>x</span>
-                        {{ form.chunk_height(required=True, placeholder="Height", value="32", min=8, max=2048, step=8) }}
+                        {{ form.chunk_height(required=True, placeholder="Height", value="48", min=8, max=2048, step=8) }}
                     </div>
                     <span class="help-text">Values must be multiples of 8 (8-2048)</span>
                 </div>
@@ -436,26 +441,25 @@
                 <div class="form-group">
                     <label class="required-field">Chunk Size</label>
                     <div class="chunk-size-inputs">
-                        {{ form.perlin_chunk_width(required=True, placeholder="Width", value="32", min=8, max=1024, step=8) }}
+                        {{ form.perlin_chunk_width(required=True, placeholder="Width", value="128", min=8, max=1024, step=8) }}
                         <span>x</span>
-                        {{ form.perlin_chunk_height(required=True, placeholder="Height", value="32", min=8, max=1024, step=8) }}
+                        {{ form.perlin_chunk_height(required=True, placeholder="Height", value="1024", min=8, max=1024, step=8) }}
                     </div>
                     <span class="help-text">Values must be multiples of 8 (8-1024). Use large values for full rows/columns.</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_noise_scale.label }}</label>
-                    {{ form.perlin_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
+                    {{ form.perlin_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number", value="0.008") }}
                     <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed)</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_seed.label }}</label>
-                    {{ form.perlin_seed(required=True, min=1, max=9999, type="number") }}
+                    {{ form.perlin_seed(required=True, min=1, max=9999, type="number", value="420") }}
                     <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_direction.label }}</label>
                     {{ form.perlin_direction(required=True) }}
-                    <span class="help-text">Direction to sort pixels</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_reverse.label }}</label>
@@ -468,12 +472,12 @@
                 <h3>Perlin Full Frame Sorting</h3>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_full_frame_noise_scale.label }}</label>
-                    {{ form.perlin_full_frame_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
+                    {{ form.perlin_full_frame_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number", value="0.005") }}
                     <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed)</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_full_frame_seed.label }}</label>
-                    {{ form.perlin_full_frame_seed(required=True, min=1, max=9999, type="number") }}
+                    {{ form.perlin_full_frame_seed(required=True, min=1, max=9999, type="number", value="69") }}
                     <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
                 </div>
                 <div class="form-group">
@@ -759,8 +763,8 @@
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.color_shift_amount.label }}</label>
-                    {{ form.color_shift_amount(required=True, min=1, max=30, type="number") }}
-                    <span class="help-text">Amount to shift hue per unit distance (1-30)</span>
+                    {{ form.color_shift_amount(required=True, min=1, max=10, type="number") }}
+                    <span class="help-text">Intensity of color effect (1-10, higher = more dramatic)</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.expansion_type.label }}</label>
@@ -768,9 +772,29 @@
                     <span class="help-text">How the color shift expands from seed points</span>
                 </div>
                 <div class="form-group">
-                    <label class="required-field">{{ form.color_shift_mode.label }}</label>
-                    {{ form.color_shift_mode(required=True) }}
-                    <span class="help-text">Classic: fixed shift, Xtreme: distance-based shift</span>
+                    <label class="required-field">{{ form.pattern_type.label }}</label>
+                    {{ form.pattern_type(required=True) }}
+                    <span class="help-text">Pattern for distributing seed points</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.color_theme.label }}</label>
+                    {{ form.color_theme(required=True) }}
+                    <span class="help-text">Color palette to use for the effect</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.saturation_boost.label }}</label>
+                    {{ form.saturation_boost(min=0.0, max=1.0, step=0.1, type="number") }}
+                    <span class="help-text">Increase color saturation (0.0-1.0)</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.value_boost.label }}</label>
+                    {{ form.value_boost(min=0.0, max=1.0, step=0.1, type="number") }}
+                    <span class="help-text">Increase brightness (0.0-1.0)</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.decay_factor.label }}</label>
+                    {{ form.decay_factor(min=0.0, max=1.0, step=0.1, type="number") }}
+                    <span class="help-text">Controls effect intensity falloff from seed points (0=uniform, 1=concentrated)</span>
                 </div>
             </div>
             
