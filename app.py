@@ -89,19 +89,20 @@ def index():
                     chunk_size = f"{chunk_width}x{chunk_height}"
                     sort_by = form.sort_by.data
                     sort_mode = form.sort_mode.data
+                    sort_order = form.sort_order.data
                     
                     # Process based on sort mode
                     if sort_mode == 'diagonal':
                         # Diagonal pixel sorting
                         starting_corner = form.starting_corner.data
-                        logger.debug(f"Diagonal pixel sort params: chunk_size={chunk_size}, sort_by={sort_by}, starting_corner={starting_corner}")
-                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by, starting_corner=starting_corner)
-                        settings = f"chunk_diagonal_{chunk_size}_{sort_by}_{starting_corner}"
+                        logger.debug(f"Diagonal pixel sort params: chunk_size={chunk_size}, sort_by={sort_by}, starting_corner={starting_corner}, sort_order={sort_order}")
+                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by, starting_corner=starting_corner, sort_order=sort_order)
+                        settings = f"chunk_diagonal_{chunk_size}_{sort_by}_{starting_corner}_{sort_order}"
                     else:
                         # Regular pixel sorting (horizontal or vertical)
-                        logger.debug(f"Regular pixel sort params: mode={sort_mode}, chunk_size={chunk_size}, sort_by={sort_by}")
-                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by)
-                        settings = f"chunk_{sort_mode}_{chunk_size}_{sort_by}"
+                        logger.debug(f"Regular pixel sort params: mode={sort_mode}, chunk_size={chunk_size}, sort_by={sort_by}, sort_order={sort_order}")
+                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by, sort_order=sort_order)
+                        settings = f"chunk_{sort_mode}_{chunk_size}_{sort_by}_{sort_order}"
                 elif effect == 'color_channel':
                     manipulation_type = form.manipulation_type.data
                     logger.debug(f"Color channel manipulation type: {manipulation_type}")
@@ -268,10 +269,32 @@ def index():
                     num_points = form.color_shift_num_points.data
                     shift_amount = form.color_shift_amount.data
                     expansion_type = form.expansion_type.data
-                    mode = form.color_shift_mode.data
-                    logger.debug(f"Color shift expansion params: num_points={num_points}, shift_amount={shift_amount}, expansion_type={expansion_type}, mode={mode}")
-                    processed_image = color_shift_expansion(image, num_points, shift_amount, expansion_type, mode)
-                    settings = f"colorshift_{num_points}_{shift_amount}_{expansion_type}_{mode}"
+                    pattern_type = form.pattern_type.data
+                    color_theme = form.color_theme.data
+                    saturation_boost = form.saturation_boost.data
+                    value_boost = form.value_boost.data
+                    decay_factor = form.decay_factor.data
+                    
+                    logger.debug(f"Color shift expansion params: num_points={num_points}, shift_amount={shift_amount}, "
+                                f"expansion_type={expansion_type}, pattern_type={pattern_type}, color_theme={color_theme}, "
+                                f"saturation_boost={saturation_boost}, value_boost={value_boost}, decay_factor={decay_factor}")
+                    
+                    # Use a fixed 'xtreme' mode since we no longer have a mode selector in the form
+                    mode = 'xtreme'
+                    processed_image = color_shift_expansion(
+                        image=image, 
+                        num_points=num_points, 
+                        shift_amount=shift_amount, 
+                        expansion_type=expansion_type,
+                        mode=mode,  # Use the hardcoded mode
+                        saturation_boost=saturation_boost, 
+                        value_boost=value_boost, 
+                        pattern_type=pattern_type, 
+                        color_theme=color_theme, 
+                        decay_factor=decay_factor
+                    )
+                    
+                    settings = f"colorshift_{num_points}_{shift_amount}_{expansion_type}_{pattern_type}_{color_theme}"
                 elif effect == 'perlin_displacement':
                     scale = form.perlin_displacement_scale.data
                     intensity = form.perlin_displacement_intensity.data
