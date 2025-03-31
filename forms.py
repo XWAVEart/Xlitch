@@ -35,7 +35,6 @@ class ImageProcessForm(FlaskForm):
         ('polar_sort', 'Polar Sorting'),
         ('perlin_noise_sort', 'Perlin Noise Sorting'),
         ('perlin_full_frame', 'Perlin Full Frame'),
-        ('perlin_merge', 'Perlin Merge'),
         ('perlin_displacement', 'Perlin Displacement'),
         ('pixelate', 'Pixelate'),
         ('concentric_shapes', 'Concentric Shapes'),
@@ -50,7 +49,11 @@ class ImageProcessForm(FlaskForm):
         ('voronoi_sort', 'Voronoi Pixel Sort'),
         ('channel_shift', 'RGB Channel Shift'),
         ('jpeg_artifacts', 'JPEG Artifacts'),
-        ('pixel_scatter', 'Pixel Scatter')
+        ('pixel_scatter', 'Pixel Scatter'),
+        ('databend', 'Databending'),
+        ('histogram_glitch', 'Histogram Glitch'),
+        ('ripple', 'Ripple Effect'),
+        ('masked_merge', 'Masked Merge')
     ], validators=[DataRequired()])
     
     # Pixel Sort Chunk (Combined pixel_sort_original and pixel_sort_corner)
@@ -256,21 +259,6 @@ class ImageProcessForm(FlaskForm):
     perlin_full_frame_seed = IntegerField('Noise Seed',
                                         default=69,
                                         validators=[Optional(), NumberRange(min=1, max=9999)])
-    
-    # Perlin Merge
-    perlin_merge_secondary = FileField('Secondary Image', validators=[
-        Optional(),
-        FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
-    ])
-    perlin_merge_noise_scale = FloatField('Noise Scale', 
-                                       default=0.01,
-                                       validators=[Optional(), NumberRange(min=0.001, max=0.1)])
-    perlin_merge_threshold = FloatField('Threshold', 
-                                     default=0.5,
-                                     validators=[Optional(), NumberRange(min=0.0, max=1.0)])
-    perlin_merge_seed = IntegerField('Noise Seed',
-                                   default=42,
-                                   validators=[Optional(), NumberRange(min=1, max=9999)])
     
     # Pixelate
     pixelate_width = IntegerField('Pixel Width',
@@ -490,6 +478,151 @@ class ImageProcessForm(FlaskForm):
                               default=360,
                               validators=[Optional(), NumberRange(min=0, max=360)])
     
+    # Databending
+    databend_intensity = FloatField('Databend Intensity',
+                                 default=0.1,
+                                 validators=[Optional(), NumberRange(min=0.1, max=1.0)])
+    
+    databend_preserve_header = SelectField('Preserve Header', choices=[
+        ('true', 'Yes (More Stable)'),
+        ('false', 'No (More Glitchy)')
+    ], default='true', validators=[Optional()])
+    
+    databend_seed = IntegerField('Random Seed',
+                               default=42,
+                               validators=[Optional(), NumberRange(min=1, max=9999)])
+    
+    # Histogram Glitch
+    hist_r_mode = SelectField('Red Channel Treatment', choices=[
+        ('solarize', 'Solarize (Sine Wave)'),
+        ('log', 'Logarithmic Compression'),
+        ('gamma', 'Gamma Adjustment'),
+        ('normal', 'Normal (No Change)')
+    ], default='solarize', validators=[Optional()])
+    
+    hist_g_mode = SelectField('Green Channel Treatment', choices=[
+        ('solarize', 'Solarize (Sine Wave)'),
+        ('log', 'Logarithmic Compression'),
+        ('gamma', 'Gamma Adjustment'),
+        ('normal', 'Normal (No Change)')
+    ], default='log', validators=[Optional()])
+    
+    hist_b_mode = SelectField('Blue Channel Treatment', choices=[
+        ('solarize', 'Solarize (Sine Wave)'),
+        ('log', 'Logarithmic Compression'),
+        ('gamma', 'Gamma Adjustment'),
+        ('normal', 'Normal (No Change)')
+    ], default='gamma', validators=[Optional()])
+    
+    hist_r_freq = FloatField('Red Solarize Frequency',
+                           default=1.0,
+                           validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+    
+    hist_r_phase = FloatField('Red Solarize Phase',
+                            default=0.0,
+                            validators=[Optional(), NumberRange(min=0.0, max=6.28)])
+    
+    hist_g_freq = FloatField('Green Solarize Frequency',
+                           default=1.0,
+                           validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+    
+    hist_g_phase = FloatField('Green Solarize Phase',
+                            default=0.0,
+                            validators=[Optional(), NumberRange(min=0.0, max=6.28)])
+    
+    hist_b_freq = FloatField('Blue Solarize Frequency',
+                           default=1.0,
+                           validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+    
+    hist_b_phase = FloatField('Blue Solarize Phase',
+                            default=0.0,
+                            validators=[Optional(), NumberRange(min=0.0, max=6.28)])
+    
+    hist_gamma = FloatField('Gamma Value',
+                          default=0.5,
+                          validators=[Optional(), NumberRange(min=0.1, max=3.0)])
+    
+    # Ripple Effect
+    ripple_num_droplets = IntegerField('Number of Droplets',
+                                     default=9,
+                                     validators=[Optional(), NumberRange(min=1, max=20)])
+    
+    ripple_amplitude = FloatField('Ripple Amplitude',
+                                default=45.0,
+                                validators=[Optional(), NumberRange(min=1.0, max=50.0)])
+                                
+    ripple_frequency = FloatField('Ripple Frequency',
+                               default=0.4,
+                               validators=[Optional(), NumberRange(min=0.01, max=1.0)])
+                               
+    ripple_decay = FloatField('Ripple Decay',
+                           default=0.004,
+                           validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+                           
+    ripple_distortion_type = SelectField('Distortion Type', choices=[
+        ('color_shift', 'Color Shift'),
+        ('pixelation', 'Pixelation'),
+        ('none', 'None (Plain Ripple)')
+    ], default='color_shift', validators=[Optional()])
+    
+    ripple_color_r = FloatField('Red Channel Factor',
+                             default=0.8,
+                             validators=[Optional(), NumberRange(min=0.5, max=1.5)])
+                             
+    ripple_color_g = FloatField('Green Channel Factor',
+                             default=1.0,
+                             validators=[Optional(), NumberRange(min=0.5, max=1.5)])
+                             
+    ripple_color_b = FloatField('Blue Channel Factor',
+                             default=1.2,
+                             validators=[Optional(), NumberRange(min=0.5, max=1.5)])
+                             
+    ripple_pixelation_scale = IntegerField('Pixelation Scale',
+                                        default=10,
+                                        validators=[Optional(), NumberRange(min=2, max=20)])
+                                        
+    ripple_pixelation_max_mag = FloatField('Pixelation Magnitude',
+                                        default=10.0,
+                                        validators=[Optional(), NumberRange(min=1.0, max=20.0)])
+    
+    # Masked Merge
+    masked_merge_secondary = FileField('Secondary Image', validators=[
+        Optional(),
+        FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
+    ])
+    mask_type = SelectField('Mask Type', choices=[
+        ('checkerboard', 'Checkerboard'),
+        ('random_checkerboard', 'Random Checkerboard'),
+        ('striped', 'Striped'),
+        ('gradient_striped', 'Gradient Striped'),
+        ('perlin', 'Perlin Noise'),
+        ('voronoi', 'Voronoi Cells')
+    ], default='checkerboard', validators=[Optional()])
+    mask_width = IntegerField('Width (pixels)',
+                          default=32,
+                          validators=[Optional(), NumberRange(min=8, max=512)])
+    mask_height = IntegerField('Height (pixels)',
+                           default=32,
+                           validators=[Optional(), NumberRange(min=8, max=512)])
+    mask_random_seed = IntegerField('Random Seed',
+                               default=42,
+                               validators=[Optional(), NumberRange(min=1, max=9999)])
+    stripe_width = IntegerField('Stripe Width (pixels)',
+                            default=16,
+                            validators=[Optional(), NumberRange(min=1, max=200)])
+    stripe_angle = IntegerField('Stripe Angle (degrees)',
+                           default=45,
+                           validators=[Optional(), NumberRange(min=0, max=180)])
+    perlin_noise_scale = FloatField('Noise Scale',
+                                default=0.01,
+                                validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    perlin_threshold = FloatField('Threshold',
+                              default=0.5,
+                              validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    voronoi_cells = IntegerField('Number of Cells',
+                             default=50,
+                             validators=[Optional(), NumberRange(min=10, max=500)])
+    
     def validate(self, extra_validators=None):
         """Custom validation based on the selected effect."""
         logger.debug(f"Validating form with effect: {self.effect.data}")
@@ -596,20 +729,6 @@ class ImageProcessForm(FlaskForm):
             if not self.perlin_full_frame_reverse.data:
                 self.perlin_full_frame_reverse.errors = ['Sort order is required for Perlin Full Frame']
                 logger.debug("Missing perlin_full_frame_reverse for perlin_full_frame")
-                return False
-                
-        elif effect == 'perlin_merge':
-            if not self.perlin_merge_secondary.data:
-                self.perlin_merge_secondary.errors = ['Secondary image is required for Perlin Merge']
-                logger.debug("Missing perlin_merge_secondary for perlin_merge")
-                return False
-            if not self.perlin_merge_noise_scale.data:
-                self.perlin_merge_noise_scale.errors = ['Noise scale is required for Perlin Merge']
-                logger.debug("Missing perlin_merge_noise_scale for perlin_merge")
-                return False
-            if not self.perlin_merge_threshold.data:
-                self.perlin_merge_threshold.errors = ['Threshold is required for Perlin Merge']
-                logger.debug("Missing perlin_merge_threshold for perlin_merge")
                 return False
                 
         elif effect == 'pixelate':
@@ -777,6 +896,70 @@ class ImageProcessForm(FlaskForm):
                 logger.debug("Invalid value range for pixel_scatter")
                 return False
                 
+        # Check if databend is valid
+        elif effect == 'databend':
+            logger.debug("Validating databend fields")
+            if self.databend_intensity.data is None:
+                self.databend_intensity.errors = ['Databend intensity is required']
+                logger.debug("Missing databend_intensity for databend")
+                return False
+            if self.databend_intensity.data < 0.1 or self.databend_intensity.data > 1.0:
+                self.databend_intensity.errors = ['Databend intensity must be between 0.1 and 1.0']
+                logger.debug(f"Invalid databend_intensity: {self.databend_intensity.data}")
+                return False
+            if not self.databend_preserve_header.data:
+                self.databend_preserve_header.errors = ['Preserve header option is required for Databending']
+                logger.debug("Missing databend_preserve_header for databend")
+                return False
+        
+        # Check if histogram_glitch is valid
+        elif effect == 'histogram_glitch':
+            logger.debug("Validating histogram_glitch fields")
+            if not self.hist_r_mode.data:
+                self.hist_r_mode.errors = ['Red channel treatment is required for Histogram Glitch']
+                logger.debug("Missing hist_r_mode for histogram_glitch")
+                return False
+            if not self.hist_g_mode.data:
+                self.hist_g_mode.errors = ['Green channel treatment is required for Histogram Glitch']
+                logger.debug("Missing hist_g_mode for histogram_glitch")
+                return False
+            if not self.hist_b_mode.data:
+                self.hist_b_mode.errors = ['Blue channel treatment is required for Histogram Glitch']
+                logger.debug("Missing hist_b_mode for histogram_glitch")
+                return False
+            
+            # Check solarize parameters if any channel is set to solarize mode
+            if self.hist_r_mode.data == 'solarize':
+                if not self.hist_r_freq.data or not self.hist_r_phase.data:
+                    self.hist_r_freq.errors = ['Frequency required for solarize mode']
+                    self.hist_r_phase.errors = ['Phase required for solarize mode']
+                    logger.debug("Missing solarize parameters for red channel")
+                    return False
+            
+            if self.hist_g_mode.data == 'solarize':
+                if not self.hist_g_freq.data or not self.hist_g_phase.data:
+                    self.hist_g_freq.errors = ['Frequency required for solarize mode']
+                    self.hist_g_phase.errors = ['Phase required for solarize mode']
+                    logger.debug("Missing solarize parameters for green channel")
+                    return False
+            
+            if self.hist_b_mode.data == 'solarize':
+                if not self.hist_b_freq.data or not self.hist_b_phase.data:
+                    self.hist_b_freq.errors = ['Frequency required for solarize mode']
+                    self.hist_b_phase.errors = ['Phase required for solarize mode']
+                    logger.debug("Missing solarize parameters for blue channel")
+                    return False
+            
+            # Check gamma if any channel is set to gamma mode
+            if 'gamma' in [self.hist_r_mode.data, self.hist_g_mode.data, self.hist_b_mode.data]:
+                if not self.hist_gamma.data:
+                    self.hist_gamma.errors = ['Gamma value is required when a channel is set to gamma mode']
+                    logger.debug("Missing hist_gamma for histogram_glitch")
+                    return False
+                if self.hist_gamma.data < 0.1 or self.hist_gamma.data > 3.0:
+                    self.hist_gamma.errors = ['Gamma value must be between 0.1 and 3.0']
+                    return False
+        
         # If we get here, validation passed
         logger.debug("Validation passed")
         return True

@@ -5,7 +5,16 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from utils import load_image, pixel_sorting, color_channel_manipulation, double_expose, pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, perlin_noise_replacement, perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, color_shift_expansion, perlin_noise_displacement, data_mosh_blocks, voronoi_pixel_sort, split_and_shift_channels, simulate_jpeg_artifacts, pixel_scatter, resize_image_if_needed
+from glitch_art import (
+    load_image, pixel_sorting, color_channel_manipulation, double_expose, 
+    pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, 
+    full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, 
+    perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, 
+    color_shift_expansion, perlin_noise_displacement, data_mosh_blocks, 
+    voronoi_pixel_sort, split_and_shift_channels, simulate_jpeg_artifacts, 
+    pixel_scatter, databend_image, histogram_glitch, resize_image_if_needed, 
+    Ripple, masked_merge
+)
 from flask_wtf.csrf import CSRFProtect
 import random
 from PIL import Image
@@ -146,27 +155,6 @@ def index():
                         return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
                     processed_image = double_expose(image, secondary_img, blend_mode, opacity)
                     settings = f"doubleexpose_{blend_mode}_{opacity}"
-                elif effect == 'perlin_merge':
-                    secondary_image = form.perlin_merge_secondary.data
-                    noise_scale = form.perlin_merge_noise_scale.data
-                    threshold = form.perlin_merge_threshold.data
-                    seed = form.perlin_merge_seed.data
-                    if not secondary_image:
-                        logger.error("Secondary image required for Perlin Merge but not provided")
-                        error_msg = "Secondary image required for Perlin Merge"
-                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                    secondary_filename = secure_filename(secondary_image.filename)
-                    secondary_path = os.path.join(app.config['UPLOAD_FOLDER'], secondary_filename)
-                    secondary_image.save(secondary_path)
-                    logger.debug(f"Secondary image saved to {secondary_path}")
-                    logger.debug(f"Perlin merge params: noise_scale={noise_scale}, threshold={threshold}, seed={seed}")
-                    secondary_img = load_image(secondary_path)
-                    if secondary_img is None:
-                        logger.error(f"Failed to load secondary image from {secondary_path}")
-                        error_msg = "Error loading secondary image"
-                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                    processed_image = perlin_noise_replacement(image, secondary_img, noise_scale, threshold, seed)
-                    settings = f"perlinmerge_{noise_scale}_{threshold}_{seed}"
                 elif effect == 'pixel_drift':
                     direction = form.drift_direction.data
                     drift_bands = form.drift_bands.data
@@ -350,13 +338,152 @@ def index():
                     min_val = form.scatter_min_value.data
                     max_val = form.scatter_max_value.data
                     logger.debug(f"Pixel scatter params: direction={direction}, select_by={select_by}, min_val={min_val}, max_val={max_val}")
-                    
                     processed_image = pixel_scatter(image, direction, select_by, min_val, max_val)
-                    settings = f"pixel_scatter_{direction}_{select_by}_{min_val}_{max_val}"
+                    settings = f"scatter_{direction}_{select_by}_{min_val}_{max_val}"
+                elif effect == 'databend':
+                    try:
+                        # Apply databending effect
+                        logger.info("Applying databending effect with pixel manipulation")
+                        intensity = form.databend_intensity.data
+                        preserve_header = form.databend_preserve_header.data == 'true'
+                        seed = form.databend_seed.data
+                        logger.debug(f"Databending params: intensity={intensity}, preserve_header={preserve_header}, seed={seed}")
+                        processed_image = databend_image(image, intensity, preserve_header, seed)
+                        settings = f"databend_{intensity}_{preserve_header}_{seed}"
+                    except Exception as e:
+                        logger.error(f"Error during databending process: {e}")
+                        error_msg = "Error applying databending effect. Try a different intensity or seed value."
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
+                elif effect == 'histogram_glitch':
+                    # Extract parameters
+                    r_mode = form.hist_r_mode.data
+                    g_mode = form.hist_g_mode.data
+                    b_mode = form.hist_b_mode.data
+                    r_freq = form.hist_r_freq.data
+                    r_phase = form.hist_r_phase.data
+                    g_freq = form.hist_g_freq.data
+                    g_phase = form.hist_g_phase.data
+                    b_freq = form.hist_b_freq.data
+                    b_phase = form.hist_b_phase.data
+                    gamma_val = form.hist_gamma.data
+                    
+                    logger.debug(f"Histogram glitch params: r_mode={r_mode}, g_mode={g_mode}, b_mode={b_mode}, "
+                               f"frequencies=({r_freq}, {g_freq}, {b_freq}), phases=({r_phase}, {g_phase}, {b_phase}), "
+                               f"gamma={gamma_val}")
+                    
+                    processed_image = histogram_glitch(
+                        image, r_mode, g_mode, b_mode, r_freq, r_phase, g_freq, g_phase, b_freq, b_phase, gamma_val
+                    )
+                    
+                    settings = f"histogram_{r_mode}_{g_mode}_{b_mode}"
+                elif effect == 'ripple':
+                    # Extract parameters
+                    num_droplets = form.ripple_num_droplets.data
+                    amplitude = form.ripple_amplitude.data
+                    frequency = form.ripple_frequency.data
+                    decay = form.ripple_decay.data
+                    distortion_type = form.ripple_distortion_type.data
+                    
+                    # Create distortion parameters based on the selected distortion type
+                    distortion_params = {}
+                    if distortion_type == 'color_shift':
+                        distortion_params = {
+                            'factor_r': form.ripple_color_r.data,
+                            'factor_g': form.ripple_color_g.data,
+                            'factor_b': form.ripple_color_b.data
+                        }
+                    elif distortion_type == 'pixelation':
+                        distortion_params = {
+                            'scale': form.ripple_pixelation_scale.data,
+                            'max_mag': form.ripple_pixelation_max_mag.data
+                        }
+                    
+                    logger.debug(f"Ripple effect params: num_droplets={num_droplets}, amplitude={amplitude}, "
+                               f"frequency={frequency}, decay={decay}, distortion_type={distortion_type}, "
+                               f"distortion_params={distortion_params}")
+                    
+                    processed_image = Ripple(
+                        image, num_droplets, amplitude, frequency, decay, distortion_type, distortion_params
+                    )
+                    
+                    settings = f"ripple_{num_droplets}_{amplitude}_{frequency}_{decay}_{distortion_type}"
+                elif effect == 'masked_merge':
+                    # Extract parameters
+                    secondary_image = form.masked_merge_secondary.data
+                    mask_type = form.mask_type.data
+                    mask_width = form.mask_width.data
+                    mask_height = form.mask_height.data
+                    random_seed = form.mask_random_seed.data if mask_type in ['random_checkerboard', 'perlin'] else None
+                    stripe_width = form.stripe_width.data
+                    stripe_angle = form.stripe_angle.data
+                    perlin_noise_scale = form.perlin_noise_scale.data
+                    perlin_threshold = form.perlin_threshold.data
+                    
+                    if not secondary_image:
+                        logger.error("Secondary image required for Masked Merge but not provided")
+                        error_msg = "Secondary image required for Masked Merge"
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
+                    
+                    secondary_filename = secure_filename(secondary_image.filename)
+                    secondary_path = os.path.join(app.config['UPLOAD_FOLDER'], secondary_filename)
+                    secondary_image.save(secondary_path)
+                    logger.debug(f"Secondary image saved to {secondary_path}")
+                    
+                    # Log parameters based on mask type
+                    if mask_type in ['checkerboard', 'random_checkerboard']:
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, mask_width={mask_width}, "
+                                    f"mask_height={mask_height}, random_seed={random_seed}")
+                    elif mask_type in ['striped', 'gradient_striped']:
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, stripe_width={stripe_width}, "
+                                    f"stripe_angle={stripe_angle}")
+                    elif mask_type == 'perlin':
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, noise_scale={perlin_noise_scale}, "
+                                    f"threshold={perlin_threshold}, random_seed={random_seed}")
+                    elif mask_type == 'voronoi':
+                        voronoi_cells = form.voronoi_cells.data
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, voronoi_cells={voronoi_cells}, "
+                                    f"random_seed={random_seed}")
+                    
+                    secondary_img = load_image(secondary_path)
+                    if secondary_img is None:
+                        logger.error(f"Failed to load secondary image from {secondary_path}")
+                        error_msg = "Error loading secondary image"
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
+                    
+                    # Call the function with appropriate parameters
+                    processed_image = masked_merge(
+                        image, 
+                        secondary_img, 
+                        mask_type, 
+                        mask_width, 
+                        mask_height, 
+                        random_seed,
+                        stripe_width,
+                        stripe_angle,
+                        perlin_noise_scale,
+                        perlin_threshold,
+                        voronoi_cells if mask_type == 'voronoi' else 50
+                    )
+                    
+                    # Create settings string based on mask type
+                    if mask_type in ['checkerboard', 'random_checkerboard']:
+                        settings = f"maskedmerge_{mask_type}_{mask_width}x{mask_height}"
+                        if mask_type == 'random_checkerboard' and random_seed:
+                            settings += f"_{random_seed}"
+                    elif mask_type in ['striped', 'gradient_striped']:
+                        settings = f"maskedmerge_{mask_type}_{stripe_width}px_{stripe_angle}deg"
+                    elif mask_type == 'perlin':
+                        settings = f"maskedmerge_{mask_type}_{perlin_noise_scale}_{perlin_threshold}"
+                        if random_seed:
+                            settings += f"_{random_seed}"
+                    elif mask_type == 'voronoi':
+                        settings = f"maskedmerge_{mask_type}_{voronoi_cells}"
+                        if random_seed:
+                            settings += f"_{random_seed}"
                 else:
                     logger.error(f"Unknown effect: {effect}")
                     error_msg = f"Unknown effect: {effect}"
-                    return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
+                    return jsonify({"success": False, "error": error_msg}) if is_ajax else render_template('index.html', form=form, error=error_msg)
                 
                 # Save the processed image
                 output_filename = generate_output_filename(filename, effect, settings)

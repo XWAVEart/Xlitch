@@ -51,6 +51,21 @@ $(document).ready(function() {
             if (effect === 'channel_shift') {
                 $('#channel_mode').trigger('change');
             }
+            
+            // Special handling for histogram_glitch effect
+            if (effect === 'histogram_glitch') {
+                updateHistogramGlitchUI();
+            }
+            
+            // Special handling for ripple effect
+            if (effect === 'ripple') {
+                $('#ripple_distortion_type').trigger('change');
+            }
+            
+            // Special handling for masked_merge effect
+            if (effect === 'masked_merge') {
+                $('#mask_type').trigger('change');
+            }
         }
     });
     
@@ -67,6 +82,23 @@ $(document).ready(function() {
             // Show the fields for the selected manipulation type
             $('#' + type + '_fields').show();
         }
+    });
+    
+    // Handle distortion type selection for ripple effect
+    $('#ripple_distortion_type').change(function() {
+        var type = $(this).val();
+        console.log("Ripple distortion type changed to:", type);
+        addDebugInfo("Ripple distortion type changed to: " + type);
+        
+        // Hide all distortion type fields first
+        $('#ripple_color_shift_fields, #ripple_pixelation_fields').hide();
+        
+        if (type === 'color_shift') {
+            $('#ripple_color_shift_fields').show();
+        } else if (type === 'pixelation') {
+            $('#ripple_pixelation_fields').show();
+        }
+        // 'none' type doesn't show any additional fields
     });
     
     // Handle channel mode selection for RGB Channel Shift
@@ -199,21 +231,6 @@ $(document).ready(function() {
             }
         }
         
-        if ($('#perlin_merge_fields').is(':visible')) {
-            if (!$('[name="perlin_merge_noise_scale"]').val()) {
-                $('[name="perlin_merge_noise_scale"]').val('0.01');
-                addDebugInfo("Set default perlin_merge_noise_scale to 0.01");
-            }
-            if (!$('[name="perlin_merge_threshold"]').val()) {
-                $('[name="perlin_merge_threshold"]').val('0.5');
-                addDebugInfo("Set default perlin_merge_threshold to 0.5");
-            }
-            if (!$('[name="perlin_merge_seed"]').val()) {
-                $('[name="perlin_merge_seed"]').val('42');
-                addDebugInfo("Set default perlin_merge_seed to 42");
-            }
-        }
-        
         if ($('#data_mosh_blocks_fields').is(':visible')) {
             if (!$('[name="data_mosh_operations"]').val()) {
                 $('[name="data_mosh_operations"]').val('10');
@@ -266,6 +283,92 @@ $(document).ready(function() {
         if ($('#adjust_fields').is(':visible') && !$('[name="intensity_factor"]').val()) {
             $('[name="intensity_factor"]').val('1.5');
             addDebugInfo("Set default intensity_factor to 1.5");
+        }
+        
+        if ($('#databend_fields').is(':visible')) {
+            if (!$('[name="databend_intensity"]').val()) {
+                $('[name="databend_intensity"]').val('0.1');
+                addDebugInfo("Set default databend_intensity to 0.1");
+            }
+            if (!$('[name="databend_seed"]').val()) {
+                $('[name="databend_seed"]').val('42');
+                addDebugInfo("Set default databend_seed to 42");
+            }
+        }
+        
+        if ($('#histogram_glitch_fields').is(':visible')) {
+            // Channel modes
+            if (!$('[name="hist_r_mode"]').val()) {
+                $('[name="hist_r_mode"]').val('gamma');
+                addDebugInfo("Set default hist_r_mode to gamma");
+            }
+            if (!$('[name="hist_g_mode"]').val()) {
+                $('[name="hist_g_mode"]').val('solarize');
+                addDebugInfo("Set default hist_g_mode to solarize");
+            }
+            if (!$('[name="hist_b_mode"]').val()) {
+                $('[name="hist_b_mode"]').val('solarize');
+                addDebugInfo("Set default hist_b_mode to solarize");
+            }
+            
+            // Solarize parameters
+            if (!$('[name="hist_r_freq"]').val()) {
+                $('[name="hist_r_freq"]').val('0.1');
+                addDebugInfo("Set default hist_r_freq to 0.1");
+            }
+            if (!$('[name="hist_r_phase"]').val()) {
+                $('[name="hist_r_phase"]').val('0.0');
+                addDebugInfo("Set default hist_r_phase to 0.0");
+            }
+            if (!$('[name="hist_g_freq"]').val()) {
+                $('[name="hist_g_freq"]').val('1.0');
+                addDebugInfo("Set default hist_g_freq to 1.0");
+            }
+            if (!$('[name="hist_g_phase"]').val()) {
+                $('[name="hist_g_phase"]').val('0.5');
+                addDebugInfo("Set default hist_g_phase to 0.5");
+            }
+            if (!$('[name="hist_b_freq"]').val()) {
+                $('[name="hist_b_freq"]').val('2.0');
+                addDebugInfo("Set default hist_b_freq to 2.0");
+            }
+            if (!$('[name="hist_b_phase"]').val()) {
+                $('[name="hist_b_phase"]').val('0.5');
+                addDebugInfo("Set default hist_b_phase to 0.5");
+            }
+            
+            // Gamma parameter
+            if (!$('[name="hist_gamma"]').val()) {
+                $('[name="hist_gamma"]').val('0.5');
+                addDebugInfo("Set default hist_gamma to 0.5");
+            }
+        }
+        
+        if ($('#masked_merge_fields').is(':visible')) {
+            if (!$('[name="mask_width"]').val()) {
+                $('[name="mask_width"]').val('32');
+                addDebugInfo("Set default mask_width to 32");
+            }
+            if (!$('[name="mask_height"]').val()) {
+                $('[name="mask_height"]').val('32');
+                addDebugInfo("Set default mask_height to 32");
+            }
+            if (!$('[name="stripe_width"]').val()) {
+                $('[name="stripe_width"]').val('16');
+                addDebugInfo("Set default stripe_width to 16");
+            }
+            if (!$('[name="stripe_angle"]').val()) {
+                $('[name="stripe_angle"]').val('45');
+                addDebugInfo("Set default stripe_angle to 45");
+            }
+            if (!$('[name="perlin_noise_scale"]').val()) {
+                $('[name="perlin_noise_scale"]').val('0.01');
+                addDebugInfo("Set default perlin_noise_scale to 0.01");
+            }
+            if (!$('[name="perlin_threshold"]').val()) {
+                $('[name="perlin_threshold"]').val('0.5');
+                addDebugInfo("Set default perlin_threshold to 0.5");
+            }
         }
     }
     
@@ -656,6 +759,72 @@ $(document).ready(function() {
         
         // Load the image
         img.src = processedUrl;
+    });
+    
+    function updateHistogramGlitchUI() {
+        // Get the current modes
+        var rMode = $('#hist-r-mode').val();
+        var gMode = $('#hist-g-mode').val();
+        var bMode = $('#hist-b-mode').val();
+        
+        // Show/hide relevant fields based on modes
+        if (rMode === 'solarize') {
+            $('#hist-r-freq, #hist-r-phase').closest('.form-group').show();
+        } else {
+            $('#hist-r-freq, #hist-r-phase').closest('.form-group').hide();
+        }
+        
+        if (gMode === 'solarize') {
+            $('#hist-g-freq, #hist-g-phase').closest('.form-group').show();
+        } else {
+            $('#hist-g-freq, #hist-g-phase').closest('.form-group').hide();
+        }
+        
+        if (bMode === 'solarize') {
+            $('#hist-b-freq, #hist-b-phase').closest('.form-group').show();
+        } else {
+            $('#hist-b-freq, #hist-b-phase').closest('.form-group').hide();
+        }
+        
+        // Show/hide gamma field
+        if (rMode === 'gamma' || gMode === 'gamma' || bMode === 'gamma') {
+            $('#hist-gamma').closest('.form-group').show();
+        } else {
+            $('#hist-gamma').closest('.form-group').hide();
+        }
+    }
+    
+    // Update histogram fields when modes change
+    $('#hist-r-mode, #hist-g-mode, #hist-b-mode').change(function() {
+        updateHistogramGlitchUI();
+    });
+    
+    // Handle mask type selection for Masked Merge effect
+    $('#mask_type').change(function() {
+        var type = $(this).val();
+        console.log("Mask type changed to:", type);
+        addDebugInfo("Mask type changed to: " + type);
+        
+        // Hide all mask-specific fields first
+        $('#checkerboard_fields, #mask_random_seed_field, #striped_fields, #gradient_description, #perlin_fields, #voronoi_fields').hide();
+        
+        // Show appropriate fields based on mask type
+        if (type === 'checkerboard') {
+            $('#checkerboard_fields').show();
+        } else if (type === 'random_checkerboard') {
+            $('#checkerboard_fields').show();
+            $('#mask_random_seed_field').show();
+        } else if (type === 'striped') {
+            $('#striped_fields').show();
+        } else if (type === 'gradient_striped') {
+            $('#striped_fields').show();
+            $('#gradient_description').show();
+        } else if (type === 'perlin') {
+            $('#perlin_fields').show();
+            $('#mask_random_seed_field').show();
+        } else if (type === 'voronoi') {
+            $('#voronoi_fields').show();
+        }
     });
     
     console.log("Glitch Art app initialized");

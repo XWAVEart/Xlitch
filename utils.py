@@ -9,6 +9,8 @@ import heapq
 import noise  # Import the noise module for Perlin noise
 from scipy.spatial import cKDTree
 from io import BytesIO
+from scipy.spatial import Voronoi
+from scipy.ndimage import distance_transform_edt as edt
 
 # Centralized pixel attribute calculations
 class PixelAttributes:
@@ -3045,3 +3047,1044 @@ def diagonal_pixel_sort(image, chunk_size, sort_by, corner, sort_order='ascendin
     # For brevity, this could be handled in a future update if needed
     
     return result_image
+
+def databend_image(image, intensity=0.1, preserve_header=True, seed=None):
+    """
+    Apply databending to an image by simulating binary data corruption through direct pixel manipulation.
+    
+    Args:
+        image (PIL.Image): PIL Image object to apply databending to.
+        intensity (float): Intensity of the effect (0.1 to 1.0).
+        preserve_header (bool): Controls whether the top portion of the image is preserved.
+        seed (int or None): Random seed for reproducible results.
+    
+    Returns:
+        PIL.Image: The glitched image.
+    """
+    # Set random seed if provided
+    if seed is not None:
+        random.seed(seed)
+    
+    # Make a copy of the original image to work with
+    img = image.copy().convert('RGB')
+    width, height = img.size
+    
+    # Create a pixelated version for more stable glitching
+    pixels = img.load()
+    
+    # Determine how much of the image to protect (if preserve_header is True)
+    protected_height = int(height * 0.1) if preserve_header else 0
+    
+    # Apply different glitch effects based on intensity
+    # Scale the number of operations based on intensity - new range is 0.1 to 1.0
+    # At 0.1 intensity: ~5-10 operations
+    # At 1.0 intensity: ~100-150 operations
+    num_operations = int(intensity * 150)
+    num_operations = max(5, min(150, num_operations))  # Ensure a reasonable range
+    
+    # Different databending-like effects
+    operations = [
+        'shift_rows',
+        'shift_columns',
+        'swap_channels',
+        'xor_block',
+        'repeat_block',
+        'color_shift',
+        'invert_block',
+        'shift_channels',
+        'block_offset',
+    ]
+    
+    # Ensure minimal dimensions for operations
+    if width < 10 or height < 10:
+        # For very small images, just apply simple color effects
+        for y in range(height):
+            for x in range(width):
+                r, g, b = pixels[x, y]
+                if random.random() < intensity:
+                    # Apply random color effect
+                    effect = random.choice(['invert', 'xor', 'shift'])
+                    if effect == 'invert':
+                        pixels[x, y] = (255 - r, 255 - g, 255 - b)
+                    elif effect == 'xor':
+                        xor_val = random.randint(1, 255)
+                        pixels[x, y] = (r ^ xor_val, g ^ xor_val, b ^ xor_val)
+                    elif effect == 'shift':
+                        shift = random.randint(-50, 50)
+                        pixels[x, y] = (
+                            max(0, min(255, r + shift)),
+                            max(0, min(255, g + shift)),
+                            max(0, min(255, b + shift))
+                        )
+        return img
+    
+    for _ in range(num_operations):
+        # Select a random operation
+        operation = random.choice(operations)
+        
+        if operation == 'shift_rows':
+            # Shift a chunk of rows horizontally
+            # Ensure valid y range
+            max_start_y = max(protected_height, height - 10)
+            if protected_height >= max_start_y:
+                continue  # Skip this operation if there's not enough height
+            
+            start_y = random.randint(protected_height, max_start_y)
+            y_size = random.randint(1, max(1, min(20, height - start_y)))
+            shift_amount = random.randint(-width // 2, width // 2)
+            
+            for y in range(start_y, min(start_y + y_size, height)):
+                row = [pixels[x, y] for x in range(width)]
+                # Shift the row
+                shifted_row = row[-shift_amount:] + row[:-shift_amount] if shift_amount > 0 else row[abs(shift_amount):] + row[:abs(shift_amount)]
+                # Write back
+                for x in range(width):
+                    pixels[x, y] = shifted_row[x]
+                    
+        elif operation == 'shift_columns':
+            # Shift a chunk of columns vertically
+            # Ensure valid x range
+            max_start_x = max(0, width - 10)
+            if max_start_x <= 0:
+                continue  # Skip this operation if there's not enough width
+                
+            start_x = random.randint(0, max_start_x)
+            x_size = random.randint(1, max(1, min(20, width - start_x)))
+            shift_amount = random.randint(-height // 3, height // 3)
+            
+            for x in range(start_x, min(start_x + x_size, width)):
+                col = [pixels[x, y] for y in range(protected_height, height)]
+                # Shift the column
+                if not col:  # Skip if column is empty
+                    continue
+                shifted_col = col[-shift_amount:] + col[:-shift_amount] if shift_amount > 0 else col[abs(shift_amount):] + col[:abs(shift_amount)]
+                # Write back
+                for i, y in enumerate(range(protected_height, height)):
+                    if i < len(shifted_col):
+                        pixels[x, y] = shifted_col[i]
+                        
+        elif operation == 'swap_channels':
+            # Swap color channels in a random block
+            max_start_x = max(0, width - 10)
+            max_start_y = max(protected_height, height - 10)
+            
+            if max_start_x <= 0 or max_start_y <= protected_height:
+                continue  # Skip if we don't have enough space
+                
+            start_x = random.randint(0, max_start_x)
+            start_y = random.randint(protected_height, max_start_y)
+            block_width = random.randint(1, max(1, min(100, width - start_x)))
+            block_height = random.randint(1, max(1, min(100, height - start_y)))
+            swap_type = random.choice(['rb', 'rg', 'gb'])
+            
+            for y in range(start_y, min(start_y + block_height, height)):
+                for x in range(start_x, min(start_x + block_width, width)):
+                    r, g, b = pixels[x, y]
+                    if swap_type == 'rb':
+                        pixels[x, y] = (b, g, r)
+                    elif swap_type == 'rg':
+                        pixels[x, y] = (g, r, b)
+                    elif swap_type == 'gb':
+                        pixels[x, y] = (r, b, g)
+                        
+        elif operation == 'xor_block':
+            # Apply XOR to a block
+            max_start_x = max(0, width - 10)
+            max_start_y = max(protected_height, height - 10)
+            
+            if max_start_x <= 0 or max_start_y <= protected_height:
+                continue  # Skip if we don't have enough space
+                
+            start_x = random.randint(0, max_start_x)
+            start_y = random.randint(protected_height, max_start_y)
+            block_width = random.randint(1, max(1, min(100, width - start_x)))
+            block_height = random.randint(1, max(1, min(100, height - start_y)))
+            xor_value = random.randint(1, 255)
+            
+            for y in range(start_y, min(start_y + block_height, height)):
+                for x in range(start_x, min(start_x + block_width, width)):
+                    r, g, b = pixels[x, y]
+                    pixels[x, y] = ((r ^ xor_value) & 0xFF, (g ^ xor_value) & 0xFF, (b ^ xor_value) & 0xFF)
+                    
+        elif operation == 'repeat_block':
+            # Repeat a block somewhere else
+            max_src_x = max(0, width - 20)
+            max_src_y = max(protected_height, height - 20)
+            
+            if max_src_x <= 0 or max_src_y <= protected_height:
+                continue  # Skip if we don't have enough space
+                
+            src_x = random.randint(0, max_src_x)
+            src_y = random.randint(protected_height, max_src_y)
+            block_width = random.randint(1, max(1, min(50, width - src_x)))
+            block_height = random.randint(1, max(1, min(50, height - src_y)))
+            
+            # Ensure destination has valid space
+            max_dst_x = max(0, width - block_width)
+            max_dst_y = max(protected_height, height - block_height)
+            
+            if max_dst_x < 0 or max_dst_y < protected_height:
+                continue  # Skip if destination doesn't have enough space
+                
+            # Destination
+            dst_x = random.randint(0, max_dst_x)
+            dst_y = random.randint(protected_height, max_dst_y)
+            
+            # Copy block
+            for y_offset in range(block_height):
+                for x_offset in range(block_width):
+                    if (src_y + y_offset < height and src_x + x_offset < width and 
+                        dst_y + y_offset < height and dst_x + x_offset < width):
+                        pixels[dst_x + x_offset, dst_y + y_offset] = pixels[src_x + x_offset, src_y + y_offset]
+                        
+        elif operation == 'color_shift':
+            # Shift color values in a region
+            max_start_x = max(0, width - 10)
+            max_start_y = max(protected_height, height - 10)
+            
+            if max_start_x <= 0 or max_start_y <= protected_height:
+                continue  # Skip if we don't have enough space
+                
+            start_x = random.randint(0, max_start_x)
+            start_y = random.randint(protected_height, max_start_y)
+            block_width = random.randint(1, max(1, min(200, width - start_x)))
+            block_height = random.randint(1, max(1, min(200, height - start_y)))
+            
+            shift_r = random.randint(-50, 50)
+            shift_g = random.randint(-50, 50)
+            shift_b = random.randint(-50, 50)
+            
+            for y in range(start_y, min(start_y + block_height, height)):
+                for x in range(start_x, min(start_x + block_width, width)):
+                    r, g, b = pixels[x, y]
+                    pixels[x, y] = (
+                        max(0, min(255, r + shift_r)),
+                        max(0, min(255, g + shift_g)),
+                        max(0, min(255, b + shift_b))
+                    )
+                    
+        elif operation == 'invert_block':
+            # Invert colors in a block
+            max_start_x = max(0, width - 10)
+            max_start_y = max(protected_height, height - 10)
+            
+            if max_start_x <= 0 or max_start_y <= protected_height:
+                continue  # Skip if we don't have enough space
+                
+            start_x = random.randint(0, max_start_x)
+            start_y = random.randint(protected_height, max_start_y)
+            block_width = random.randint(1, max(1, min(100, width - start_x)))
+            block_height = random.randint(1, max(1, min(100, height - start_y)))
+            
+            for y in range(start_y, min(start_y + block_height, height)):
+                for x in range(start_x, min(start_x + block_width, width)):
+                    r, g, b = pixels[x, y]
+                    pixels[x, y] = (255 - r, 255 - g, 255 - b)
+                    
+        elif operation == 'shift_channels':
+            # Shift RGB channels independently
+            max_start_x = max(0, width - 10)
+            max_start_y = max(protected_height, height - 10)
+            
+            if max_start_x <= 0 or max_start_y <= protected_height:
+                continue  # Skip if we don't have enough space
+                
+            start_x = random.randint(0, max_start_x)
+            start_y = random.randint(protected_height, max_start_y)
+            block_width = random.randint(1, max(1, min(300, width - start_x)))
+            block_height = random.randint(1, max(1, min(100, height - start_y)))
+            
+            # Skip if block is too small
+            if block_width < 4 or block_height < 2:
+                continue
+                
+            # Extract the block for each channel
+            r_channel = []
+            g_channel = []
+            b_channel = []
+            
+            for y in range(start_y, min(start_y + block_height, height)):
+                r_row = []
+                g_row = []
+                b_row = []
+                for x in range(start_x, min(start_x + block_width, width)):
+                    r, g, b = pixels[x, y]
+                    r_row.append(r)
+                    g_row.append(g)
+                    b_row.append(b)
+                r_channel.append(r_row)
+                g_channel.append(g_row)
+                b_channel.append(b_row)
+            
+            # Ensure we have data in the channels
+            if not r_channel or not r_channel[0]:
+                continue
+                
+            # Get channel lengths for safe shifting
+            row_length = len(r_channel[0])
+            
+            # Determine safe shift amounts to avoid empty ranges
+            max_shift = max(1, row_length // 4)
+            
+            # Shift each channel differently
+            r_shift = random.randint(-max_shift, max_shift)
+            g_shift = random.randint(-max_shift, max_shift)
+            b_shift = random.randint(-max_shift, max_shift)
+            
+            # Apply shifts
+            for y_idx in range(len(r_channel)):
+                r_row = r_channel[y_idx]
+                g_row = g_channel[y_idx]
+                b_row = b_channel[y_idx]
+                
+                # Only shift if rows have data
+                if not r_row or not g_row or not b_row:
+                    continue
+                    
+                # Apply shifts safely
+                if abs(r_shift) >= len(r_row):
+                    r_shift = r_shift % len(r_row)
+                if abs(g_shift) >= len(g_row):
+                    g_shift = g_shift % len(g_row)
+                if abs(b_shift) >= len(b_row):
+                    b_shift = b_shift % len(b_row)
+                
+                r_row_shifted = r_row[-r_shift:] + r_row[:-r_shift] if r_shift > 0 else r_row[abs(r_shift):] + r_row[:abs(r_shift)]
+                g_row_shifted = g_row[-g_shift:] + g_row[:-g_shift] if g_shift > 0 else g_row[abs(g_shift):] + g_row[:abs(g_shift)]
+                b_row_shifted = b_row[-b_shift:] + b_row[:-b_shift] if b_shift > 0 else b_row[abs(b_shift):] + b_row[:abs(b_shift)]
+                
+                for x_idx in range(len(r_row)):
+                    x = start_x + x_idx
+                    y = start_y + y_idx
+                    if y < height and x < width and x_idx < len(r_row_shifted) and x_idx < len(g_row_shifted) and x_idx < len(b_row_shifted):
+                        pixels[x, y] = (r_row_shifted[x_idx], g_row_shifted[x_idx], b_row_shifted[x_idx])
+                        
+        elif operation == 'block_offset':
+            # Create offset block effect
+            if random.random() < 0.7:  # Horizontal offset
+                # Ensure valid y range for protected height
+                if height <= protected_height + 20:
+                    continue  # Skip if not enough vertical space
+                    
+                max_y_start = max(protected_height, height - 20)
+                if protected_height >= max_y_start:
+                    continue  # Skip if not enough space
+                    
+                y_start = random.randint(protected_height, max_y_start)
+                height_offset = random.randint(1, max(1, min(50, height - y_start)))
+                x_offset = random.randint(-width // 3, width // 3) if width > 3 else 1
+                
+                for y in range(y_start, min(y_start + height_offset, height)):
+                    for x in range(width):
+                        src_x = (x - x_offset) % width
+                        pixels[x, y] = pixels[src_x, y]
+            else:  # Vertical offset
+                # Ensure valid x range
+                max_x_start = max(0, width - 20)
+                if max_x_start <= 0:
+                    continue  # Skip if not enough horizontal space
+                    
+                x_start = random.randint(0, max_x_start)
+                width_offset = random.randint(1, max(1, min(50, width - x_start)))
+                
+                # Ensure vertical space considering protected height
+                if height <= protected_height:
+                    continue  # Skip if all vertical space is protected
+                    
+                y_offset = random.randint(-max(1, (height - protected_height) // 3), max(1, (height - protected_height) // 3))
+                
+                for x in range(x_start, min(x_start + width_offset, width)):
+                    for y in range(protected_height, height):
+                        # Make sure we stay within bounds
+                        if height <= protected_height:
+                            continue
+                        src_y = protected_height + ((y - protected_height - y_offset) % max(1, (height - protected_height)))
+                        pixels[x, y] = pixels[x, src_y]
+    
+    # Add scan lines for more glitch aesthetic
+    if random.random() < 0.3 and height > protected_height + 5:
+        scan_line_spacing = random.randint(4, min(20, max(4, height // 10)))
+        scan_line_offset = random.randint(0, scan_line_spacing - 1) if scan_line_spacing > 1 else 0
+        
+        for y in range(protected_height, height):
+            if scan_line_spacing > 0 and (y + scan_line_offset) % scan_line_spacing == 0:
+                for x in range(width):
+                    r, g, b = pixels[x, y]
+                    pixels[x, y] = (min(255, int(r * 1.2)), min(255, int(g * 1.2)), min(255, int(b * 1.2)))
+    
+    # Add some noisy lines
+    if random.random() < 0.4 and height > protected_height and width > 0:
+        num_lines = random.randint(1, max(3, min(20, height // 20)))
+        for _ in range(num_lines):
+            if height <= protected_height:
+                continue  # Skip if protected height is the whole image
+                
+            y = random.randint(protected_height, height - 1)
+            length = random.randint(max(1, width // 5), width) if width > 5 else width
+            start_x = random.randint(0, max(0, width - length))
+            color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            
+            for x in range(start_x, min(start_x + length, width)):
+                if x < width:
+                    pixels[x, y] = color
+    
+    # Add noise in some blocks
+    if random.random() < 0.5 and width > 10 and height > protected_height + 10:
+        noise_blocks = random.randint(1, max(1, min(5, (width * height) // 10000)))
+        for _ in range(noise_blocks):
+            max_start_x = max(0, width - 50)
+            max_start_y = max(protected_height, height - 50)
+            
+            if max_start_x < 0 or max_start_y <= protected_height:
+                continue  # Skip if not enough space
+                
+            start_x = random.randint(0, max_start_x)
+            start_y = random.randint(protected_height, max_start_y)
+            block_width = random.randint(1, max(1, min(100, width - start_x)))
+            block_height = random.randint(1, max(1, min(30, height - start_y)))
+            noise_intensity = random.uniform(0.2, 0.8)
+            
+            for y in range(start_y, min(start_y + block_height, height)):
+                for x in range(start_x, min(start_x + block_width, width)):
+                    if random.random() < noise_intensity:
+                        r, g, b = pixels[x, y]
+                        noise = random.randint(-50, 50)
+                        pixels[x, y] = (
+                            max(0, min(255, r + noise)),
+                            max(0, min(255, g + noise)),
+                            max(0, min(255, b + noise))
+                        )
+    
+    return img
+
+def find_next_from_index(data, pattern, start_index):
+    """Helper function to find the next occurrence of a byte pattern"""
+    for i in range(start_index, len(data) - len(pattern) + 1):
+        if data[i:i+len(pattern)] == pattern:
+            return i
+    return -1
+
+def solarize(x, freq=1, phase=0):
+    """
+    Apply a sine-based solarization transformation to a pixel value.
+
+    Args:
+        x (int or np.ndarray): Pixel value (0-1.0) or array of pixel values.
+        freq (float): Frequency of the sine wave (controls inversion frequency).
+        phase (float): Phase shift of the sine wave (shifts the inversion point).
+
+    Returns:
+        int or np.ndarray: Transformed pixel value(s) (0-1.0).
+    """
+    return 0.5 + 0.5 * np.sin(freq * np.pi * x + phase)
+
+def log_transform(x):
+    """
+    Apply a logarithmic transformation to compress the dynamic range.
+
+    Args:
+        x (int or np.ndarray): Pixel value (0-1.0) or array of pixel values.
+
+    Returns:
+        int or np.ndarray: Transformed pixel value(s) (0-1.0).
+    """
+    return np.log(1 + x) / np.log(2)  # Normalize to approximately 0-1 range
+
+def gamma_transform(x, gamma):
+    """
+    Apply a power-law (gamma) transformation to adjust brightness/contrast.
+
+    Args:
+        x (int or np.ndarray): Pixel value (0-1.0) or array of pixel values.
+        gamma (float): Gamma value (e.g., <1 brightens, >1 darkens).
+
+    Returns:
+        int or np.ndarray: Transformed pixel value(s) (0-1.0).
+    """
+    # Handle both single values and arrays
+    return np.power(x, gamma)
+
+def histogram_glitch(image, r_mode='solarize', g_mode='log', b_mode='gamma', 
+                     r_freq=1.0, r_phase=0.0, g_freq=1.0, g_phase=0.0, 
+                     b_freq=1.0, b_phase=0.0, gamma_val=0.5):
+    """
+    Apply different transformations to each color channel based on its histogram.
+    
+    Args:
+        image (PIL.Image): Input image.
+        r_mode (str): Transformation for red channel ('solarize', 'log', 'gamma', 'normal').
+        g_mode (str): Transformation for green channel ('solarize', 'log', 'gamma', 'normal').
+        b_mode (str): Transformation for blue channel ('solarize', 'log', 'gamma', 'normal').
+        r_freq (float): Frequency for red channel solarization (0.1-10.0).
+        r_phase (float): Phase for red channel solarization (0.0-6.28).
+        g_freq (float): Frequency for green channel solarization (0.1-10.0).
+        g_phase (float): Phase for green channel solarization (0.0-6.28).
+        b_freq (float): Frequency for blue channel solarization (0.1-10.0).
+        b_phase (float): Phase for blue channel solarization (0.0-6.28).
+        gamma_val (float): Gamma value for gamma transformation (0.1-3.0).
+    
+    Returns:
+        PIL.Image: Processed image with transformed color channels.
+    """
+    # Convert to RGB mode if needed
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Convert PIL image to numpy array
+    img_array = np.array(image)
+    
+    # Normalize the image data to 0-1 range
+    img_float = img_array.astype(np.float32) / 255.0
+    
+    # Define helper function to select transformation
+    def get_transform(mode, freq, phase, gamma):
+        if mode == 'solarize':
+            return lambda x: solarize(x, freq, phase)
+        elif mode == 'log':
+            return log_transform
+        elif mode == 'gamma':
+            return lambda x: gamma_transform(x, gamma)
+        else:  # 'normal'
+            return lambda x: x
+    
+    # Get transform functions for each channel
+    r_transform = get_transform(r_mode, r_freq, r_phase, gamma_val)
+    g_transform = get_transform(g_mode, g_freq, g_phase, gamma_val)
+    b_transform = get_transform(b_mode, b_freq, b_phase, gamma_val)
+    
+    # Apply transforms to each channel
+    img_float[:, :, 0] = r_transform(img_float[:, :, 0])
+    img_float[:, :, 1] = g_transform(img_float[:, :, 1])
+    img_float[:, :, 2] = b_transform(img_float[:, :, 2])
+    
+    # Convert back to 0-255 range, clip values, and convert back to uint8
+    img_array = np.clip(img_float * 255.0, 0, 255).astype(np.uint8)
+    
+    # Convert back to PIL Image
+    return Image.fromarray(img_array)
+
+def generate_noise_map(shape, scale, octaves, base):
+    """
+    Generate a Perlin noise map for displacement.
+    
+    Args:
+        shape (tuple): Height and width of the map (height, width).
+        scale (float): Noise frequency (smaller values = more detailed noise).
+        octaves (int): Number of noise layers for detail.
+        base (int): Seed for noise pattern variation.
+    
+    Returns:
+        np.ndarray: Noise map with values in [-1, 1].
+    """
+    height, width = shape
+    noise_map = np.zeros((height, width), dtype=np.float32)
+    for y in range(height):
+        for x in range(width):
+            noise_map[y, x] = noise.pnoise2(x / scale, y / scale, octaves=octaves, base=base)
+    return noise_map
+
+def geometric_distortion(image, scale=50.0, octaves=4, distortion_amount=20.0, distortion_type='opposite'):
+    """
+    Apply channel-specific geometric distortion using Perlin noise.
+    
+    Args:
+        image (PIL.Image): Input RGB image.
+        scale (float): Noise frequency (50.0 for broad patterns, lower for more detail).
+        octaves (int): Noise detail level (1-8, higher = more detail).
+        distortion_amount (float): Max pixel displacement (1.0-50.0).
+        distortion_type (str): Distortion pattern ('opposite', 'radial', 'circular', 'random').
+    
+    Returns:
+        PIL.Image: Distorted image with channel-specific warping.
+    """
+    # Convert PIL image to OpenCV format (BGR)
+    cv_image = np.array(image)
+    if cv_image.shape[2] == 4:  # Handle RGBA
+        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGBA2RGB)
+    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+
+    height, width = cv_image.shape[:2]
+
+    # Generate base Perlin noise maps for x and y displacements
+    nx = generate_noise_map((height, width), scale, octaves, base=0)
+    ny = generate_noise_map((height, width), scale, octaves, base=1)
+    
+    # Optional: additional noise map for radial or random patterns
+    nz = generate_noise_map((height, width), scale, octaves, base=2)
+
+    # Create coordinate grid
+    x, y = np.meshgrid(np.arange(width), np.arange(height))
+    
+    # Define displacement maps based on distortion type
+    if distortion_type == 'opposite':
+        # Opposite displacement for different channels
+        r_map_x = (x + nx * distortion_amount).astype(np.float32)
+        r_map_y = (y + ny * distortion_amount).astype(np.float32)
+        g_map_x = (x - nx * distortion_amount).astype(np.float32)  # Opposite x direction
+        g_map_y = (y + ny * distortion_amount).astype(np.float32)
+        b_map_x = (x + nx * distortion_amount).astype(np.float32)
+        b_map_y = (y - ny * distortion_amount).astype(np.float32)  # Opposite y direction
+    
+    elif distortion_type == 'radial':
+        # Radial displacement pattern (outward/inward)
+        center_x, center_y = width // 2, height // 2
+        dx = x - center_x
+        dy = y - center_y
+        # Normalize distance from center
+        dist = np.sqrt(dx**2 + dy**2)
+        max_dist = np.sqrt(center_x**2 + center_y**2)
+        norm_dist = dist / max_dist
+        # Calculate displacement direction
+        angle = np.arctan2(dy, dx)
+        # Red channel: outward displacement
+        r_map_x = (x + np.cos(angle) * norm_dist * nx * distortion_amount).astype(np.float32)
+        r_map_y = (y + np.sin(angle) * norm_dist * ny * distortion_amount).astype(np.float32)
+        # Green channel: inward displacement
+        g_map_x = (x - np.cos(angle) * norm_dist * nx * distortion_amount).astype(np.float32)
+        g_map_y = (y - np.sin(angle) * norm_dist * ny * distortion_amount).astype(np.float32)
+        # Blue channel: circular displacement
+        b_map_x = (x + np.sin(angle) * norm_dist * nx * distortion_amount).astype(np.float32)
+        b_map_y = (y - np.cos(angle) * norm_dist * ny * distortion_amount).astype(np.float32)
+    
+    elif distortion_type == 'circular':
+        # Circular/swirl displacement
+        center_x, center_y = width // 2, height // 2
+        dx = x - center_x
+        dy = y - center_y
+        # Normalize distance from center
+        dist = np.sqrt(dx**2 + dy**2)
+        max_dist = np.sqrt(center_x**2 + center_y**2)
+        norm_dist = dist / max_dist
+        # Calculate angle for swirl
+        angle = np.arctan2(dy, dx)
+        # Apply swirl with different strengths per channel
+        swirl_factor = distortion_amount * 0.01
+        r_map_x = (x + np.cos(angle + nx * swirl_factor) * dist * 0.05).astype(np.float32)
+        r_map_y = (y + np.sin(angle + nx * swirl_factor) * dist * 0.05).astype(np.float32)
+        g_map_x = (x + np.cos(angle - ny * swirl_factor) * dist * 0.05).astype(np.float32)
+        g_map_y = (y + np.sin(angle - ny * swirl_factor) * dist * 0.05).astype(np.float32)
+        b_map_x = (x + np.cos(angle + nz * swirl_factor) * dist * 0.05).astype(np.float32)
+        b_map_y = (y + np.sin(angle + nz * swirl_factor) * dist * 0.05).astype(np.float32)
+    
+    else:  # 'random'
+        # Random independent displacement for each channel
+        r_map_x = (x + nx * distortion_amount).astype(np.float32)
+        r_map_y = (y + ny * distortion_amount).astype(np.float32)
+        # Generate additional noise maps for other channels
+        nx2 = generate_noise_map((height, width), scale, octaves, base=3)
+        ny2 = generate_noise_map((height, width), scale, octaves, base=4)
+        nx3 = generate_noise_map((height, width), scale, octaves, base=5)
+        ny3 = generate_noise_map((height, width), scale, octaves, base=6)
+        g_map_x = (x + nx2 * distortion_amount).astype(np.float32)
+        g_map_y = (y + ny2 * distortion_amount).astype(np.float32)
+        b_map_x = (x + nx3 * distortion_amount).astype(np.float32)
+        b_map_y = (y + ny3 * distortion_amount).astype(np.float32)
+
+    # Split image into BGR channels
+    b, g, r = cv2.split(cv_image)
+
+    # Warp each channel using remap
+    r_warped = cv2.remap(r, r_map_x, r_map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    g_warped = cv2.remap(g, g_map_x, g_map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    b_warped = cv2.remap(b, b_map_x, b_map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+
+    # Merge warped channels
+    warped_image = cv2.merge([b_warped, g_warped, r_warped])
+
+    # Convert back to RGB and return as PIL image
+    warped_image = cv2.cvtColor(warped_image, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(warped_image)
+
+def generate_voronoi_seeds(image, num_seeds):
+    """
+    Generate random seed points for the Voronoi diagram.
+    
+    Args:
+        image (PIL.Image): Input image.
+        num_seeds (int): Number of seed points.
+    
+    Returns:
+        np.ndarray: Array of seed points (shape: (num_seeds, 2)).
+    """
+    width, height = image.size
+    seeds = np.random.randint(0, min(width, height), size=(num_seeds, 2))
+    seeds[:, 0] = seeds[:, 0] % width
+    seeds[:, 1] = seeds[:, 1] % height
+    return seeds
+
+def voronoi_distortion(image, num_seeds=100, distortion_amount=20.0):
+    """
+    Apply Voronoi-based geometric distortion to each color channel.
+    
+    Args:
+        image (PIL.Image): Input RGB image.
+        num_seeds (int): Number of Voronoi seeds (50-500).
+        distortion_amount (float): Maximum displacement amount (1.0-50.0 pixels).
+    
+    Returns:
+        PIL.Image: Distorted image with Voronoi-based warping.
+    """
+    # Convert PIL image to OpenCV format (BGR)
+    cv_image = np.array(image)
+    if cv_image.shape[2] == 4:  # Handle RGBA
+        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGBA2RGB)
+    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+
+    height, width = cv_image.shape[:2]
+
+    # Generate Voronoi seeds
+    seeds = generate_voronoi_seeds(image, num_seeds)
+
+    # Compute Voronoi diagram
+    vor = Voronoi(seeds)
+
+    # Create coordinate grid
+    x, y = np.meshgrid(np.arange(width), np.arange(height))
+    pixel_coords = np.stack([x.flatten(), y.flatten()], axis=1)
+
+    # Assign each pixel to its nearest seed (Voronoi region)
+    distances = np.sqrt(((pixel_coords[:, None, :] - seeds[None, :, :]) ** 2).sum(axis=2))
+    nearest_seed_indices = np.argmin(distances, axis=1)
+
+    # Compute displacement maps
+    displacement_x = np.zeros((height, width), dtype=np.float32)
+    displacement_y = np.zeros((height, width), dtype=np.float32)
+    for i in range(num_seeds):
+        mask = (nearest_seed_indices == i).reshape(height, width)
+        dist_map = edt(~mask)
+        seed_x, seed_y = seeds[i]
+        dx = seed_x - x
+        dy = seed_y - y
+        displacement_x += dx * dist_map
+        displacement_y += dy * dist_map
+
+    # Normalize displacement
+    max_disp = np.max(np.sqrt(displacement_x**2 + displacement_y**2))
+    if max_disp > 0:  # Avoid division by zero
+        displacement_x /= max_disp
+        displacement_y /= max_disp
+
+    # Create channel-specific displacement maps
+    r_map_x = (x + displacement_x * distortion_amount).astype(np.float32)
+    r_map_y = (y + displacement_y * distortion_amount).astype(np.float32)
+    g_map_x = (x - displacement_x * distortion_amount).astype(np.float32)
+    g_map_y = (y + displacement_y * distortion_amount).astype(np.float32)
+    b_map_x = (x + displacement_x * distortion_amount).astype(np.float32)
+    b_map_y = (y - displacement_y * distortion_amount).astype(np.float32)
+
+    # Split image into BGR channels
+    b, g, r = cv2.split(cv_image)
+
+    # Warp each channel
+    r_warped = cv2.remap(r, r_map_x, r_map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    g_warped = cv2.remap(g, g_map_x, g_map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+    b_warped = cv2.remap(b, b_map_x, b_map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+
+    # Merge warped channels
+    warped_image = cv2.merge([b_warped, g_warped, r_warped])
+
+    # Convert back to RGB and return as PIL image
+    warped_image = cv2.cvtColor(warped_image, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(warped_image)
+
+def Ripple(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01, distortion_type="color_shift", distortion_params={}):
+    """
+    Apply a ripple effect to the image, simulating water droplets, with optional distortion effects.
+
+    Args:
+        image (Image): PIL Image object to process.
+        num_droplets (int): Number of droplet centers (default: 5).
+        amplitude (float): Strength of the ripple displacement (default: 10).
+        frequency (float): Frequency of the ripple waves (default: 0.1).
+        decay (float): Decay rate of the ripple amplitude with distance (default: 0.01).
+        distortion_type (str): Type of distortion to apply ("color_shift", "pixelation", "none"; default: "color_shift").
+        distortion_params (dict): Additional parameters for the distortion effect (default: {}).
+
+    Returns:
+        Image: The distorted image with ripple effect applied.
+    """
+    # Convert PIL Image to OpenCV format (BGR)
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    img_array = np.array(image)
+    cv_image = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+    
+    # Get image dimensions
+    height, width = cv_image.shape[:2]
+    
+    # Create coordinate grids for x and y
+    x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height), indexing='xy')
+    
+    # Initialize displacement maps
+    dx = np.zeros((height, width), dtype=np.float32)
+    dy = np.zeros((height, width), dtype=np.float32)
+    
+    # Generate random droplet centers
+    droplet_centers = [(np.random.randint(0, width), np.random.randint(0, height)) for _ in range(num_droplets)]
+    
+    # Compute cumulative displacement from all droplets
+    for cx, cy in droplet_centers:
+        # Calculate distance from droplet center
+        dist = np.sqrt((x_coords - cx)**2 + (y_coords - cy)**2)
+        # Prevent division by zero
+        dist[dist < 1e-6] = 1e-6
+        # Calculate displacement magnitude (sinusoidal ripple with exponential decay)
+        mag = amplitude * np.sin(frequency * dist) * np.exp(-decay * dist)
+        # Compute radial displacement components
+        dx_droplet = mag * (x_coords - cx) / dist
+        dy_droplet = mag * (y_coords - cy) / dist
+        # Add to total displacement
+        dx += dx_droplet
+        dy += dy_droplet
+    
+    # Apply distortion based on type
+    if distortion_type == "color_shift":
+        # Extract parameters for color shift (default factors create slight channel separation)
+        factor_b = distortion_params.get("factor_b", 1.0)
+        factor_g = distortion_params.get("factor_g", 1.1)
+        factor_r = distortion_params.get("factor_r", 0.9)
+        
+        # Split image into BGR channels
+        b, g, r = cv2.split(cv_image)
+        
+        # Create displacement maps for each channel
+        map_x_b = (x_coords - dx * factor_b).astype(np.float32)
+        map_y_b = (y_coords - dy * factor_b).astype(np.float32)
+        map_x_g = (x_coords - dx * factor_g).astype(np.float32)
+        map_y_g = (y_coords - dy * factor_g).astype(np.float32)
+        map_x_r = (x_coords - dx * factor_r).astype(np.float32)
+        map_y_r = (y_coords - dy * factor_r).astype(np.float32)
+        
+        # Warp each channel separately
+        b_warped = cv2.remap(b, map_x_b, map_y_b, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        g_warped = cv2.remap(g, map_x_g, map_y_g, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        r_warped = cv2.remap(r, map_x_r, map_y_r, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        
+        # Merge warped channels
+        warped_image = cv2.merge([b_warped, g_warped, r_warped])
+    else:
+        # Default warping for other distortion types
+        map_x = (x_coords - dx).astype(np.float32)
+        map_y = (y_coords - dy).astype(np.float32)
+        warped_image = cv2.remap(cv_image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        
+        if distortion_type == "pixelation":
+            # Compute displacement magnitude
+            mag = np.sqrt(dx**2 + dy**2)
+            # Normalize magnitude for blending (max_mag controls sensitivity)
+            max_mag = distortion_params.get("max_mag", 10.0)
+            blend_factor = np.clip(mag / max_mag, 0, 1)
+            
+            # Create pixelated version
+            scale = distortion_params.get("scale", 10)
+            small = cv2.resize(warped_image, (width // scale, height // scale), interpolation=cv2.INTER_NEAREST)
+            pixelated = cv2.resize(small, (width, height), interpolation=cv2.INTER_NEAREST)
+            
+            # Blend pixelated image with warped image based on displacement magnitude
+            blend_factor = blend_factor[:, :, np.newaxis]  # Add channel dimension for broadcasting
+            warped_image = ((1 - blend_factor) * warped_image + blend_factor * pixelated).astype(np.uint8)
+        elif distortion_type != "none":
+            # Handle unknown distortion types gracefully
+            print(f"Unknown distortion type: {distortion_type}. Applying default warping only.")
+    
+    # Convert back to RGB and return as PIL image
+    warped_image = cv2.cvtColor(warped_image, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(warped_image)
+
+def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, height=32, random_seed=None, stripe_width=16, stripe_angle=45, perlin_noise_scale=0.1, threshold=0.5, voronoi_cells=50):
+    """
+    Merge two images using a mask pattern.
+    
+    Args:
+        image (PIL.Image): Primary image.
+        secondary_image (PIL.Image): Secondary image to merge with.
+        mask_type (str): Type of mask ('checkerboard', 'random_checkerboard', 'striped', 'gradient_striped', 'perlin', 'voronoi').
+        width (int): Width of the squares/rectangles in the checkerboard mask pattern.
+        height (int): Height of the squares/rectangles in the checkerboard mask pattern.
+        random_seed (int): Seed for random generation (for 'random_checkerboard' mask type) or Perlin noise (for 'perlin' mask type)
+        stripe_width (int): Width of stripes in pixels (for 'striped' and 'gradient_striped' mask types).
+        stripe_angle (int): Angle of stripes in degrees (for 'striped' and 'gradient_striped' mask types).
+        perlin_noise_scale (float): Scale of the perlin noise (for 'perlin' mask type).
+        threshold (float): Threshold for the perlin noise (for 'perlin' mask type).
+        voronoi_cells (int): Number of Voronoi cells for the voronoi mask type.
+    
+    Returns:
+        PIL.Image: Merged image.
+    """
+    # Ensure images are the same size
+    if image.size != secondary_image.size:
+        secondary_image = secondary_image.resize(image.size, Image.LANCZOS)
+    
+    img_width, img_height = image.size
+    
+    # Create mask based on mask_type
+    mask = Image.new('L', image.size, 0)
+    
+    if mask_type == 'checkerboard':
+        # Draw a regular checkerboard pattern
+        draw = ImageDraw.Draw(mask)
+        
+        for y in range(0, img_height, height):
+            for x in range(0, img_width, width):
+                if ((x // width) + (y // height)) % 2 == 0:
+                    draw.rectangle([x, y, x + width - 1, y + height - 1], fill=255)
+    
+    elif mask_type == 'random_checkerboard':
+        # Draw a random checkerboard pattern
+        if random_seed is not None:
+            random.seed(random_seed)
+        
+        draw = ImageDraw.Draw(mask)
+        
+        for y in range(0, img_height, height):
+            for x in range(0, img_width, width):
+                if random.random() > 0.5:
+                    draw.rectangle([x, y, x + width - 1, y + height - 1], fill=255)
+    
+    elif mask_type == 'striped':
+        # Draw stripes at the specified angle with consistent width
+        img_width, img_height = image.size
+        
+        # Convert angle to radians
+        angle_rad = math.radians(stripe_angle)
+        
+        # Calculate normal vector (perpendicular to stripe direction)
+        nx = math.cos(angle_rad)
+        ny = math.sin(angle_rad)
+        
+        # Create coordinate arrays
+        y_coords, x_coords = np.mgrid[:img_height, :img_width]
+        
+        # Calculate the perpendicular distance for each pixel using vectorization
+        distances = x_coords * nx + y_coords * ny
+        
+        # Create stripes with consistent width using modulo operation
+        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
+        mask_array[np.int32(distances / stripe_width) % 2 == 0] = 255
+        
+        # Convert the mask array to a PIL image
+        mask = Image.fromarray(mask_array)
+    
+    elif mask_type == 'gradient_striped':
+        # Draw gradient stripes at the specified angle
+        img_width, img_height = image.size
+        
+        # Convert angle to radians
+        angle_rad = math.radians(stripe_angle)
+        
+        # Calculate normal vector (perpendicular to stripe direction)
+        nx = math.cos(angle_rad)
+        ny = math.sin(angle_rad)
+        
+        # Create coordinate arrays
+        y_coords, x_coords = np.mgrid[:img_height, :img_width]
+        
+        # Calculate the perpendicular distance for each pixel using vectorization
+        distances = x_coords * nx + y_coords * ny
+        
+        # Create gradient stripes using cosine for smooth transitions
+        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
+        
+        # Scale distances to appropriate frequency
+        normalized_distances = 2 * np.pi * distances / (2 * stripe_width)
+        
+        # Generate smooth transitions with cosine
+        mask_array = np.uint8(((np.cos(normalized_distances) + 1) / 2) * 255)
+        
+        # Convert the mask array to a PIL image
+        mask = Image.fromarray(mask_array)
+    
+    elif mask_type == 'perlin':
+        # Create a perlin noise pattern
+        if random_seed is not None:
+            np.random.seed(random_seed)
+        
+        # Generate perlin noise
+        noise = generate_noise_map((img_width, img_height), perlin_noise_scale, 6, random_seed or 42)
+        
+        # Apply threshold to create binary mask
+        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
+        mask_array[noise > threshold] = 255
+        
+        # Convert the mask array to a PIL image
+        mask = Image.fromarray(mask_array)
+        
+    elif mask_type == 'voronoi':
+        # Create a Voronoi pattern with straight edges
+        if random_seed is not None:
+            np.random.seed(random_seed)
+        else:
+            np.random.seed(42)  # Default seed for reproducibility
+        
+        # Generate random points for Voronoi cells
+        num_points = voronoi_cells
+        
+        # Using a stratified approach for better point distribution
+        # Divide image into grid sectors for more evenly distributed cells
+        grid_size = int(np.sqrt(num_points)) + 1
+        grid_width = img_width / grid_size
+        grid_height = img_height / grid_size
+        
+        points = []
+        for i in range(grid_size):
+            for j in range(grid_size):
+                if len(points) < num_points:  # Stop once we have enough points
+                    # Add some randomness within each grid cell
+                    x = (j + np.random.rand()) * grid_width
+                    y = (i + np.random.rand()) * grid_height
+                    points.append([x, y])
+        
+        # Convert to numpy array and shuffle to break any remaining grid patterns
+        points = np.array(points)
+        np.random.shuffle(points)
+        points = points[:num_points]  # Ensure we have exactly num_points
+        
+        # Create a mask array
+        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
+        
+        # Generate a random binary mask for each cell
+        cell_mask = np.random.randint(0, 2, num_points) * 255
+        
+        # Pre-allocate arrays for vectorized operations
+        y_coords, x_coords = np.mgrid[:img_height, :img_width]
+        
+        # Process the image more efficiently using vectorization
+        # Creates a distance matrix of shape (height*width, num_points)
+        # This is memory-intensive but much faster than pixel-by-pixel calculation
+        for i in range(0, img_height, 128):  # Process in horizontal slices to conserve memory
+            end_i = min(i + 128, img_height)
+            slice_height = end_i - i
+            
+            # Extract pixel coordinates for this slice
+            slice_y = y_coords[i:end_i, :]
+            slice_x = x_coords[i:end_i, :]
+            pixel_coords = np.column_stack((slice_x.ravel(), slice_y.ravel()))
+            
+            # Calculate distances from each pixel to all points
+            # Mix of Manhattan and Euclidean for angular but not strictly grid-aligned cells
+            # Lambda parameter controls the mix (0 = Manhattan, 1 = Euclidean)
+            lambda_param = 0.7  # Adjust for more or less angular cells
+            
+            # Manhattan component
+            manhattan_dist = np.sum(np.abs(pixel_coords[:, np.newaxis, :] - points[np.newaxis, :, :]), axis=2)
+            
+            # Euclidean component
+            delta = pixel_coords[:, np.newaxis, :] - points[np.newaxis, :, :]
+            euclidean_dist = np.sqrt(np.sum(delta**2, axis=2))
+            
+            # Weighted combination
+            distances = (1 - lambda_param) * manhattan_dist + lambda_param * euclidean_dist
+            
+            # Find the closest point for each pixel
+            closest_points = np.argmin(distances, axis=1)
+            
+            # Apply the cell assignments to the mask
+            mask_array[i:end_i, :].flat = cell_mask[closest_points]
+        
+        # Convert the mask array to a PIL image
+        mask = Image.fromarray(mask_array)
+    
+    # Merge the images using the mask
+    merged_image = Image.composite(image, secondary_image, mask)
+    
+    return merged_image

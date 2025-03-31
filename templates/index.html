@@ -159,6 +159,14 @@
             color: var(--accent-color);
         }
         
+        .nested-fields {
+            margin-top: 15px;
+            margin-left: 15px;
+            padding: 15px;
+            border-left: 3px solid var(--accent-color);
+            background-color: rgba(0, 200, 150, 0.05);
+        }
+        
         .help-text {
             display: block;
             font-size: 14px;
@@ -365,6 +373,9 @@
             <!-- Pixel Sort Chunk (Combined) -->
             <div id="pixel_sort_chunk_fields" class="effect-fields" style="display:none;">
                 <h3>Pixel Sort Chunk</h3>
+                <div class="alert alert-info">
+                    <strong>About Pixel Sort Chunk:</strong> This effect sorts pixels within defined rectangular chunks based on various properties like brightness, hue, or color. Choose between horizontal, vertical, or diagonal sorting directions for different aesthetic results. Larger chunks create bold glitch patterns while smaller chunks produce more subtle texture effects.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.sort_mode.label }}</label>
                     {{ form.sort_mode(id="sort_mode", required=True) }}
@@ -401,6 +412,9 @@
             <!-- Full Frame Sorting -->
             <div id="full_frame_sort_fields" class="effect-fields" style="display:none;">
                 <h3>Full Frame Sorting</h3>
+                <div class="alert alert-info">
+                    <strong>About Full Frame Sorting:</strong> This effect sorts all pixels across the entire image at once, creating smooth gradients or stark dividing lines. Unlike chunk-based sorting, this affects the entire image in one operation, resulting in dramatic transformations based on the property you choose to sort by.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.full_frame_direction.label }}</label>
                     {{ form.full_frame_direction(required=True) }}
@@ -419,6 +433,9 @@
             <!-- Polar Sorting -->
             <div id="polar_sort_fields" class="effect-fields" style="display:none;">
                 <h3>Polar Sorting</h3>
+                <div class="alert alert-info">
+                    <strong>About Polar Sorting:</strong> This effect sorts pixels based on their relationship to the center of the image, using either angle (around the center) or radius (distance from center). The result creates circular or radial patterns that highlight the natural symmetry or asymmetry in your image.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.polar_chunk_size.label }}</label>
                     {{ form.polar_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
@@ -438,6 +455,9 @@
             <!-- Perlin Noise Sorting -->
             <div id="perlin_noise_sort_fields" class="effect-fields" style="display:none;">
                 <h3>Perlin Noise Sorting</h3>
+                <div class="alert alert-info">
+                    <strong>About Perlin Noise Sorting:</strong> This effect uses Perlin noise (smooth random gradients) to determine how to sort pixels in chunks. This creates organic, flowing distortions that follow the noise pattern. The noise scale determines the "turbulence" of the effect, creating wavy, dreamlike distortions in your image.
+                </div>
                 <div class="form-group">
                     <label class="required-field">Chunk Size</label>
                     <div class="chunk-size-inputs">
@@ -470,6 +490,9 @@
             <!-- Perlin Full Frame -->
             <div id="perlin_full_frame_fields" class="effect-fields" style="display:none;">
                 <h3>Perlin Full Frame Sorting</h3>
+                <div class="alert alert-info">
+                    <strong>About Perlin Full Frame Sorting:</strong> This effect combines Perlin noise with full-frame sorting for extraordinary transformations. The noise pattern determines the sort order across the entire image at once, creating fluid, dreamlike distortions that completely reimagine your image while maintaining some semblance of the original structure.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_full_frame_noise_scale.label }}</label>
                     {{ form.perlin_full_frame_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number", value="0.005") }}
@@ -491,34 +514,12 @@
                 </div>
             </div>
             
-            <!-- Perlin Merge -->
-            <div id="perlin_merge_fields" class="effect-fields" style="display:none;">
-                <h3>Perlin Merge</h3>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_merge_secondary.label }}</label>
-                    {{ form.perlin_merge_secondary(id="perlin-merge-secondary-input", required=True) }}
-                    <span class="help-text">Image to merge with the primary image</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_merge_noise_scale.label }}</label>
-                    {{ form.perlin_merge_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
-                    <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed pattern)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_merge_seed.label }}</label>
-                    {{ form.perlin_merge_seed(required=True, min=1, max=9999, type="number") }}
-                    <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_merge_threshold.label }}</label>
-                    {{ form.perlin_merge_threshold(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
-                    <span class="help-text">Threshold for pixel replacement (0.0-1.0, higher = less replacement)</span>
-                </div>
-            </div>
-            
             <!-- Pixelate -->
             <div id="pixelate_fields" class="effect-fields" style="display:none;">
                 <h3>Pixelate</h3>
+                <div class="alert alert-info">
+                    <strong>About Pixelate:</strong> This effect reduces the resolution of your image into larger blocks of color, but with advanced control over how those blocks are colored. Instead of simple downsampling, you can choose to represent each block based on different image attributes like hue or brightness, and control the intensity via the number of color bins.
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label class="required-field">{{ form.pixelate_width.label }}</label>
@@ -548,6 +549,9 @@
             <!-- Concentric Shapes -->
             <div id="concentric_shapes_fields" class="effect-fields" style="display:none;">
                 <h3>Concentric Shapes</h3>
+                <div class="alert alert-info">
+                    <strong>About Concentric Shapes:</strong> This effect overlays geometric patterns of concentric shapes (circles, squares, hexagons, or triangles) onto your image. Starting from random seed points, it draws expanding shapes with customizable properties like thickness, spacing, and color. The result creates an abstract geometric overlay that interacts with your original image.
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label class="required-field">{{ form.concentric_num_points.label }}</label>
@@ -590,6 +594,9 @@
             <!-- Color Channel Manipulation -->
             <div id="color_channel_fields" class="effect-fields" style="display:none;">
                 <h3>Color Channel Manipulation</h3>
+                <div class="alert alert-info">
+                    <strong>About Color Channel Manipulation:</strong> This effect lets you alter the individual RGB color channels of your image in various ways. You can swap channels (e.g., red becomes green), invert specific channels, adjust channel intensity, or create a full negative. These operations create surreal color shifts while preserving the original image structure.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.manipulation_type.label }}</label>
                     {{ form.manipulation_type(id="manipulation_type", required=True) }}
@@ -628,6 +635,9 @@
             <!-- Double Expose -->
             <div id="double_expose_fields" class="effect-fields" style="display:none;">
                 <h3>Double Expose</h3>
+                <div class="alert alert-info">
+                    <strong>About Double Expose:</strong> This effect combines two images using different blending modes, similar to traditional double exposure in film photography. Each blend mode creates a unique interaction between the images - from simple transparency blending to more complex operations like screen, multiply, or difference, which can dramatically alter colors and tones.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.secondary_image.label }}</label>
                     {{ form.secondary_image(id="secondary-image-input", required=True) }}
@@ -649,6 +659,9 @@
             <!-- Pixel Drift -->
             <div id="pixel_drift_fields" class="effect-fields" style="display:none;">
                 <h3>Pixel Drift</h3>
+                <div class="alert alert-info">
+                    <strong>About Pixel Drift:</strong> This effect shifts rows or columns of pixels in alternating patterns, creating a wave-like drifting or rippling effect. By controlling direction, number of bands, and intensity, you can create anything from subtle vibrations to dramatic distortions that make your image appear to be in motion.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.drift_direction.label }}</label>
                     {{ form.drift_direction(required=True) }}
@@ -668,6 +681,9 @@
             <!-- Spiral Sort -->
             <div id="spiral_sort_fields" class="effect-fields" style="display:none;">
                 <h3>Spiral Sort</h3>
+                <div class="alert alert-info">
+                    <strong>About Spiral Sort:</strong> This effect divides your image into chunks arranged in a spiral pattern from the center outward, then sorts these chunks by brightness. The result is a mesmerizing spiral effect where darker and lighter areas form a cohesive spiral pattern, completely rearranging your image while maintaining its overall brightness structure.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.spiral_chunk_size.label }}</label>
                     {{ form.spiral_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
@@ -682,6 +698,9 @@
             <!-- Spiral Sort 2 -->
             <div id="spiral_sort_2_fields" class="effect-fields" style="display:none;">
                 <h3>Spiral Sort 2</h3>
+                <div class="alert alert-info">
+                    <strong>About Spiral Sort 2:</strong> An advanced version of Spiral Sort, this effect offers more sorting options and control. Instead of just brightness, you can sort the spiral chunks by various attributes like hue, saturation, or individual color channels. This provides more creative control and diverse spiral arrangements for different visual effects.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.spiral2_chunk_size.label }}</label>
                     {{ form.spiral2_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
@@ -701,6 +720,9 @@
             <!-- Bit Manipulation -->
             <div id="bit_manipulation_fields" class="effect-fields" style="display:none;">
                 <h3>Bit Manipulation</h3>
+                <div class="alert alert-info">
+                    <strong>About Bit Manipulation:</strong> This effect directly manipulates the binary data of your image, randomly flipping bits to create digital corruption artifacts. The result mimics data corruption or compression glitches, producing unpredictable but fascinating visual distortions that include color shifts, pixelation, and partial image scrambling.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.bit_chunk_size.label }}</label>
                     {{ form.bit_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
@@ -711,6 +733,9 @@
             <!-- Data Mosh Blocks -->
             <div id="data_mosh_blocks_fields" class="effect-fields" style="display:none;">
                 <h3>Data Mosh Blocks</h3>
+                <div class="alert alert-info">
+                    <strong>About Data Mosh Blocks:</strong> This effect simulates the "datamoshing" technique by manipulating rectangular blocks of pixels. It can swap blocks, invert colors, shift color channels, and flip blocks horizontally or vertically. The result mimics compression artifacts found in corrupted video files, creating a disjointed collage effect from your original image.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.data_mosh_operations.label }}</label>
                     {{ form.data_mosh_operations(required=True, min=1, max=256, type="number") }}
@@ -756,6 +781,9 @@
             <!-- Color Shift Expansion -->
             <div id="color_shift_expansion_fields" class="effect-fields" style="display:none;">
                 <h3>Color Shift Expansion</h3>
+                <div class="alert alert-info">
+                    <strong>About Color Shift Expansion:</strong> This effect creates expanding regions of color shifts from random seed points. Colors radiate outward in patterns, creating a psychedelic or heatmap-like effect. You can control the pattern type, color themes, and expansion style to create unique flowing color transformations that partially preserve your original image.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.color_shift_num_points.label }}</label>
                     {{ form.color_shift_num_points(required=True, min=1, max=100, type="number") }}
@@ -801,6 +829,9 @@
             <!-- Perlin Displacement -->
             <div id="perlin_displacement_fields" class="effect-fields" style="display:none;">
                 <h3>Perlin Displacement</h3>
+                <div class="alert alert-info">
+                    <strong>About Perlin Displacement:</strong> This effect warps your image by shifting pixels according to a Perlin noise pattern. The result looks like your image is reflected in rippling water or a funhouse mirror. The noise pattern creates organically flowing distortions rather than mechanical or uniform warping, preserving the original image content in a dreamlike state.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_displacement_scale.label }}</label>
                     {{ form.perlin_displacement_scale(required=True, min=10, max=500, type="number") }}
@@ -831,6 +862,9 @@
             <!-- Voronoi Pixel Sort -->
             <div id="voronoi_sort_fields" class="effect-fields" style="display:none;">
                 <h3>Voronoi Pixel Sort</h3>
+                <div class="alert alert-info">
+                    <strong>About Voronoi Pixel Sort:</strong> This effect divides your image into Voronoi cells (organic-looking regions around seed points) and sorts pixels within each cell. The result creates a cellular, crystalline structure that follows the natural Voronoi pattern. By controlling sorting direction and orientation, you can create flowing lines within each cell that follow various patterns.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.voronoi_num_cells.label }}</label>
                     {{ form.voronoi_num_cells(required=True, min=10, max=1000, type="number") }}
@@ -871,6 +905,9 @@
             <!-- RGB Channel Shift -->
             <div id="channel_shift_fields" class="effect-fields" style="display:none;">
                 <h3>RGB Channel Shift</h3>
+                <div class="alert alert-info">
+                    <strong>About RGB Channel Shift:</strong> This effect physically separates the RGB color channels of your image, creating a chromatic aberration effect similar to misaligned color prints or 3D anaglyph images. You can either shift channels apart (like a color fringing effect) or mirror them in different directions for more dramatic transformations.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.channel_mode.label }}</label>
                     {{ form.channel_mode(required=True, id="channel_mode") }}
@@ -908,6 +945,9 @@
             <!-- JPEG Artifacts -->
             <div id="jpeg_artifacts_fields" class="effect-fields" style="display:none;">
                 <h3>JPEG Artifacts</h3>
+                <div class="alert alert-info">
+                    <strong>About JPEG Artifacts:</strong> This effect simulates the compression artifacts that appear in highly compressed JPEG images. It creates blocky patterns, color banding, and edge ringing that are characteristic of low-quality JPEGs. The intensity control lets you determine how severely degraded the image becomes.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.jpeg_intensity.label }}</label>
                     {{ form.jpeg_intensity(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
@@ -918,6 +958,9 @@
             <!-- Pixel Scatter -->
             <div id="pixel_scatter_fields" class="effect-fields" style="display:none;">
                 <h3>Pixel Scatter</h3>
+                <div class="alert alert-info">
+                    <strong>About Pixel Scatter:</strong> This effect identifies pixels in a specific range (e.g., certain brightness or hue values) and randomly scatters them horizontally or vertically. This creates streak-like artifacts that selectively affect only portions of your image matching your criteria, resulting in a unique distressed or particle-like effect.
+                </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.scatter_direction.label }}</label>
                     {{ form.scatter_direction(required=True) }}
@@ -940,8 +983,309 @@
                 </div>
             </div>
             
-            <div class="form-group submit-group">
-                <button type="button" id="process-button">Process Image</button>
+            <!-- Databending fields -->
+            <div id="databend_fields" class="effect-fields" style="display: none;">
+                <h3>Databending Settings</h3>
+                <div class="alert alert-info">
+                    <strong>About Databending:</strong> This effect simulates binary data corruption by applying various glitch-like transformations to the image. 
+                    It applies pixel shifts, channel mixing, block repeats, XOR operations, and other effects randomized by the seed value.
+                    Experiment with different intensity values and seeds to create unique glitches!
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="databend-intensity">Databend Intensity</label>
+                        <input type="number" id="databend-intensity" name="databend_intensity" min="0.1" max="1.0" step="0.1" value="0.1">
+                        <span class="help-text">Controls the number and strength of glitch effects (0.1-1.0). Start low for subtle effects.</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="databend-preserve-header">Preserve Header</label>
+                        <select id="databend-preserve-header" name="databend_preserve_header">
+                            <option value="true">Yes (Protect Top Area)</option>
+                            <option value="false">No (Glitch Everything)</option>
+                        </select>
+                        <span class="help-text">When enabled, protects the top 10% of the image from glitching to preserve key visual elements.</span>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="databend-seed">Random Seed</label>
+                        <input type="number" id="databend-seed" name="databend_seed" min="1" max="9999" value="42">
+                        <span class="help-text">Controls the randomization of glitch effects. Different seeds create completely different patterns.</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Histogram Glitch fields -->
+            <div id="histogram_glitch_fields" class="effect-fields" style="display: none;">
+                <h3>Histogram Glitch Settings</h3>
+                <div class="alert alert-info">
+                    <strong>About Histogram Glitch:</strong> This effect applies different mathematical transformations to each color channel, creating solarization and unique color shifts. 
+                    Experiment with different combinations of transformation modes for interesting results.
+                </div>
+                
+                <!-- Channel Treatments -->
+                <h4>Channel Transformations</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.hist_r_mode.label }}</label>
+                        {{ form.hist_r_mode }}
+                        <span class="help-text">Mathematical transformation for the red channel</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.hist_g_mode.label }}</label>
+                        {{ form.hist_g_mode }}
+                        <span class="help-text">Mathematical transformation for the green channel</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.hist_b_mode.label }}</label>
+                        {{ form.hist_b_mode }}
+                        <span class="help-text">Mathematical transformation for the blue channel</span>
+                    </div>
+                </div>
+                
+                <!-- Solarize Parameters -->
+                <h4>Solarization Parameters</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.hist_r_freq.label }}</label>
+                        {{ form.hist_r_freq(min=0.1, max=10.0, step=0.1, type="number") }}
+                        <span class="help-text">Wave frequency for red solarization</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.hist_r_phase.label }}</label>
+                        {{ form.hist_r_phase(min=0.0, max=6.28, step=0.1, type="number") }}
+                        <span class="help-text">Wave phase shift for red solarization</span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.hist_g_freq.label }}</label>
+                        {{ form.hist_g_freq(min=0.1, max=10.0, step=0.1, type="number") }}
+                        <span class="help-text">Wave frequency for green solarization</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.hist_g_phase.label }}</label>
+                        {{ form.hist_g_phase(min=0.0, max=6.28, step=0.1, type="number") }}
+                        <span class="help-text">Wave phase shift for green solarization</span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.hist_b_freq.label }}</label>
+                        {{ form.hist_b_freq(min=0.1, max=10.0, step=0.1, type="number") }}
+                        <span class="help-text">Wave frequency for blue solarization</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.hist_b_phase.label }}</label>
+                        {{ form.hist_b_phase(min=0.0, max=6.28, step=0.1, type="number") }}
+                        <span class="help-text">Wave phase shift for blue solarization</span>
+                    </div>
+                </div>
+                
+                <!-- Gamma Parameter -->
+                <h4>Gamma Parameter</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.hist_gamma.label }}</label>
+                        {{ form.hist_gamma(min=0.1, max=3.0, step=0.1, type="number") }}
+                        <span class="help-text">Gamma value for gamma transformation (0.1-3.0)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Ripple Effect fields -->
+            <div id="ripple_fields" class="effect-fields" style="display: none;">
+                <h3>Ripple Effect Settings</h3>
+                <div class="alert alert-info">
+                    <strong>About Ripple Effect:</strong> This effect simulates water droplets on the image surface, creating ripple distortions. 
+                    You can control the number of droplets, their intensity, and apply additional distortion effects like color shifting or pixelation for more dramatic results.
+                </div>
+                
+                <!-- Basic Ripple Parameters -->
+                <h4>Ripple Parameters</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.ripple_num_droplets.label }}</label>
+                        {{ form.ripple_num_droplets(min=1, max=20, type="number") }}
+                        <span class="help-text">Number of ripple centers (1-20)</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.ripple_amplitude.label }}</label>
+                        {{ form.ripple_amplitude(min=1.0, max=50.0, step=1.0, type="number") }}
+                        <span class="help-text">Strength of the ripple effect (1.0-50.0)</span>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.ripple_frequency.label }}</label>
+                        {{ form.ripple_frequency(min=0.01, max=1.0, step=0.01, type="number") }}
+                        <span class="help-text">Frequency of ripple waves (0.01-1.0)</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.ripple_decay.label }}</label>
+                        {{ form.ripple_decay(min=0.001, max=0.1, step=0.001, type="number") }}
+                        <span class="help-text">How quickly ripples fade with distance (0.001-0.1)</span>
+                    </div>
+                </div>
+                
+                <!-- Distortion Type Selection -->
+                <h4>Distortion Options</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ form.ripple_distortion_type.label }}</label>
+                        {{ form.ripple_distortion_type(id="ripple_distortion_type") }}
+                        <span class="help-text">Type of additional distortion to apply</span>
+                    </div>
+                </div>
+                
+                <!-- Color Shift Parameters -->
+                <div id="ripple_color_shift_fields" class="nested-fields">
+                    <h4>Color Shift Factors</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>{{ form.ripple_color_r.label }}</label>
+                            {{ form.ripple_color_r(min=0.5, max=1.5, step=0.1, type="number") }}
+                            <span class="help-text">Red channel displacement factor (0.5-1.5)</span>
+                        </div>
+                        <div class="form-group">
+                            <label>{{ form.ripple_color_g.label }}</label>
+                            {{ form.ripple_color_g(min=0.5, max=1.5, step=0.1, type="number") }}
+                            <span class="help-text">Green channel displacement factor (0.5-1.5)</span>
+                        </div>
+                        <div class="form-group">
+                            <label>{{ form.ripple_color_b.label }}</label>
+                            {{ form.ripple_color_b(min=0.5, max=1.5, step=0.1, type="number") }}
+                            <span class="help-text">Blue channel displacement factor (0.5-1.5)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Pixelation Parameters -->
+                <div id="ripple_pixelation_fields" class="nested-fields" style="display: none;">
+                    <h4>Pixelation Parameters</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>{{ form.ripple_pixelation_scale.label }}</label>
+                            {{ form.ripple_pixelation_scale(min=2, max=20, type="number") }}
+                            <span class="help-text">Size of pixels (2-20, higher = larger pixels)</span>
+                        </div>
+                        <div class="form-group">
+                            <label>{{ form.ripple_pixelation_max_mag.label }}</label>
+                            {{ form.ripple_pixelation_max_mag(min=1.0, max=20.0, step=0.5, type="number") }}
+                            <span class="help-text">Maximum magnitude for pixelation blend (1.0-20.0)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Masked Merge -->
+            <div id="masked_merge_fields" class="effect-fields" style="display: none;">
+                <h3>Masked Merge</h3>
+                <div class="alert alert-info">
+                    <strong>About Masked Merge:</strong> This effect merges two images using a mask pattern that selectively shows parts of each image. Choose between checkerboard, striped, or Perlin noise patterns and adjust the settings to create different visual effects.
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.masked_merge_secondary.label }}</label>
+                    {{ form.masked_merge_secondary(id="masked-merge-secondary-input", required=True) }}
+                    <span class="help-text">The secondary image to merge with the primary image</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.mask_type.label }}</label>
+                    {{ form.mask_type(id="mask_type", required=True) }}
+                    <span class="help-text">The type of mask pattern to use for merging</span>
+                </div>
+                
+                <!-- Checkerboard-specific fields -->
+                <div id="checkerboard_fields" class="nested-fields">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.mask_width.label }}</label>
+                        {{ form.mask_width(min=8, max=512, type="number", required=True) }}
+                        <span class="help-text">Width of each cell in the checkerboard pattern (pixels)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.mask_height.label }}</label>
+                        {{ form.mask_height(min=8, max=512, type="number", required=True) }}
+                        <span class="help-text">Height of each cell in the checkerboard pattern (pixels)</span>
+                    </div>
+                </div>
+                
+                <!-- Random checkerboard seed field -->
+                <div class="form-group" id="mask_random_seed_field" style="display: none;">
+                    <label>{{ form.mask_random_seed.label }}</label>
+                    {{ form.mask_random_seed(min=1, max=9999, type="number") }}
+                    <span class="help-text">Seed for random pattern generation (same seed = same pattern)</span>
+                </div>
+                
+                <!-- Striped-specific fields -->
+                <div id="striped_fields" class="nested-fields" style="display: none;">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.stripe_width.label }}</label>
+                        {{ form.stripe_width(min=1, max=200, type="number", required=True) }}
+                        <span class="help-text">Width of each stripe in pixels</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.stripe_angle.label }}</label>
+                        {{ form.stripe_angle(min=0, max=180, type="number", required=True) }}
+                        <span class="help-text">Angle of the stripes in degrees (0-180)</span>
+                    </div>
+                </div>
+                
+                <!-- Gradient description for gradient stripes -->
+                <div id="gradient_description" class="nested-fields" style="display: none;">
+                    <div class="form-group">
+                        <div class="alert alert-info">
+                            <strong>About Gradient Striped:</strong> Creates smooth transitions between images using sine wave gradients rather than hard edges. The stripe width controls the frequency of these transitions.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Perlin noise fields -->
+                <div id="perlin_fields" class="nested-fields" style="display: none;">
+                    <div class="form-group">
+                        <div class="alert alert-info">
+                            <strong>About Perlin Noise:</strong> Creates natural, cloud-like transition boundaries between the two images rather than a simple crossfade, resulting in an organic-looking composite image.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.perlin_noise_scale.label }}</label>
+                        {{ form.perlin_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
+                        <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed pattern)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.perlin_threshold.label }}</label>
+                        {{ form.perlin_threshold(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
+                        <span class="help-text">Threshold for pixel replacement (0.0-1.0, higher = less replacement)</span>
+                    </div>
+                </div>
+                
+                <!-- Voronoi fields -->
+                <div id="voronoi_fields" class="nested-fields" style="display: none;">
+                    <div class="form-group">
+                        <div class="alert alert-info">
+                            <strong>About Voronoi Cells:</strong> Creates a geometric pattern of angular cells with straight edges, randomly assigning each cell to show either the primary or secondary image. This creates a striking crystalline composite effect.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.voronoi_cells.label }}</label>
+                        {{ form.voronoi_cells(required=True, min=10, max=500, type="number") }}
+                        <span class="help-text">Number of cells (10-500, higher = more detailed pattern with smaller cells)</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.mask_random_seed.label }}</label>
+                        {{ form.mask_random_seed(min=1, max=9999, type="number") }}
+                        <span class="help-text">Seed for random pattern generation (same seed = same pattern)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="content-block form-buttons-block">
+                <button type="submit" id="process-button">Process Image</button>
+                <button type="button" id="reset-button">Reset Form</button>
             </div>
         </form>
     </div>
