@@ -304,15 +304,26 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         except ImportError:
             # Fallback to random noise if noise module is not available
             print("Warning: noise module not found, using random noise instead")
-            noise_map = np.random.rand(img_height, img_width)
+            noise_map = np.random.rand(img_height, img_width) * 2 - 1  # Scale to [-1, 1] like perlin noise
         
         # Apply threshold to create binary mask
+        # Ensure noise_map has the correct dimensions (height, width)
+        if noise_map.shape != (img_height, img_width):
+            # Resize or reshape the noise map to match image dimensions
+            from scipy.ndimage import zoom
+            zoom_factors = (img_height / noise_map.shape[0], img_width / noise_map.shape[1])
+            noise_map = zoom(noise_map, zoom_factors, order=1)
+        
+        # Normalize the noise_map from [-1, 1] to [0, 1] for easier thresholding
+        normalized_noise = (noise_map + 1) / 2.0
+        
+        # Create the mask array
         mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
-        mask_array[noise_map > threshold] = 255
+        mask_array[normalized_noise > threshold] = 255
         
         # Convert the mask array to a PIL image
         mask = Image.fromarray(mask_array)
-        
+    
     elif mask_type == 'voronoi':
         # Create a Voronoi pattern with straight edges
         if random_seed is not None:

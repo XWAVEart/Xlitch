@@ -1,4 +1,4 @@
-from PIL import Image, ImageColor, ImageDraw
+from PIL import Image, ImageColor, ImageDraw, ImageFilter
 import os
 import random
 import numpy as np
@@ -11,6 +11,12 @@ from scipy.spatial import cKDTree
 from io import BytesIO
 from scipy.spatial import Voronoi
 from scipy.ndimage import distance_transform_edt as edt
+from scipy.ndimage import zoom
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 # Centralized pixel attribute calculations
 class PixelAttributes:
@@ -1246,78 +1252,6 @@ def spiral_coords(size):
                     yield (x, y)
             dir_idx += 1
         steps += 1
-
-def spiral_sort(image, chunk_size=32, order='lightest-to-darkest'):
-    """
-    Apply a spiral sort effect, arranging pixels in a spiral pattern based on brightness.
-    
-    Args:
-        image (Image): PIL Image object to process.
-        chunk_size (int): Size of square chunks to process.
-        order (str): 'lightest-to-darkest' or 'darkest-to-lightest'.
-    
-    Returns:
-        Image: Processed image with spiral-sorted pixels.
-    """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    
-    # Convert PIL image to numpy array
-    np_image = np.array(image)
-    
-    # Get image dimensions
-    height, width, _ = np_image.shape
-    
-    # Adjust chunk_size if needed to ensure it divides evenly into the image
-    if height % chunk_size != 0 or width % chunk_size != 0:
-        # Find the largest chunk size that divides evenly
-        for i in range(chunk_size, 0, -1):
-            if height % i == 0 and width % i == 0:
-                chunk_size = i
-                break
-    
-    # Split the image into chunks
-    chunks = []
-    for y in range(0, height, chunk_size):
-        for x in range(0, width, chunk_size):
-            if y + chunk_size <= height and x + chunk_size <= width:
-                chunks.append(np_image[y:y+chunk_size, x:x+chunk_size])
-    
-    # Sort each chunk
-    sorted_chunks = []
-    for chunk in chunks:
-        # Flatten the chunk and calculate luminance
-        flattened_chunk = chunk.reshape(-1, chunk.shape[-1])
-        luminance = np.mean(flattened_chunk, axis=-1)
-        sorted_indices = np.argsort(luminance)
-        
-        # Reverse order if needed
-        if order == 'darkest-to-lightest':
-            sorted_indices = sorted_indices[::-1]
-        
-        # Create a new chunk with pixels arranged in a spiral
-        sorted_chunk = np.zeros_like(chunk)
-        spiral_order = list(spiral_coords(chunk_size))
-        
-        # Place pixels in spiral order
-        for idx, coord in zip(sorted_indices, spiral_order):
-            pixel_y, pixel_x = divmod(idx, chunk_size)
-            sorted_chunk[coord[0], coord[1]] = chunk[pixel_y, pixel_x]
-        
-        sorted_chunks.append(sorted_chunk)
-    
-    # Recombine chunks into the final image
-    result = np.zeros_like(np_image)
-    chunk_idx = 0
-    for y in range(0, height, chunk_size):
-        for x in range(0, width, chunk_size):
-            if y + chunk_size <= height and x + chunk_size <= width:
-                result[y:y+chunk_size, x:x+chunk_size] = sorted_chunks[chunk_idx]
-                chunk_idx += 1
-    
-    # Convert back to PIL image
-    return Image.fromarray(result)
 
 def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
     """
@@ -3565,22 +3499,25 @@ def histogram_glitch(image, r_mode='solarize', g_mode='log', b_mode='gamma',
 
 def generate_noise_map(shape, scale, octaves, base):
     """
-    Generate a Perlin noise map for displacement.
+    Generate a Perlin noise map.
     
     Args:
         shape (tuple): Height and width of the map (height, width).
-        scale (float): Noise frequency (smaller values = more detailed noise).
+        scale (float): Noise scale factor (controls frequency). 
+                       Smaller values from the form (e.g., 0.01) lead to lower frequency (broader patterns) here.
         octaves (int): Number of noise layers for detail.
         base (int): Seed for noise pattern variation.
     
     Returns:
-        np.ndarray: Noise map with values in [-1, 1].
+        np.ndarray: Noise map with values typically in [-1, 1].
     """
     height, width = shape
     noise_map = np.zeros((height, width), dtype=np.float32)
     for y in range(height):
         for x in range(width):
-            noise_map[y, x] = noise.pnoise2(x / scale, y / scale, octaves=octaves, base=base)
+            # Multiply by scale instead of dividing
+            # This makes smaller form values (e.g., 0.01) correspond to broader noise patterns
+            noise_map[y, x] = noise.pnoise2(x * scale, y * scale, octaves=octaves, base=base)
     return noise_map
 
 def geometric_distortion(image, scale=50.0, octaves=4, distortion_amount=20.0, distortion_type='opposite'):
@@ -3891,37 +3828,43 @@ def Ripple(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01, disto
     warped_image = cv2.cvtColor(warped_image, cv2.COLOR_BGR2RGB)
     return Image.fromarray(warped_image)
 
-def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, height=32, random_seed=None, stripe_width=16, stripe_angle=45, perlin_noise_scale=0.1, threshold=0.5, voronoi_cells=50):
+def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, height=32, random_seed=None, stripe_width=16, stripe_angle=45, perlin_noise_scale=0.1, threshold=0.5, voronoi_cells=50, perlin_octaves=1):
     """
-    Merge two images using a mask pattern.
+    Merge two images using various masking techniques.
     
     Args:
         image (PIL.Image): Primary image.
-        secondary_image (PIL.Image): Secondary image to merge with.
+        secondary_image (PIL.Image): Secondary image to blend with primary.
         mask_type (str): Type of mask ('checkerboard', 'random_checkerboard', 'striped', 'gradient_striped', 'perlin', 'voronoi').
-        width (int): Width of the squares/rectangles in the checkerboard mask pattern.
-        height (int): Height of the squares/rectangles in the checkerboard mask pattern.
-        random_seed (int): Seed for random generation (for 'random_checkerboard' mask type) or Perlin noise (for 'perlin' mask type)
-        stripe_width (int): Width of stripes in pixels (for 'striped' and 'gradient_striped' mask types).
-        stripe_angle (int): Angle of stripes in degrees (for 'striped' and 'gradient_striped' mask types).
-        perlin_noise_scale (float): Scale of the perlin noise (for 'perlin' mask type).
-        threshold (float): Threshold for the perlin noise (for 'perlin' mask type).
-        voronoi_cells (int): Number of Voronoi cells for the voronoi mask type.
-    
+        width (int): Width of checkerboard squares or other mask elements.
+        height (int): Height of checkerboard squares or other mask elements.
+        random_seed (int, optional): Seed for random pattern generation.
+        stripe_width (int): Width of stripes in pixels for striped masks.
+        stripe_angle (int): Angle of stripes in degrees for striped masks.
+        perlin_noise_scale (float): Scale factor for Perlin noise (smaller values = broader patterns).
+        threshold (float): Threshold value (0.0-1.0) for Perlin noise or other mask types.
+        voronoi_cells (int): Number of cells for Voronoi pattern.
+        perlin_octaves (int): Number of octaves for Perlin noise (1 = smooth curves, higher = more detailed).
+        
     Returns:
         PIL.Image: Merged image.
     """
-    # Ensure images are the same size
+    # Ensure both images are in the same mode and size
+    if image.mode != secondary_image.mode:
+        if image.mode == 'RGB' and secondary_image.mode == 'RGBA':
+            secondary_image = secondary_image.convert('RGB')
+        elif image.mode == 'RGBA' and secondary_image.mode == 'RGB':
+            secondary_image = secondary_image.convert('RGBA')
+    
+    # Resize secondary image to match primary if needed
     if image.size != secondary_image.size:
-        secondary_image = secondary_image.resize(image.size, Image.LANCZOS)
+        secondary_image = secondary_image.resize(image.size)
     
     img_width, img_height = image.size
     
-    # Create mask based on mask_type
-    mask = Image.new('L', image.size, 0)
-    
     if mask_type == 'checkerboard':
         # Draw a regular checkerboard pattern
+        mask = Image.new('L', image.size, 0)
         draw = ImageDraw.Draw(mask)
         
         for y in range(0, img_height, height):
@@ -3934,6 +3877,7 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         if random_seed is not None:
             random.seed(random_seed)
         
+        mask = Image.new('L', image.size, 0)
         draw = ImageDraw.Draw(mask)
         
         for y in range(0, img_height, height):
@@ -3943,8 +3887,6 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     
     elif mask_type == 'striped':
         # Draw stripes at the specified angle with consistent width
-        img_width, img_height = image.size
-        
         # Convert angle to radians
         angle_rad = math.radians(stripe_angle)
         
@@ -3967,8 +3909,6 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     
     elif mask_type == 'gradient_striped':
         # Draw gradient stripes at the specified angle
-        img_width, img_height = image.size
-        
         # Convert angle to radians
         angle_rad = math.radians(stripe_angle)
         
@@ -3983,8 +3923,6 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         distances = x_coords * nx + y_coords * ny
         
         # Create gradient stripes using cosine for smooth transitions
-        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
-        
         # Scale distances to appropriate frequency
         normalized_distances = 2 * np.pi * distances / (2 * stripe_width)
         
@@ -3999,16 +3937,26 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         if random_seed is not None:
             np.random.seed(random_seed)
         
-        # Generate perlin noise
-        noise = generate_noise_map((img_width, img_height), perlin_noise_scale, 6, random_seed or 42)
+        # Generate perlin noise with user-specified octaves
+        noise = generate_noise_map((img_height, img_width), perlin_noise_scale, perlin_octaves, random_seed or 42)
         
-        # Apply threshold to create binary mask
+        # Use simple min-max normalization as in the original function
+        min_noise = np.min(noise)
+        max_noise = np.max(noise)
+        
+        # Avoid division by zero
+        if max_noise > min_noise:
+            normalized_noise = (noise - min_noise) / (max_noise - min_noise)
+        else:
+            normalized_noise = np.zeros_like(noise)
+        
+        # Create the binary mask
         mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
-        mask_array[noise > threshold] = 255
+        mask_array[normalized_noise > threshold] = 255
         
-        # Convert the mask array to a PIL image
+        # Convert to PIL image (no blur)
         mask = Image.fromarray(mask_array)
-        
+    
     elif mask_type == 'voronoi':
         # Create a Voronoi pattern with straight edges
         if random_seed is not None:

@@ -30,29 +30,33 @@ class ImageProcessForm(FlaskForm):
         FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
     ])
     effect = SelectField('Effect', choices=[
-        ('pixel_sort_chunk', 'Pixel Sort Chunk'),
+        # Full Frame Sorting
         ('full_frame_sort', 'Full Frame Sorting'),
-        ('polar_sort', 'Polar Sorting'),
-        ('perlin_noise_sort', 'Perlin Noise Sorting'),
         ('perlin_full_frame', 'Perlin Full Frame'),
-        ('perlin_displacement', 'Perlin Displacement'),
-        ('pixelate', 'Pixelate'),
-        ('concentric_shapes', 'Concentric Shapes'),
-        ('color_shift_expansion', 'Color Shift Expansion'),
-        ('color_channel', 'Color Channel Manipulation'),
-        ('double_expose', 'Double Expose'),
-        ('data_mosh_blocks', 'Data Mosh Blocks'),
-        ('pixel_drift', 'Pixel Drift'),
-        ('spiral_sort', 'Spiral Sort'),
+        # Chunked Sorting
+        ('pixel_sort_chunk', 'Pixel Sort Chunk'),
+        ('polar_sort', 'Polar Sorting'),
         ('spiral_sort_2', 'Spiral Sort 2'),
-        ('bit_manipulation', 'Bit Manipulation'),
         ('voronoi_sort', 'Voronoi Pixel Sort'),
-        ('channel_shift', 'RGB Channel Shift'),
+        ('perlin_noise_sort', 'Perlin Noise Sorting'),
+        # Glitchy/Distortion Effects
+        ('pixel_drift', 'Pixel Drift'),
+        ('bit_manipulation', 'Bit Manipulation'),
+        ('data_mosh_blocks', 'Data Mosh Blocks'),
         ('jpeg_artifacts', 'JPEG Artifacts'),
         ('pixel_scatter', 'Pixel Scatter'),
         ('databend', 'Databending'),
-        ('histogram_glitch', 'Histogram Glitch'),
+        ('perlin_displacement', 'Perlin Displacement'),
         ('ripple', 'Ripple Effect'),
+        # Color/Pattern Effects
+        ('color_channel', 'Color Channel Manipulation'),
+        ('channel_shift', 'RGB Channel Shift'),
+        ('histogram_glitch', 'Histogram Glitch'),
+        ('color_shift_expansion', 'Color Shift Expansion'),
+        ('pixelate', 'Pixelate'),
+        ('concentric_shapes', 'Concentric Shapes'),
+        # Merge Effects
+        ('double_expose', 'Double Expose'),
         ('masked_merge', 'Masked Merge')
     ], validators=[DataRequired()])
     
@@ -147,16 +151,7 @@ class ImageProcessForm(FlaskForm):
                                default=4.0,
                                validators=[Optional(), NumberRange(min=0.1, max=10.0)])
     
-    # Spiral Sort
-    spiral_chunk_size = IntegerField('Chunk Size', 
-                                   default=32,
-                                   validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
-    spiral_order = SelectField('Sort Order', choices=[
-        ('lightest-to-darkest', 'Lightest to Darkest'), 
-        ('darkest-to-lightest', 'Darkest to Lightest')
-    ], default='lightest-to-darkest', validators=[Optional()])
-    
-    # Spiral Sort 2
+    # Spiral Sort 2 (Replaces original Spiral Sort)
     spiral2_chunk_size = IntegerField('Chunk Size', 
                                    default=64,
                                    validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
@@ -619,6 +614,9 @@ class ImageProcessForm(FlaskForm):
     perlin_threshold = FloatField('Threshold',
                               default=0.5,
                               validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    perlin_octaves = IntegerField('Octaves (1=smooth, 8=detailed)',
+                              default=1,
+                              validators=[Optional(), NumberRange(min=1, max=8)])
     voronoi_cells = IntegerField('Number of Cells',
                              default=50,
                              validators=[Optional(), NumberRange(min=10, max=500)])

@@ -678,23 +678,6 @@
                 </div>
             </div>
             
-            <!-- Spiral Sort -->
-            <div id="spiral_sort_fields" class="effect-fields" style="display:none;">
-                <h3>Spiral Sort</h3>
-                <div class="alert alert-info">
-                    <strong>About Spiral Sort:</strong> This effect divides your image into chunks arranged in a spiral pattern from the center outward, then sorts these chunks by brightness. The result is a mesmerizing spiral effect where darker and lighter areas form a cohesive spiral pattern, completely rearranging your image while maintaining its overall brightness structure.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.spiral_chunk_size.label }}</label>
-                    {{ form.spiral_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
-                    <span class="help-text">Size of square chunks (8-128, multiples of 8)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.spiral_order.label }}</label>
-                    {{ form.spiral_order(required=True) }}
-                </div>
-            </div>
-            
             <!-- Spiral Sort 2 -->
             <div id="spiral_sort_2_fields" class="effect-fields" style="display:none;">
                 <h3>Spiral Sort 2</h3>
@@ -1260,6 +1243,11 @@
                         <label class="required-field">{{ form.perlin_threshold.label }}</label>
                         {{ form.perlin_threshold(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
                         <span class="help-text">Threshold for pixel replacement (0.0-1.0, higher = less replacement)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.perlin_octaves.label }}</label>
+                        {{ form.perlin_octaves(required=True, min=1, max=8, type="number") }}
+                        <span class="help-text">Number of octaves (1=smooth curves, 8=detailed noise)</span>
                     </div>
                 </div>
                 

@@ -35,7 +35,6 @@ from utils import (
     double_expose, 
     pixel_drift, 
     bit_manipulation, 
-    spiral_sort, 
     full_frame_sort, 
     spiral_sort_2, 
     polar_sorting, 

@@ -7,7 +7,7 @@ import numpy as np
 from forms import ImageProcessForm
 from glitch_art import (
     load_image, pixel_sorting, color_channel_manipulation, double_expose, 
-    pixel_drift, bit_manipulation, generate_output_filename, spiral_sort, 
+    pixel_drift, bit_manipulation, generate_output_filename, 
     full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, 
     perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, 
     color_shift_expansion, perlin_noise_displacement, data_mosh_blocks, 
@@ -163,11 +163,15 @@ def index():
                     processed_image = pixel_drift(image, direction, drift_bands, drift_intensity)
                     settings = f"drift_{direction}_{drift_bands}_{drift_intensity}"
                 elif effect == 'spiral_sort':
+                    # Redirect to spiral_sort_2 with equivalent parameters
                     chunk_size = form.spiral_chunk_size.data
                     order = form.spiral_order.data
-                    logger.debug(f"Spiral sort params: chunk_size={chunk_size}, order={order}")
-                    processed_image = spiral_sort(image, chunk_size, order)
-                    settings = f"spiral_{chunk_size}_{order}"
+                    # Convert order to equivalent parameters for spiral_sort_2
+                    sort_by = 'brightness'  # Always brightness in original
+                    reverse = order == 'darkest-to-lightest'  # Determine reverse based on order
+                    logger.debug(f"Converting spiral sort to spiral sort 2: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
+                    processed_image = spiral_sort_2(image, chunk_size, sort_by, reverse)
+                    settings = f"spiral2_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
                 elif effect == 'bit_manipulation':
                     logger.debug("Applying bit manipulation")
                     chunk_size = form.bit_chunk_size.data
@@ -437,8 +441,9 @@ def index():
                         logger.debug(f"Masked merge params: mask_type={mask_type}, stripe_width={stripe_width}, "
                                     f"stripe_angle={stripe_angle}")
                     elif mask_type == 'perlin':
+                        perlin_octaves = form.perlin_octaves.data
                         logger.debug(f"Masked merge params: mask_type={mask_type}, noise_scale={perlin_noise_scale}, "
-                                    f"threshold={perlin_threshold}, random_seed={random_seed}")
+                                    f"threshold={perlin_threshold}, random_seed={random_seed}, octaves={perlin_octaves}")
                     elif mask_type == 'voronoi':
                         voronoi_cells = form.voronoi_cells.data
                         logger.debug(f"Masked merge params: mask_type={mask_type}, voronoi_cells={voronoi_cells}, "
@@ -462,7 +467,8 @@ def index():
                         stripe_angle,
                         perlin_noise_scale,
                         perlin_threshold,
-                        voronoi_cells if mask_type == 'voronoi' else 50
+                        voronoi_cells if mask_type == 'voronoi' else 50,
+                        perlin_octaves if mask_type == 'perlin' else 1
                     )
                     
                     # Create settings string based on mask type
