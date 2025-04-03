@@ -3835,7 +3835,8 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     Args:
         image (PIL.Image): Primary image.
         secondary_image (PIL.Image): Secondary image to blend with primary.
-        mask_type (str): Type of mask ('checkerboard', 'random_checkerboard', 'striped', 'gradient_striped', 'perlin', 'voronoi').
+        mask_type (str): Type of mask ('checkerboard', 'random_checkerboard', 'striped', 'gradient_striped', 
+                          'perlin', 'voronoi', 'concentric_rectangles').
         width (int): Width of checkerboard squares or other mask elements.
         height (int): Height of checkerboard squares or other mask elements.
         random_seed (int, optional): Seed for random pattern generation.
@@ -4031,6 +4032,47 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         
         # Convert the mask array to a PIL image
         mask = Image.fromarray(mask_array)
+    
+    elif mask_type == 'concentric_rectangles':
+        # No seed or height needed for this type
+        # width parameter determines the thickness of the rectangle bands
+        img_width, img_height = image.size
+        mask = Image.new('L', (img_width, img_height), 0) # Start with a black background
+        draw = ImageDraw.Draw(mask)
+        
+        # Calculate aspect ratio
+        aspect_ratio = img_width / img_height
+        
+        x_offset = 0
+        y_offset = 0
+        fill_value = 255 # Start with white
+        
+        # The 'width' parameter now directly corresponds to the band thickness
+        band_thickness = max(1, width) # Ensure at least 1 pixel thickness
+        
+        while x_offset < img_width / 2 and y_offset < img_height / 2:
+            # Calculate rectangle width and height for this step based on aspect ratio and band thickness
+            # This ensures bands are uniform visually
+            rect_width = band_thickness
+            rect_height = band_thickness / aspect_ratio if aspect_ratio > 0 else band_thickness
+            
+            # Adjust heights if aspect ratio makes height smaller than 1 pixel
+            if rect_height < 1:
+                rect_height = 1
+                rect_width = aspect_ratio # Adjust width proportionally
+                
+            # Ensure integers
+            rect_width = max(1, int(round(rect_width)))
+            rect_height = max(1, int(round(rect_height)))
+                
+            # Draw the outer rectangle for the current band
+            draw.rectangle([x_offset, y_offset, img_width - x_offset, img_height - y_offset],
+                             fill=fill_value)
+            
+            # Update offsets and fill value for the next rectangle
+            x_offset += rect_width # Increment by the calculated width for this dimension
+            y_offset += rect_height # Increment by the calculated height for this dimension
+            fill_value = 255 - fill_value # Alternate between black and white
     
     # Merge the images using the mask
     merged_image = Image.composite(image, secondary_image, mask)

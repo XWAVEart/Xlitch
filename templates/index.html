@@ -1269,6 +1269,20 @@
                         <span class="help-text">Seed for random pattern generation (same seed = same pattern)</span>
                     </div>
                 </div>
+                
+                <!-- Concentric Rectangles fields -->
+                <div id="concentric_rectangles_fields" class="nested-fields" style="display: none;">
+                    <div class="form-group">
+                        <div class="alert alert-info">
+                            <strong>About Concentric Rectangles:</strong> Creates a mask of concentric rectangles that follow the aspect ratio of your image. Each alternating rectangle shows either the primary or secondary image, creating a captivating, frame-like effect that draws the eye inward.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.concentric_rectangle_width.label }}</label>
+                        {{ form.concentric_rectangle_width(min=2, max=100, type="number", required=True) }}
+                        <span class="help-text">Width of each rectangle band in pixels (2-100, smaller values create more detailed patterns)</span>
+                    </div>
+                </div>
             </div>
             
             <div class="content-block form-buttons-block">

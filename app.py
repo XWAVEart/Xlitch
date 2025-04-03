@@ -17,10 +17,19 @@ from glitch_art import (
 )
 from flask_wtf.csrf import CSRFProtect
 import random
+import secrets
 from PIL import Image
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-for-testing')  # Use environment variable in production
+# Generate a secure random key for development, use environment variable in production
+if os.environ.get('FLASK_ENV') == 'production':
+    if not os.environ.get('SECRET_KEY'):
+        raise RuntimeError('SECRET_KEY environment variable must be set in production mode')
+    app.secret_key = os.environ.get('SECRET_KEY')
+else:
+    # Development mode - generate a random secret key
+    app.secret_key = secrets.token_hex(32)  # 32 bytes = 256 bits of randomness
+    print("Warning: Using randomly generated secret key for development. Sessions won't persist between restarts.")
 app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['PROCESSED_FOLDER'] = 'processed/'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
@@ -415,13 +424,24 @@ def index():
                     # Extract parameters
                     secondary_image = form.masked_merge_secondary.data
                     mask_type = form.mask_type.data
-                    mask_width = form.mask_width.data
-                    mask_height = form.mask_height.data
-                    random_seed = form.mask_random_seed.data if mask_type in ['random_checkerboard', 'perlin'] else None
+                    
+                    # Determine the correct width parameter based on the mask type
+                    if mask_type == 'concentric_rectangles':
+                        current_mask_width = form.concentric_rectangle_width.data
+                    else:
+                        # Use the general mask_width for other types like checkerboard
+                        current_mask_width = form.mask_width.data 
+                        
+                    # Keep mask_height for checkerboard types
+                    mask_height = form.mask_height.data 
+                    
+                    random_seed = form.mask_random_seed.data if mask_type in ['random_checkerboard', 'perlin', 'voronoi'] else None
                     stripe_width = form.stripe_width.data
                     stripe_angle = form.stripe_angle.data
                     perlin_noise_scale = form.perlin_noise_scale.data
                     perlin_threshold = form.perlin_threshold.data
+                    perlin_octaves = form.perlin_octaves.data
+                    voronoi_cells = form.voronoi_cells.data
                     
                     if not secondary_image:
                         logger.error("Secondary image required for Masked Merge but not provided")
@@ -435,19 +455,20 @@ def index():
                     
                     # Log parameters based on mask type
                     if mask_type in ['checkerboard', 'random_checkerboard']:
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, mask_width={mask_width}, "
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, mask_width={current_mask_width}, "
                                     f"mask_height={mask_height}, random_seed={random_seed}")
                     elif mask_type in ['striped', 'gradient_striped']:
                         logger.debug(f"Masked merge params: mask_type={mask_type}, stripe_width={stripe_width}, "
                                     f"stripe_angle={stripe_angle}")
                     elif mask_type == 'perlin':
-                        perlin_octaves = form.perlin_octaves.data
                         logger.debug(f"Masked merge params: mask_type={mask_type}, noise_scale={perlin_noise_scale}, "
                                     f"threshold={perlin_threshold}, random_seed={random_seed}, octaves={perlin_octaves}")
                     elif mask_type == 'voronoi':
-                        voronoi_cells = form.voronoi_cells.data
                         logger.debug(f"Masked merge params: mask_type={mask_type}, voronoi_cells={voronoi_cells}, "
                                     f"random_seed={random_seed}")
+                    elif mask_type == 'concentric_rectangles':
+                        # Use the specific width variable for logging
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, width={current_mask_width}")
                     
                     secondary_img = load_image(secondary_path)
                     if secondary_img is None:
@@ -456,24 +477,25 @@ def index():
                         return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
                     
                     # Call the function with appropriate parameters
+                    # Pass the determined width (current_mask_width) as the 'width' parameter
                     processed_image = masked_merge(
-                        image, 
-                        secondary_img, 
-                        mask_type, 
-                        mask_width, 
-                        mask_height, 
-                        random_seed,
-                        stripe_width,
-                        stripe_angle,
-                        perlin_noise_scale,
-                        perlin_threshold,
-                        voronoi_cells if mask_type == 'voronoi' else 50,
-                        perlin_octaves if mask_type == 'perlin' else 1
+                        image,
+                        secondary_img,
+                        mask_type,
+                        width=current_mask_width, # Use the determined width
+                        height=mask_height, # Still needed for other modes
+                        random_seed=random_seed,
+                        stripe_width=stripe_width,
+                        stripe_angle=stripe_angle,
+                        perlin_noise_scale=perlin_noise_scale,
+                        threshold=perlin_threshold,
+                        voronoi_cells=voronoi_cells,
+                        perlin_octaves=perlin_octaves
                     )
                     
                     # Create settings string based on mask type
                     if mask_type in ['checkerboard', 'random_checkerboard']:
-                        settings = f"maskedmerge_{mask_type}_{mask_width}x{mask_height}"
+                        settings = f"maskedmerge_{mask_type}_{current_mask_width}x{mask_height}"
                         if mask_type == 'random_checkerboard' and random_seed:
                             settings += f"_{random_seed}"
                     elif mask_type in ['striped', 'gradient_striped']:
@@ -486,6 +508,9 @@ def index():
                         settings = f"maskedmerge_{mask_type}_{voronoi_cells}"
                         if random_seed:
                             settings += f"_{random_seed}"
+                    elif mask_type == 'concentric_rectangles':
+                        # Use the specific width variable for settings
+                        settings = f"maskedmerge_{mask_type}_{current_mask_width}px"
                 else:
                     logger.error(f"Unknown effect: {effect}")
                     error_msg = f"Unknown effect: {effect}"

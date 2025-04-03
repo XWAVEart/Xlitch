@@ -806,7 +806,7 @@ $(document).ready(function() {
         addDebugInfo("Mask type changed to: " + type);
         
         // Hide all mask-specific fields first
-        $('#checkerboard_fields, #mask_random_seed_field, #striped_fields, #gradient_description, #perlin_fields, #voronoi_fields').hide();
+        $('#checkerboard_fields, #mask_random_seed_field, #striped_fields, #gradient_description, #perlin_fields, #voronoi_fields, #concentric_rectangles_fields').hide();
         
         // Show appropriate fields based on mask type
         if (type === 'checkerboard') {
@@ -824,6 +824,8 @@ $(document).ready(function() {
             $('#mask_random_seed_field').show();
         } else if (type === 'voronoi') {
             $('#voronoi_fields').show();
+        } else if (type === 'concentric_rectangles') {
+            $('#concentric_rectangles_fields').show();
         }
     });
     

@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileRequired, FileAllowed
-from wtforms import SelectField, StringField, FloatField, IntegerField
+from wtforms import SelectField, StringField, FloatField, IntegerField, SubmitField
 from wtforms.validators import DataRequired, Optional, ValidationError, NumberRange
 import re
 import logging
@@ -591,7 +591,8 @@ class ImageProcessForm(FlaskForm):
         ('striped', 'Striped'),
         ('gradient_striped', 'Gradient Striped'),
         ('perlin', 'Perlin Noise'),
-        ('voronoi', 'Voronoi Cells')
+        ('voronoi', 'Voronoi Cells'),
+        ('concentric_rectangles', 'Concentric Rectangles')
     ], default='checkerboard', validators=[Optional()])
     mask_width = IntegerField('Width (pixels)',
                           default=32,
@@ -620,6 +621,14 @@ class ImageProcessForm(FlaskForm):
     voronoi_cells = IntegerField('Number of Cells',
                              default=50,
                              validators=[Optional(), NumberRange(min=10, max=500)])
+    
+    # Concentric Rectangles specific width
+    concentric_rectangle_width = IntegerField('Band Width (pixels)',
+                                           default=16, # Provide a distinct default
+                                           validators=[Optional(), NumberRange(min=2, max=100)])
+    
+    # Submit Button (already present, no changes needed)
+    submit = SubmitField('Process Image')
     
     def validate(self, extra_validators=None):
         """Custom validation based on the selected effect."""
