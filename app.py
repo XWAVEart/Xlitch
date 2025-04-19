@@ -3,19 +3,61 @@ from werkzeug.utils import secure_filename
 import os
 import traceback
 import logging
+import sys
 import numpy as np
-from forms import ImageProcessForm
-# Import effect functions directly from their modules for improved maintainability
-from glitch_art.effects.sorting import pixel_sorting, full_frame_sort, spiral_sort_2, polar_sorting
-from glitch_art.effects.color import color_channel_manipulation, split_and_shift_channels, histogram_glitch, color_shift_expansion, posterize, curved_hue_shift
-from glitch_art.effects.distortion import pixel_drift, perlin_noise_displacement, pixel_scatter, ripple_effect, offset_effect, slice_shuffle, slice_offset, slice_reduction, geometric_distortion
-from glitch_art.effects.glitch import bit_manipulation, databend_image, simulate_jpeg_artifacts, data_mosh_blocks
-from glitch_art.effects.patterns import voronoi_pixel_sort, masked_merge, concentric_shapes
-from glitch_art.effects.noise import perlin_noise_sorting, perlin_full_frame_sort
-from glitch_art.effects.pixelate import pixelate_by_attribute
-from glitch_art.effects.blend import double_expose
-# Import core utilities
-from glitch_art.core.image_utils import load_image, generate_output_filename, resize_image_if_needed
+
+# Configure logging immediately
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout  # Ensure logs go to stdout for Heroku log capture
+)
+logger = logging.getLogger(__name__)
+
+# Log startup information
+logger.info("Starting application...")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Current directory: {os.getcwd()}")
+logger.info(f"Directory contents: {os.listdir('.')}")
+
+try:
+    # Import form module
+    from forms import ImageProcessForm
+    logger.info("Successfully imported forms module")
+
+    # Try importing the glitch_art package
+    logger.info("Attempting to import glitch_art modules...")
+    
+    # Import effect functions directly from their modules for improved maintainability
+    from glitch_art.effects.sorting import pixel_sorting, full_frame_sort, spiral_sort_2, polar_sorting
+    from glitch_art.effects.color import color_channel_manipulation, split_and_shift_channels, histogram_glitch, color_shift_expansion, posterize, curved_hue_shift
+    from glitch_art.effects.distortion import pixel_drift, perlin_noise_displacement, pixel_scatter, ripple_effect, offset_effect, slice_shuffle, slice_offset, slice_reduction, geometric_distortion
+    from glitch_art.effects.glitch import bit_manipulation, databend_image, simulate_jpeg_artifacts, data_mosh_blocks
+    from glitch_art.effects.patterns import voronoi_pixel_sort, masked_merge, concentric_shapes
+    from glitch_art.effects.noise import perlin_noise_sorting, perlin_full_frame_sort
+    from glitch_art.effects.pixelate import pixelate_by_attribute
+    from glitch_art.effects.blend import double_expose
+    # Import core utilities
+    from glitch_art.core.image_utils import load_image, generate_output_filename, resize_image_if_needed
+    
+    logger.info("Successfully imported all glitch_art modules")
+except ImportError as e:
+    logger.error(f"Error importing modules: {e}")
+    logger.error(traceback.format_exc())
+    
+    # Check if the glitch_art package exists
+    if os.path.exists('glitch_art'):
+        logger.info("glitch_art directory exists, listing contents...")
+        logger.info(f"glitch_art contents: {os.listdir('glitch_art')}")
+        
+        if os.path.exists('glitch_art/effects'):
+            logger.info(f"effects directory contents: {os.listdir('glitch_art/effects')}")
+        
+        if os.path.exists('glitch_art/core'):
+            logger.info(f"core directory contents: {os.listdir('glitch_art/core')}")
+    else:
+        logger.error("glitch_art directory does not exist")
+
 from flask_wtf.csrf import CSRFProtect
 import random
 import secrets
@@ -51,10 +93,6 @@ app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # Extend CSRF token validity to 1 hour
 app.config['WTF_CSRF_CHECK_DEFAULT'] = False  # We'll check it manually for AJAX
 app.config['MAX_IMAGE_WIDTH'] = 1920  # Maximum image width before resizing
 app.config['MAX_IMAGE_HEIGHT'] = 1920  # Maximum image height before resizing - set to same as width for longest dimension resize
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 # Ensure upload and processed directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
