@@ -10,7 +10,7 @@ A powerful web application for creating artistic glitch effects and image manipu
 - Full-frame sorting with multiple attributes
 - Perlin noise-controlled sorting
 - Voronoi-based sorting
-- Spiral sorting (two variants)
+- Spiral sorting
 - Polar coordinate sorting
 
 ### Color Channel Manipulations
