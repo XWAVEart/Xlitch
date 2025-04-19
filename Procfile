@@ -1,1 +1,1 @@
-web: gunicorn app:app 
+web: IS_HEROKU=True gunicorn app:app 

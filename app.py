@@ -31,8 +31,20 @@ else:
     # Development mode - generate a random secret key
     app.secret_key = secrets.token_hex(32)  # 32 bytes = 256 bits of randomness
     print("Warning: Using randomly generated secret key for development. Sessions won't persist between restarts.")
-app.config['UPLOAD_FOLDER'] = 'uploads/'
-app.config['PROCESSED_FOLDER'] = 'processed/'
+
+# Check if running on Heroku
+is_heroku = os.environ.get('IS_HEROKU', False)
+
+# Set upload and processed folders
+if is_heroku:
+    # Use tmp directory on Heroku (note: this is ephemeral)
+    app.config['UPLOAD_FOLDER'] = '/tmp/uploads/'
+    app.config['PROCESSED_FOLDER'] = '/tmp/processed/'
+else:
+    # Local development
+    app.config['UPLOAD_FOLDER'] = 'uploads/'
+    app.config['PROCESSED_FOLDER'] = 'processed/'
+
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 app.config['WTF_CSRF_ENABLED'] = True  # Enable CSRF protection
 app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # Extend CSRF token validity to 1 hour
@@ -755,6 +767,11 @@ if __name__ == '__main__':
     # Ensure upload and processed directories exist
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['PROCESSED_FOLDER'], exist_ok=True)
+    
+    # Log important configuration info
+    logger.info(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
+    logger.info(f"Processed folder: {app.config['PROCESSED_FOLDER']}")
+    logger.info(f"Running on Heroku: {is_heroku}")
     
     # Get port from environment variable for Heroku compatibility
     port = int(os.environ.get('PORT', 8080))
