@@ -3,7 +3,10 @@ from .color import (
     color_channel_manipulation,
     split_and_shift_channels,
     histogram_glitch,
-    simulate_jpeg_artifacts
+    simulate_jpeg_artifacts,
+    color_shift_expansion,
+    posterize,
+    curved_hue_shift
 )
 
 from .distortion import (
@@ -11,8 +14,13 @@ from .distortion import (
     perlin_noise_displacement,
     geometric_distortion,
     voronoi_distortion,
-    Ripple,
-    generate_noise_map
+    ripple_effect,
+    pixel_scatter,
+    generate_noise_map,
+    offset_effect,
+    slice_shuffle,
+    slice_offset,
+    slice_reduction
 )
 
 from .glitch import (
@@ -30,8 +38,7 @@ from .noise import (
 from .patterns import (
     voronoi_pixel_sort,
     masked_merge,
-    concentric_shapes,
-    color_shift_expansion
+    concentric_shapes
 )
 
 from .sorting import (
@@ -44,6 +51,14 @@ from .sorting import (
     diagonal_pixel_sort
 )
 
+from .pixelate import (
+    pixelate_by_attribute
+)
+
+from .blend import (
+    double_expose
+)
+
 # Export all imported functions
 __all__ = [
     # Color effects
@@ -51,14 +66,22 @@ __all__ = [
     'split_and_shift_channels',
     'histogram_glitch',
     'simulate_jpeg_artifacts',
+    'color_shift_expansion',
+    'posterize',
+    'curved_hue_shift',
     
     # Distortion effects
     'pixel_drift',
     'perlin_noise_displacement',
     'geometric_distortion',
     'voronoi_distortion',
-    'Ripple',
+    'ripple_effect',
+    'pixel_scatter',
     'generate_noise_map',
+    'offset_effect',
+    'slice_shuffle',
+    'slice_offset',
+    'slice_reduction',
     
     # Glitch effects
     'databend_image',
@@ -74,7 +97,6 @@ __all__ = [
     'voronoi_pixel_sort',
     'masked_merge',
     'concentric_shapes',
-    'color_shift_expansion',
     
     # Sorting effects
     'pixel_sorting',
@@ -83,5 +105,11 @@ __all__ = [
     'spiral_sort',
     'spiral_sort_2',
     'polar_sorting',
-    'diagonal_pixel_sort'
+    'diagonal_pixel_sort',
+    
+    # Pixelate effects
+    'pixelate_by_attribute',
+    
+    # Blend effects
+    'double_expose'
 ]

@@ -132,7 +132,7 @@ def perlin_noise_sorting(image, chunk_size=32, noise_scale=0.1, direction='horiz
     
     return sorted_image
 
-def perlin_full_frame_sort(image, noise_scale=0.01, sort_by='brightness', reverse=False, seed=None):
+def perlin_full_frame_sort(image, noise_scale=0.01, sort_by='brightness', reverse=False, seed=None, pattern_width=1):
     """
     Apply full-frame pixel sorting controlled by Perlin noise.
     
@@ -143,10 +143,14 @@ def perlin_full_frame_sort(image, noise_scale=0.01, sort_by='brightness', revers
                        'saturation', 'luminance', 'contrast').
         reverse (bool): Whether to reverse the sort order.
         seed (int, optional): Seed for the Perlin noise generator. If None, a random pattern is generated.
+        pattern_width (int): Width of the sorted patterns (1-8 pixels). Default is 1 for single-pixel wide patterns.
     
     Returns:
         Image: Processed image with Perlin noise-controlled full-frame sorting.
     """
+    # Ensure pattern_width is in valid range
+    pattern_width = max(1, min(pattern_width, 8))
+    
     # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
@@ -175,28 +179,47 @@ def perlin_full_frame_sort(image, noise_scale=0.01, sort_by='brightness', revers
     else:
         random_state = np.random.RandomState()
     
-    # Generate Perlin noise map for the entire image
-    noise_map = np.zeros((height, width))
-    for y in range(height):
-        for x in range(width):
+    # Generate Perlin noise map for the entire image, but at reduced resolution based on pattern_width
+    # Add 1 to ensure we have enough noise values for edge cases
+    noise_map_width = (width + pattern_width - 1) // pattern_width
+    noise_map_height = height
+    noise_map = np.zeros((noise_map_height, noise_map_width))
+    
+    for y in range(noise_map_height):
+        for x in range(noise_map_width):
             # Use seed as base parameter if provided
             base = seed if seed is not None else 0
-            noise_map[y, x] = noise.pnoise2(x * noise_scale, y * noise_scale, base=base)
+            # Use the x coordinate scaled by pattern_width to maintain the same visual scale regardless of width
+            noise_map[y, x] = noise.pnoise2(x * noise_scale * pattern_width, y * noise_scale, base=base)
     
     # Normalize noise map to [0, 1]
     noise_map = (noise_map - noise_map.min()) / (noise_map.max() - noise_map.min())
     
     # Sort each column based on Perlin noise values
-    for x in range(width):
-        # Get the pixels in the current column
-        column_pixels = [(image.getpixel((x, y)), y, noise_map[y, x]) for y in range(height)]
+    # We process the image in groups of pattern_width pixels
+    for x_base in range(0, width, pattern_width):
+        # Calculate the actual pattern width (handle edge case at image boundary)
+        actual_width = min(pattern_width, width - x_base)
+        
+        # Get the noise map x index for this group, ensuring it doesn't exceed the dimensions
+        noise_x = min(x_base // pattern_width, noise_map_width - 1)
+        
+        # Get the pixels for each column in this group
+        column_pixels = []
+        for y in range(height):
+            for x_offset in range(actual_width):
+                x = x_base + x_offset
+                column_pixels.append((image.getpixel((x, y)), y, noise_map[y, noise_x], x_offset))
         
         # Sort the pixels by Perlin noise value first, then by the specified criteria
         column_pixels.sort(key=lambda item: (item[2], sort_function(item[0])), reverse=reverse)
         
-        # Set the pixels in the current column of the output image
-        for new_y, (pixel, _, _) in enumerate(column_pixels):
-            sorted_im.putpixel((x, new_y), pixel)
+        # Set the pixels in the output image, maintaining the relative position within the pattern width
+        for i, (pixel, _, _, x_offset) in enumerate(column_pixels):
+            y = i // actual_width
+            x = x_base + (i % actual_width)
+            if 0 <= y < height and 0 <= x < width:
+                sorted_im.putpixel((x, y), pixel)
     
     # Reset random seed if it was set
     if seed is not None:

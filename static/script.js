@@ -54,6 +54,39 @@ $(document).ready(function() {
             
             // Special handling for histogram_glitch effect
             if (effect === 'histogram_glitch') {
+                // Set default values for histogram glitch if needed
+                if (!$('[name="hist_r_mode"]').val()) {
+                    $('[name="hist_r_mode"]').val('solarize');
+                }
+                if (!$('[name="hist_g_mode"]').val()) {
+                    $('[name="hist_g_mode"]').val('solarize');
+                }
+                if (!$('[name="hist_b_mode"]').val()) {
+                    $('[name="hist_b_mode"]').val('solarize');
+                }
+                if (!$('[name="hist_r_freq"]').val()) {
+                    $('[name="hist_r_freq"]').val('1.0');
+                }
+                if (!$('[name="hist_r_phase"]').val()) {
+                    $('[name="hist_r_phase"]').val('0.0');
+                }
+                if (!$('[name="hist_g_freq"]').val()) {
+                    $('[name="hist_g_freq"]').val('1.0');
+                }
+                if (!$('[name="hist_g_phase"]').val()) {
+                    $('[name="hist_g_phase"]').val('0.2');
+                }
+                if (!$('[name="hist_b_freq"]').val()) {
+                    $('[name="hist_b_freq"]').val('1.0');
+                }
+                if (!$('[name="hist_b_phase"]').val()) {
+                    $('[name="hist_b_phase"]').val('0.4');
+                }
+                if (!$('[name="hist_gamma"]').val()) {
+                    $('[name="hist_gamma"]').val('0.5');
+                }
+                
+                // Update UI after setting defaults
                 updateHistogramGlitchUI();
             }
             
@@ -65,6 +98,11 @@ $(document).ready(function() {
             // Special handling for masked_merge effect
             if (effect === 'masked_merge') {
                 $('#mask_type').trigger('change');
+            }
+            
+            // Special handling for bit_manipulation effect
+            if (effect === 'bit_manipulation') {
+                $('#bit_manipulation_type').trigger('change');
             }
         }
     });
@@ -299,8 +337,8 @@ $(document).ready(function() {
         if ($('#histogram_glitch_fields').is(':visible')) {
             // Channel modes
             if (!$('[name="hist_r_mode"]').val()) {
-                $('[name="hist_r_mode"]').val('gamma');
-                addDebugInfo("Set default hist_r_mode to gamma");
+                $('[name="hist_r_mode"]').val('solarize');
+                addDebugInfo("Set default hist_r_mode to solarize");
             }
             if (!$('[name="hist_g_mode"]').val()) {
                 $('[name="hist_g_mode"]').val('solarize');
@@ -313,8 +351,8 @@ $(document).ready(function() {
             
             // Solarize parameters
             if (!$('[name="hist_r_freq"]').val()) {
-                $('[name="hist_r_freq"]').val('0.1');
-                addDebugInfo("Set default hist_r_freq to 0.1");
+                $('[name="hist_r_freq"]').val('1.0');
+                addDebugInfo("Set default hist_r_freq to 1.0");
             }
             if (!$('[name="hist_r_phase"]').val()) {
                 $('[name="hist_r_phase"]').val('0.0');
@@ -325,16 +363,16 @@ $(document).ready(function() {
                 addDebugInfo("Set default hist_g_freq to 1.0");
             }
             if (!$('[name="hist_g_phase"]').val()) {
-                $('[name="hist_g_phase"]').val('0.5');
-                addDebugInfo("Set default hist_g_phase to 0.5");
+                $('[name="hist_g_phase"]').val('0.2');
+                addDebugInfo("Set default hist_g_phase to 0.2");
             }
             if (!$('[name="hist_b_freq"]').val()) {
-                $('[name="hist_b_freq"]').val('2.0');
-                addDebugInfo("Set default hist_b_freq to 2.0");
+                $('[name="hist_b_freq"]').val('1.0');
+                addDebugInfo("Set default hist_b_freq to 1.0");
             }
             if (!$('[name="hist_b_phase"]').val()) {
-                $('[name="hist_b_phase"]').val('0.5');
-                addDebugInfo("Set default hist_b_phase to 0.5");
+                $('[name="hist_b_phase"]').val('0.4');
+                addDebugInfo("Set default hist_b_phase to 0.4");
             }
             
             // Gamma parameter
@@ -368,6 +406,59 @@ $(document).ready(function() {
             if (!$('[name="perlin_threshold"]').val()) {
                 $('[name="perlin_threshold"]').val('0.5');
                 addDebugInfo("Set default perlin_threshold to 0.5");
+            }
+        }
+        
+        if ($('#posterize_fields').is(':visible')) {
+            if (!$('[name="posterize_levels"]').val()) {
+                $('[name="posterize_levels"]').val('4');
+                addDebugInfo("Set default posterize_levels to 4");
+            }
+        }
+        
+        if ($('#curved_hue_shift_fields').is(':visible')) {
+            if (!$('[name="hue_curve"]').val()) {
+                $('[name="hue_curve"]').val('180');
+                addDebugInfo("Set default hue_curve to 180");
+            }
+            if (!$('[name="hue_shift_amount"]').val()) {
+                $('[name="hue_shift_amount"]').val('60');
+                addDebugInfo("Set default hue_shift_amount to 60");
+            }
+        }
+        
+        if ($('#bit_manipulation_fields').is(':visible')) {
+            if (!$('[name="bit_chunk_size"]').val()) {
+                $('[name="bit_chunk_size"]').val('24');
+                addDebugInfo("Set default bit_chunk_size to 24");
+            }
+            if (!$('[name="bit_manipulation_type"]').val()) {
+                $('[name="bit_manipulation_type"]').val('xor');
+                addDebugInfo("Set default bit_manipulation_type to xor");
+            }
+            if (!$('[name="bit_skip_pattern"]').val()) {
+                $('[name="bit_skip_pattern"]').val('alternate');
+                addDebugInfo("Set default bit_skip_pattern to alternate");
+            }
+            if (!$('[name="bit_offset"]').val()) {
+                $('[name="bit_offset"]').val('0');
+                addDebugInfo("Set default bit_offset to 0");
+            }
+            if (!$('[name="bit_xor_value"]').val()) {
+                $('[name="bit_xor_value"]').val('255');
+                addDebugInfo("Set default bit_xor_value to 255");
+            }
+            if (!$('[name="bit_shift"]').val()) {
+                $('[name="bit_shift"]').val('1');
+                addDebugInfo("Set default bit_shift to 1");
+            }
+            if (!$('[name="bit_randomize"]').val()) {
+                $('[name="bit_randomize"]').val('false');
+                addDebugInfo("Set default bit_randomize to false");
+            }
+            if (!$('[name="bit_random_seed"]').val()) {
+                $('[name="bit_random_seed"]').val('42');
+                addDebugInfo("Set default bit_random_seed to 42");
             }
         }
     }
@@ -763,39 +854,39 @@ $(document).ready(function() {
     
     function updateHistogramGlitchUI() {
         // Get the current modes
-        var rMode = $('#hist-r-mode').val();
-        var gMode = $('#hist-g-mode').val();
-        var bMode = $('#hist-b-mode').val();
+        var rMode = $('[name="hist_r_mode"]').val();
+        var gMode = $('[name="hist_g_mode"]').val();
+        var bMode = $('[name="hist_b_mode"]').val();
         
         // Show/hide relevant fields based on modes
         if (rMode === 'solarize') {
-            $('#hist-r-freq, #hist-r-phase').closest('.form-group').show();
+            $('[name="hist_r_freq"], [name="hist_r_phase"]').closest('.form-group').show();
         } else {
-            $('#hist-r-freq, #hist-r-phase').closest('.form-group').hide();
+            $('[name="hist_r_freq"], [name="hist_r_phase"]').closest('.form-group').hide();
         }
         
         if (gMode === 'solarize') {
-            $('#hist-g-freq, #hist-g-phase').closest('.form-group').show();
+            $('[name="hist_g_freq"], [name="hist_g_phase"]').closest('.form-group').show();
         } else {
-            $('#hist-g-freq, #hist-g-phase').closest('.form-group').hide();
+            $('[name="hist_g_freq"], [name="hist_g_phase"]').closest('.form-group').hide();
         }
         
         if (bMode === 'solarize') {
-            $('#hist-b-freq, #hist-b-phase').closest('.form-group').show();
+            $('[name="hist_b_freq"], [name="hist_b_phase"]').closest('.form-group').show();
         } else {
-            $('#hist-b-freq, #hist-b-phase').closest('.form-group').hide();
+            $('[name="hist_b_freq"], [name="hist_b_phase"]').closest('.form-group').hide();
         }
         
         // Show/hide gamma field
         if (rMode === 'gamma' || gMode === 'gamma' || bMode === 'gamma') {
-            $('#hist-gamma').closest('.form-group').show();
+            $('[name="hist_gamma"]').closest('.form-group').show();
         } else {
-            $('#hist-gamma').closest('.form-group').hide();
+            $('[name="hist_gamma"]').closest('.form-group').hide();
         }
     }
     
     // Update histogram fields when modes change
-    $('#hist-r-mode, #hist-g-mode, #hist-b-mode').change(function() {
+    $('[name="hist_r_mode"], [name="hist_g_mode"], [name="hist_b_mode"]').change(function() {
         updateHistogramGlitchUI();
     });
     
@@ -826,6 +917,25 @@ $(document).ready(function() {
             $('#voronoi_fields').show();
         } else if (type === 'concentric_rectangles') {
             $('#concentric_rectangles_fields').show();
+        }
+    });
+    
+    // Handle bit manipulation type selection to show/hide relevant fields
+    $('#bit_manipulation_type').change(function() {
+        var type = $(this).val();
+        console.log("Bit manipulation type changed to:", type);
+        addDebugInfo("Bit manipulation type changed to: " + type);
+        
+        // Show/hide fields based on the selected manipulation type
+        if (type === 'xor') {
+            $('#bit_xor_value').closest('.form-group').show();
+            $('#bit_shift').closest('.form-group').hide();
+        } else if (type === 'shift') {
+            $('#bit_xor_value').closest('.form-group').hide();
+            $('#bit_shift').closest('.form-group').show();
+        } else if (type === 'swap' || type === 'invert') {
+            $('#bit_xor_value').closest('.form-group').hide();
+            $('#bit_shift').closest('.form-group').hide();
         }
     });
     

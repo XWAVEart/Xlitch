@@ -3,6 +3,8 @@ import numpy as np
 import colorsys
 from io import BytesIO
 from ..core.pixel_attributes import PixelAttributes
+import random
+import bisect
 
 def color_channel_manipulation(image, manipulation_type, choice, factor=None):
     """
@@ -325,4 +327,394 @@ def simulate_jpeg_artifacts(image, intensity):
         current_image = Image.open(buffer)
         current_image.load()  # Make sure the image data is loaded
 
-    return current_image 
+    return current_image
+
+def color_shift_expansion(image, num_points=5, shift_amount=5, expansion_type='square', mode='xtreme', 
+                        saturation_boost=0.0, value_boost=0.0, pattern_type='random', 
+                        color_theme='full-spectrum', decay_factor=0.0):
+    """
+    Apply a color shift expansion effect expanding colored shapes from various points.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        num_points (int): Number of expansion points.
+        shift_amount (int): Amount of color shifting (0-20).
+        expansion_type (str): Shape of expansion ('square', 'circle', 'diamond').
+        mode (str): Mode of color application ('xtreme', 'subtle', 'mono').
+        saturation_boost (float): Amount to boost saturation (0.0-1.0).
+        value_boost (float): Amount to boost brightness (0.0-1.0).
+        pattern_type (str): Pattern of color point placement ('random', 'grid', 'edges').
+        color_theme (str): Color theme to use ('full-spectrum', 'warm', 'cool', 'pastel').
+        decay_factor (float): How quickly effect fades with distance (0.0-1.0).
+    
+    Returns:
+        Image: Processed image with color shift expansion effect.
+    """
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    width, height = image.size
+    image_np = np.array(image)
+    
+    # Create a blank canvas for our output
+    output_np = np.zeros_like(image_np)
+    
+    # Ensure parameters are in valid ranges
+    shift_amount = max(1, min(20, shift_amount))
+    num_points = max(1, min(50, num_points))
+    saturation_boost = max(0.0, min(1.0, saturation_boost))
+    value_boost = max(0.0, min(1.0, value_boost))
+    decay_factor = max(0.0, min(1.0, decay_factor))
+    
+    # Generate seed points based on pattern type
+    seed_points = []
+    if pattern_type == 'grid':
+        # Create an evenly spaced grid of points
+        cols = max(2, int(np.sqrt(num_points)))
+        rows = max(2, num_points // cols)
+        x_step = width // cols
+        y_step = height // rows
+        for i in range(rows):
+            for j in range(cols):
+                x = j * x_step + x_step // 2
+                y = i * y_step + y_step // 2
+                if x < width and y < height:
+                    seed_points.append((x, y))
+    elif pattern_type == 'edges':
+        # Points along the edges of the image
+        edge_points = num_points
+        # Distribute points along the edges
+        for i in range(edge_points):
+            if i % 4 == 0:  # Top edge
+                seed_points.append((int(width * (i / edge_points)), 0))
+            elif i % 4 == 1:  # Right edge
+                seed_points.append((width - 1, int(height * (i / edge_points))))
+            elif i % 4 == 2:  # Bottom edge
+                seed_points.append((int(width * (1 - i / edge_points)), height - 1))
+            elif i % 4 == 3:  # Left edge
+                seed_points.append((0, int(height * (1 - i / edge_points))))
+    else:  # random
+        # Generate random points
+        xs = np.random.randint(0, width, size=num_points)
+        ys = np.random.randint(0, height, size=num_points)
+        seed_points = list(zip(xs, ys))
+    
+    # Define the base colors for each theme
+    seed_colors = []
+    if color_theme == 'warm':
+        # Warm colors (reds, oranges, yellows)
+        for _ in range(num_points):
+            h = random.uniform(0, 60) / 360  # Red to yellow
+            s = random.uniform(0.6, 1.0)
+            v = random.uniform(0.7, 1.0)
+            r, g, b = colorsys.hsv_to_rgb(h, s, v)
+            seed_colors.append((int(r * 255), int(g * 255), int(b * 255)))
+    elif color_theme == 'cool':
+        # Cool colors (blues, greens, purples)
+        for _ in range(num_points):
+            if random.random() < 0.5:
+                h = random.uniform(180, 300) / 360  # Cyan to purple
+            else:
+                h = random.uniform(90, 180) / 360  # Yellow-green to cyan
+            s = random.uniform(0.5, 1.0)
+            v = random.uniform(0.6, 1.0)
+            r, g, b = colorsys.hsv_to_rgb(h, s, v)
+            seed_colors.append((int(r * 255), int(g * 255), int(b * 255)))
+    elif color_theme == 'pastel':
+        # Pastel colors (any hue but lower saturation)
+        for _ in range(num_points):
+            h = random.random()  # Any hue
+            s = random.uniform(0.1, 0.5)  # Lower saturation
+            v = random.uniform(0.8, 1.0)  # Higher value
+            r, g, b = colorsys.hsv_to_rgb(h, s, v)
+            seed_colors.append((int(r * 255), int(g * 255), int(b * 255)))
+    else:  # 'full-spectrum'
+        # Full spectrum of vibrant colors
+        for i in range(num_points):
+            h = i / num_points  # Evenly distributed hues
+            s = random.uniform(0.7, 1.0)  # High saturation
+            v = random.uniform(0.7, 1.0)  # Medium to high value
+            r, g, b = colorsys.hsv_to_rgb(h, s, v)
+            seed_colors.append((int(r * 255), int(g * 255), int(b * 255)))
+    
+    # Calculate the maximum possible distance (diagonal of the image)
+    max_distance = np.sqrt(width**2 + height**2)
+    
+    # Create distance maps for each seed point
+    distance_maps = []
+    for point in seed_points:
+        # Create a new distance map for each seed point
+        distance_map = np.zeros((height, width), dtype=float)
+        
+        # Assign distances based on expansion type
+        x0, y0 = point
+        for y in range(height):
+            for x in range(width):
+                if expansion_type == 'square':
+                    # Chebyshev distance (L∞ norm)
+                    d = max(abs(x - x0), abs(y - y0))
+                elif expansion_type == 'diamond':
+                    # Manhattan distance (L1 norm)
+                    d = abs(x - x0) + abs(y - y0)
+                else:  # circle
+                    # Euclidean distance (L2 norm)
+                    d = np.sqrt((x - x0)**2 + (y - y0)**2)
+                
+                # Apply the distance
+                distance_map[y, x] = d
+                
+        distance_maps.append(distance_map)
+    
+    # Process each pixel
+    for y in range(height):
+        for x in range(width):
+            # Get the original pixel color
+            original_r, original_g, original_b = image_np[y, x]
+            
+            # Convert to HSV for easier manipulation
+            h, s, v = colorsys.rgb_to_hsv(original_r / 255.0, original_g / 255.0, original_b / 255.0)
+            
+            # Find the closest seed point and its distance
+            closest_idx = 0
+            min_dist = float('inf')
+            
+            # Find weighted influences from all points based on their distances
+            total_influence = 0
+            influences = []
+            
+            for i, distance_map in enumerate(distance_maps):
+                distance = distance_map[y, x]
+                
+                # Check if this is the closest point
+                if distance < min_dist:
+                    min_dist = distance
+                    closest_idx = i
+                
+                # Calculate influence based on distance and decay
+                if decay_factor > 0:
+                    # With decay, influence drops off with distance
+                    influence = max(0.0, 1.0 - (decay_factor * distance / max_distance))
+                else:
+                    # Without decay, we use an inverse square relationship
+                    influence = 1.0 / (1.0 + (distance / 50.0)**2)
+                
+                # Store the influence and add to total
+                influences.append(influence)
+                total_influence += influence
+            
+            # If no significant influence, keep original color
+            if total_influence < 0.001:
+                output_np[y, x] = image_np[y, x]
+                continue
+            
+            # Normalize influences so they sum to 1
+            influences = [inf / total_influence for inf in influences]
+            
+            # Calculate the weighted blend of all seed colors
+            blend_r, blend_g, blend_b = 0, 0, 0
+            for i, influence in enumerate(influences):
+                if i < len(seed_colors):  # Safety check
+                    seed_r, seed_g, seed_b = seed_colors[i]
+                    blend_r += seed_r * influence
+                    blend_g += seed_g * influence
+                    blend_b += seed_b * influence
+            
+            # Convert the blend to HSV
+            blend_h, blend_s, blend_v = colorsys.rgb_to_hsv(
+                blend_r / 255.0, blend_g / 255.0, blend_b / 255.0)
+            
+            # Apply the shift amount to control the intensity of the effect
+            # The higher the shift_amount, the more of the seed colors show through
+            # Scale to provide good results in the 1-20 range
+            shift_weight = min(0.85, shift_amount / 12.0)
+            
+            # Blend original and seed colors based on shift_weight
+            final_h = h * (1 - shift_weight) + blend_h * shift_weight
+            final_s = s * (1 - shift_weight) + (blend_s + saturation_boost) * shift_weight
+            final_v = v * (1 - shift_weight) + (blend_v + value_boost) * shift_weight
+            
+            # Ensure saturation and value are in valid range
+            final_s = min(1.0, max(0.0, final_s))
+            final_v = min(1.0, max(0.0, final_v))
+            
+            # Convert back to RGB
+            final_r, final_g, final_b = colorsys.hsv_to_rgb(final_h, final_s, final_v)
+            
+            # Store the final color
+            output_np[y, x] = [
+                int(final_r * 255), 
+                int(final_g * 255), 
+                int(final_b * 255)
+            ]
+    
+    # Convert back to PIL Image
+    processed_image = Image.fromarray(output_np.astype(np.uint8))
+    return processed_image
+
+def darken_color(color, amount):
+    """
+    Darken a color by a specified amount.
+    
+    Args:
+        color (tuple): RGB color tuple.
+        amount (float): Amount to darken (0.0-1.0).
+    
+    Returns:
+        tuple: Darkened RGB color tuple.
+    """
+    r, g, b = color
+    amount = max(0.0, min(1.0, amount))
+    factor = 1.0 - amount
+    
+    return (
+        int(r * factor),
+        int(g * factor),
+        int(b * factor)
+    )
+
+def posterize(image, levels):
+    """
+    Posterize an image by reducing each color channel to a specified number of levels.
+    
+    Args:
+        image (PIL.Image): The input image.
+        levels (int): The number of intensity levels per channel (must be >= 2).
+    
+    Returns:
+        PIL.Image: The posterized image.
+    """
+    if not isinstance(levels, int) or levels < 2:
+        raise ValueError("Levels must be an integer greater than or equal to 2")
+    
+    # Ensure the image is in RGB mode
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    
+    # Split the image into its R, G, B channels
+    r, g, b = image.split()
+    
+    # Create a mapping of input pixel values to posterized values
+    # Formula: convert input [0-255] to [0-(levels-1)] then back to [0-255]
+    lut = [int(((i * (levels - 1)) / 255) + 0.5) * (255 // (levels - 1)) for i in range(256)]
+    
+    # Apply the lookup table to each channel
+    new_r = r.point(lut)
+    new_g = g.point(lut)
+    new_b = b.point(lut)
+    
+    # Merge the channels back into an RGB image
+    new_image = Image.merge("RGB", (new_r, new_g, new_b))
+    
+    return new_image
+
+def curved_hue_shift(image, C, A):
+    """
+    Applies a curved hue shift to an image.
+    
+    Args:
+        image (PIL.Image): The input image.
+        C (float): Curve value from 1 to 360, controlling the shift curve.
+        A (float): Total shift amount in degrees.
+    
+    Returns:
+        PIL.Image: The image with the curved hue shift applied.
+    """
+    # Validate inputs
+    if not 1 <= C <= 360:
+        raise ValueError("Curve parameter C must be between 1 and 360")
+    
+    # Convert to RGB mode if the image has an alpha channel or is in a different mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Convert image to NumPy array
+    arr = np.array(image)
+    
+    # Convert RGB to HSV manually without scikit-image dependency
+    r, g, b = arr[:, :, 0] / 255.0, arr[:, :, 1] / 255.0, arr[:, :, 2] / 255.0
+    
+    # RGB to HSV conversion
+    maxc = np.maximum(np.maximum(r, g), b)
+    minc = np.minimum(np.minimum(r, g), b)
+    v = maxc
+    
+    # Avoid division by zero
+    delta = maxc - minc + 1e-10
+    s = delta / (maxc + 1e-10)
+    
+    # Initialize h to zeros
+    h = np.zeros_like(s)
+    
+    # Calculate hue
+    rc = (maxc - r) / delta
+    gc = (maxc - g) / delta
+    bc = (maxc - b) / delta
+    
+    mask_r = (r == maxc)
+    h[mask_r] = bc[mask_r] - gc[mask_r]
+    
+    mask_g = (g == maxc)
+    h[mask_g] = 2.0 + rc[mask_g] - bc[mask_g]
+    
+    mask_b = (b == maxc)
+    h[mask_b] = 4.0 + gc[mask_b] - rc[mask_b]
+    
+    h = (h / 6.0) % 1.0
+    
+    # Convert hue to degrees (0-360)
+    H = h * 360.0
+    
+    # Compute the curve parameter p
+    p = (C - 180) / 180.0
+    
+    # Compute the shift amount S for each pixel
+    S_shift = A * np.exp(p * (H / 360.0 - 0.5))
+    
+    # Compute the new hue H'
+    H_new = (H + S_shift) % 360.0
+    
+    # Convert back to [0, 1] range
+    h_new = H_new / 360.0
+    
+    # HSV to RGB conversion
+    i = np.floor(h_new * 6.0)
+    f = h_new * 6.0 - i
+    p = v * (1.0 - s)
+    q = v * (1.0 - f * s)
+    t = v * (1.0 - (1.0 - f) * s)
+    
+    # Initialize RGB arrays
+    r_new = np.zeros_like(h_new)
+    g_new = np.zeros_like(h_new)
+    b_new = np.zeros_like(h_new)
+    
+    # Convert based on hue sector
+    i = i.astype(int) % 6
+    
+    mask = (i == 0)
+    r_new[mask], g_new[mask], b_new[mask] = v[mask], t[mask], p[mask]
+    
+    mask = (i == 1)
+    r_new[mask], g_new[mask], b_new[mask] = q[mask], v[mask], p[mask]
+    
+    mask = (i == 2)
+    r_new[mask], g_new[mask], b_new[mask] = p[mask], v[mask], t[mask]
+    
+    mask = (i == 3)
+    r_new[mask], g_new[mask], b_new[mask] = p[mask], q[mask], v[mask]
+    
+    mask = (i == 4)
+    r_new[mask], g_new[mask], b_new[mask] = t[mask], p[mask], v[mask]
+    
+    mask = (i == 5)
+    r_new[mask], g_new[mask], b_new[mask] = v[mask], p[mask], q[mask]
+    
+    # Stack and convert back to uint8
+    rgb_new = np.stack([r_new, g_new, b_new], axis=2)
+    out_arr = (rgb_new * 255).astype(np.uint8)
+    
+    # Create a new PIL image
+    new_img = Image.fromarray(out_arr)
+    
+    return new_img 

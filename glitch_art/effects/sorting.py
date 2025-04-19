@@ -2,36 +2,34 @@ from PIL import Image
 import numpy as np
 from ..core.pixel_attributes import PixelAttributes
 
-def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None, sort_order='ascending'):
+def pixel_sorting(image, sort_mode, chunk_size, sort_by, starting_corner=None, sort_order='ascending'):
     """
-    Apply pixel sorting to an image by chunks, sorting pixels within each chunk based on a specific property.
+    Sort pixels in chunks based on various attributes.
     
     Args:
-        image (Image): PIL Image object to process.
-        direction (str): 'horizontal', 'vertical', or 'diagonal' sort direction.
-        chunk_size (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
-        sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue',
-                       'saturation', 'luminance', 'contrast').
-        starting_corner (str, optional): Corner to start from for diagonal sorting
-                                        ('top-left', 'top-right', 'bottom-left', 'bottom-right').
-                                        Required only when direction is 'diagonal'.
-        sort_order (str): 'ascending' (low to high) or 'descending' (high to low). Default is 'ascending'.
+        image (Image): Input PIL image
+        sort_mode (str): Direction of sorting - 'horizontal', 'vertical', or 'diagonal'
+        chunk_size (str): Size of chunks in format 'WIDTHxHEIGHT'
+        sort_by (str): Attribute to sort by - 'brightness', 'hue', 'saturation', etc.
+        starting_corner (str, optional): For diagonal sorting - corner to start from
+        sort_order (str, optional): 'ascending' or 'descending'
     
     Returns:
-        Image: Processed image with sorted pixels.
+        Image: Processed image with sorted pixels
     """
     # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
     # Handle special case for diagonal sorting
-    if direction == 'diagonal':
+    if sort_mode == 'diagonal':
         if not starting_corner:
             raise ValueError("starting_corner is required for diagonal sorting")
         # Determine if horizontal is True based on starting corner
         horizontal = starting_corner in ['top-left', 'bottom-left']
         # Pass the sort order parameter to the diagonal sorting function
-        return pixel_sorting_corner_to_corner(image, chunk_size, sort_by, starting_corner, horizontal, sort_order=sort_order)
+        reverse = (sort_order == 'descending')
+        return pixel_sorting_corner_to_corner(image, chunk_size, sort_by, starting_corner, horizontal, sort_order)
     
     # Define the sort function based on the sort_by parameter
     sort_function = {
@@ -75,7 +73,7 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None, s
                     chunk_pixels.append(pixels[y * width + x])
             
             # Sort chunk with the appropriate order
-            if direction == 'horizontal':
+            if sort_mode == 'horizontal':
                 sorted_chunk = sorted(chunk_pixels, key=sort_function, reverse=reverse)
                 
                 # Place sorted pixels back in horizontal order
@@ -113,7 +111,7 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None, s
                     edge_chunk.append(pixels[y * width + x])
             
             # Sort the edge chunk with the appropriate order
-            if direction == 'horizontal':
+            if sort_mode == 'horizontal':
                 sorted_edge = sorted(edge_chunk, key=sort_function, reverse=reverse)
                 
                 # Place sorted pixels back
@@ -151,7 +149,7 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None, s
                     edge_chunk.append(pixels[y * width + x])
             
             # Sort the edge chunk with the appropriate order
-            if direction == 'horizontal':
+            if sort_mode == 'horizontal':
                 sorted_edge = sorted(edge_chunk, key=sort_function, reverse=reverse)
                 
                 # Place sorted pixels back
@@ -188,7 +186,7 @@ def pixel_sorting(image, direction, chunk_size, sort_by, starting_corner=None, s
                 corner_chunk.append(pixels[y * width + x])
         
         # Sort the corner chunk with the appropriate order
-        if direction == 'horizontal':
+        if sort_mode == 'horizontal':
             sorted_corner = sorted(corner_chunk, key=sort_function, reverse=reverse)
             
             # Place sorted pixels back

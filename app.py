@@ -5,16 +5,17 @@ import traceback
 import logging
 import numpy as np
 from forms import ImageProcessForm
-from glitch_art import (
-    load_image, pixel_sorting, color_channel_manipulation, double_expose, 
-    pixel_drift, bit_manipulation, generate_output_filename, 
-    full_frame_sort, spiral_sort_2, polar_sorting, perlin_noise_sorting, 
-    perlin_full_frame_sort, pixelate_by_mode, concentric_shapes, 
-    color_shift_expansion, perlin_noise_displacement, data_mosh_blocks, 
-    voronoi_pixel_sort, split_and_shift_channels, simulate_jpeg_artifacts, 
-    pixel_scatter, databend_image, histogram_glitch, resize_image_if_needed, 
-    Ripple, masked_merge
-)
+# Import effect functions directly from their modules for improved maintainability
+from glitch_art.effects.sorting import pixel_sorting, full_frame_sort, spiral_sort_2, polar_sorting
+from glitch_art.effects.color import color_channel_manipulation, split_and_shift_channels, histogram_glitch, color_shift_expansion, posterize, curved_hue_shift
+from glitch_art.effects.distortion import pixel_drift, perlin_noise_displacement, pixel_scatter, ripple_effect, offset_effect, slice_shuffle, slice_offset, slice_reduction, geometric_distortion
+from glitch_art.effects.glitch import bit_manipulation, databend_image, simulate_jpeg_artifacts, data_mosh_blocks
+from glitch_art.effects.patterns import voronoi_pixel_sort, masked_merge, concentric_shapes
+from glitch_art.effects.noise import perlin_noise_sorting, perlin_full_frame_sort
+from glitch_art.effects.pixelate import pixelate_by_attribute
+from glitch_art.effects.blend import double_expose
+# Import core utilities
+from glitch_art.core.image_utils import load_image, generate_output_filename, resize_image_if_needed
 from flask_wtf.csrf import CSRFProtect
 import random
 import secrets
@@ -184,9 +185,38 @@ def index():
                 elif effect == 'bit_manipulation':
                     logger.debug("Applying bit manipulation")
                     chunk_size = form.bit_chunk_size.data
-                    logger.debug(f"Bit manipulation chunk size: {chunk_size}")
-                    processed_image = bit_manipulation(image, chunk_size)
-                    settings = f"bitmanip_{chunk_size}"
+                    offset = form.bit_offset.data
+                    xor_value = form.bit_xor_value.data
+                    skip_pattern = form.bit_skip_pattern.data
+                    manipulation_type = form.bit_manipulation_type.data
+                    bit_shift = form.bit_shift.data
+                    randomize = form.bit_randomize.data == 'true'
+                    random_seed = form.bit_random_seed.data
+                    
+                    logger.debug(f"Bit manipulation params: chunk_size={chunk_size}, offset={offset}, " 
+                                f"xor_value={xor_value}, skip_pattern={skip_pattern}, "
+                                f"manipulation_type={manipulation_type}, bit_shift={bit_shift}, "
+                                f"randomize={randomize}, random_seed={random_seed}")
+                    
+                    processed_image = bit_manipulation(
+                        image, 
+                        chunk_size=chunk_size,
+                        offset=offset,
+                        xor_value=xor_value,
+                        skip_pattern=skip_pattern,
+                        manipulation_type=manipulation_type,
+                        bit_shift=bit_shift,
+                        randomize=randomize,
+                        random_seed=random_seed
+                    )
+                    
+                    settings = f"bitmanip_{chunk_size}_{offset}_{xor_value}_{skip_pattern}_{manipulation_type}"
+                    if bit_shift != 1:
+                        settings += f"_{bit_shift}"
+                    if randomize:
+                        settings += "_random"
+                    if random_seed != 42:
+                        settings += f"_{random_seed}"
                 elif effect == 'data_mosh_blocks':
                     num_operations = form.data_mosh_operations.data
                     max_block_size = form.data_mosh_block_size.data
@@ -237,9 +267,10 @@ def index():
                     sort_by = form.perlin_full_frame_sort_by.data
                     reverse = form.perlin_full_frame_reverse.data == 'true'
                     seed = form.perlin_full_frame_seed.data
-                    logger.debug(f"Perlin full frame params: noise_scale={noise_scale}, sort_by={sort_by}, reverse={reverse}, seed={seed}")
-                    processed_image = perlin_full_frame_sort(image, noise_scale, sort_by, reverse, seed)
-                    settings = f"perlinfullframe_{noise_scale}_{sort_by}_{'desc' if reverse else 'asc'}_{seed}"
+                    pattern_width = form.perlin_full_frame_pattern_width.data
+                    logger.debug(f"Perlin full frame params: noise_scale={noise_scale}, sort_by={sort_by}, reverse={reverse}, seed={seed}, pattern_width={pattern_width}")
+                    processed_image = perlin_full_frame_sort(image, noise_scale, sort_by, reverse, seed, pattern_width)
+                    settings = f"perlinfullframe_{noise_scale}_{sort_by}_{'desc' if reverse else 'asc'}_{seed}_w{pattern_width}"
                 elif effect == 'spiral_sort_2':
                     chunk_size = form.spiral2_chunk_size.data
                     sort_by = form.spiral2_sort_by.data
@@ -253,7 +284,7 @@ def index():
                     attribute = form.pixelate_attribute.data
                     num_bins = form.pixelate_bins.data
                     logger.debug(f"Pixelate params: width={pixel_width}, height={pixel_height}, attribute={attribute}, bins={num_bins}")
-                    processed_image = pixelate_by_mode(image, pixel_width, pixel_height, attribute, num_bins)
+                    processed_image = pixelate_by_attribute(image, pixel_width, pixel_height, attribute, num_bins)
                     settings = f"pixelate_{pixel_width}x{pixel_height}_{attribute}_{num_bins}"
                 elif effect == 'concentric_shapes':
                     num_points = form.concentric_num_points.data
@@ -415,7 +446,7 @@ def index():
                                f"frequency={frequency}, decay={decay}, distortion_type={distortion_type}, "
                                f"distortion_params={distortion_params}")
                     
-                    processed_image = Ripple(
+                    processed_image = ripple_effect(
                         image, num_droplets, amplitude, frequency, decay, distortion_type, distortion_params
                     )
                     
@@ -511,6 +542,60 @@ def index():
                     elif mask_type == 'concentric_rectangles':
                         # Use the specific width variable for settings
                         settings = f"maskedmerge_{mask_type}_{current_mask_width}px"
+                elif effect == 'offset':
+                    # process offset effect
+                    processed_image = offset_effect(image, 
+                               offset_x=form.offset_x_value.data, 
+                               offset_y=form.offset_y_value.data, 
+                               unit_x=form.offset_x_unit.data, 
+                               unit_y=form.offset_y_unit.data)
+                    settings = f"offset_{form.offset_x_value.data}_{form.offset_x_unit.data}_{form.offset_y_value.data}_{form.offset_y_unit.data}"
+                elif effect == 'slice_shuffle':
+                    # process slice shuffle effect
+                    slice_count = form.slice_count.data
+                    orientation = form.slice_orientation.data
+                    seed = form.slice_seed.data
+                    processed_image = slice_shuffle(image, slice_count, orientation, seed if seed is not None and seed != 0 else None)
+                    settings = f"slice_{slice_count}_{orientation}" + (f"_{seed}" if seed else "")
+                elif effect == 'slice_offset':
+                    # process slice offset effect
+                    slice_count = form.slice_offset_count.data
+                    max_offset = form.slice_offset_max.data
+                    orientation = form.slice_offset_orientation.data
+                    offset_mode = form.slice_offset_mode.data
+                    sine_frequency = form.slice_offset_frequency.data if offset_mode == 'sine' else None
+                    seed = form.slice_offset_seed.data if offset_mode == 'random' else None
+                    
+                    processed_image = slice_offset(
+                        image, 
+                        slice_count, 
+                        max_offset, 
+                        orientation, 
+                        offset_mode=offset_mode,
+                        sine_frequency=sine_frequency,
+                        seed=seed if seed is not None and seed != 0 else None
+                    )
+                    
+                    settings = f"sliceoffset_{slice_count}_{max_offset}_{orientation}_{offset_mode}"
+                    if offset_mode == 'sine' and sine_frequency:
+                        settings += f"_freq{sine_frequency}"
+                    elif offset_mode == 'random' and seed:
+                        settings += f"_seed{seed}"
+                elif effect == 'slice_reduction':
+                    # process slice reduction effect
+                    slice_count = form.slice_reduction_count.data
+                    reduction_value = form.slice_reduction_value.data
+                    orientation = form.slice_reduction_orientation.data
+                    processed_image = slice_reduction(image, slice_count, reduction_value, orientation)
+                    settings = f"slicereduction_{slice_count}_{reduction_value}_{orientation}"
+                elif effect == 'posterize':
+                    # process posterize effect
+                    processed_image = posterize(image, form.posterize_levels.data)
+                    settings = f"posterize_{form.posterize_levels.data}"
+                elif effect == 'curved_hue_shift':
+                    # process curved hue shift effect
+                    processed_image = curved_hue_shift(image, form.hue_curve.data, form.hue_shift_amount.data)
+                    settings = f"hue_skrift_C{form.hue_curve.data}_A{form.hue_shift_amount.data}"
                 else:
                     logger.error(f"Unknown effect: {effect}")
                     error_msg = f"Unknown effect: {effect}"

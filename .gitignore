@@ -28,6 +28,9 @@ ENV/
 instance/
 .webassets-cache
 
+# Environment variables
+.env
+
 # Uploaded and processed images
 uploads/*
 processed/*
@@ -41,3 +44,29 @@ processed/*
 .Trashes
 ehthumbs.db
 Thumbs.db 
+
+# Test files
+test_app_color_shift.py
+test_color_shift_compare.py
+test_color_shift.py
+test_glitch_art.py
+test_imports.py
+test_modules.py
+test_results/
+
+# IDE files
+.vscode/
+.idea/
+
+# macOS resource fork files
+._*
+
+# Other
+deploy_heroku.sh 
+DUPLICATION_CLEANUP_PLAN.md 
+MIGRATION_GUIDE.md
+REFACTORING_PLAN.md
+REFACTORING_SUMMARY.md
+notes.md 
+DEPRECIATED-utils.py
+setup.py

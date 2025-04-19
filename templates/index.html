@@ -366,7 +366,72 @@
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.effect.label }}</label>
-                    {{ form.effect(id="effect", required=True) }}
+                    {{ form.effect(id='effect') }}
+                </div>
+            </div>
+            
+            <div id="offset-options" style="display: none;">
+                <div class="form-group">
+                    {{ form.offset_x_value.label }} {{ form.offset_x_value(size=10, id='offset_x_value') }}
+                    {{ form.offset_x_unit(id='offset_x_unit') }}
+                </div>
+                <div class="form-group">
+                    {{ form.offset_y_value.label }} {{ form.offset_y_value(size=10, id='offset_y_value') }}
+                    {{ form.offset_y_unit(id='offset_y_unit') }}
+                </div>
+            </div>
+            
+            <div id="slice-shuffle-options" style="display: none;">
+                <div class="form-group">
+                    {{ form.slice_count.label }} {{ form.slice_count(size=10, id='slice_count') }}
+                    <small class="form-text text-muted">Enter a value between 4 and 128</small>
+                </div>
+                <div class="form-group">
+                    {{ form.slice_orientation.label }} {{ form.slice_orientation(id='slice_orientation') }}
+                </div>
+                <div class="form-group">
+                    {{ form.slice_seed.label }} {{ form.slice_seed(size=10, id='slice_seed') }}
+                    <small class="form-text text-muted">Optional - leave empty for random results each time</small>
+                </div>
+            </div>
+            
+            <div id="slice-offset-options" style="display: none;">
+                <div class="form-group">
+                    {{ form.slice_offset_count.label }} {{ form.slice_offset_count(size=10, id='slice_offset_count') }}
+                    <small class="form-text text-muted">Enter a value between 4 and 128</small>
+                </div>
+                <div class="form-group">
+                    {{ form.slice_offset_max.label }} {{ form.slice_offset_max(size=10, id='slice_offset_max') }}
+                    <small class="form-text text-muted">Maximum random offset (1-512 pixels)</small>
+                </div>
+                <div class="form-group">
+                    {{ form.slice_offset_orientation.label }} {{ form.slice_offset_orientation(id='slice_offset_orientation') }}
+                </div>
+                <div class="form-group">
+                    {{ form.slice_offset_mode.label }} {{ form.slice_offset_mode(id='slice_offset_mode') }}
+                    <small class="form-text text-muted">Choose between random or sine wave pattern</small>
+                </div>
+                <div class="form-group" id="slice_offset_sine_options" style="display: none;">
+                    {{ form.slice_offset_frequency.label }} {{ form.slice_offset_frequency(size=10, step="0.01", id='slice_offset_frequency') }}
+                    <small class="form-text text-muted">Controls the wave frequency (0.01-1.0)</small>
+                </div>
+                <div class="form-group" id="slice_offset_random_options">
+                    {{ form.slice_offset_seed.label }} {{ form.slice_offset_seed(size=10, id='slice_offset_seed') }}
+                    <small class="form-text text-muted">Optional - leave empty for random results each time</small>
+                </div>
+            </div>
+            
+            <div id="slice-reduction-options" style="display: none;">
+                <div class="form-group">
+                    {{ form.slice_reduction_count.label }} {{ form.slice_reduction_count(size=10, id='slice_reduction_count') }}
+                    <small class="form-text text-muted">Enter a value between 16 and 256</small>
+                </div>
+                <div class="form-group">
+                    {{ form.slice_reduction_value.label }} {{ form.slice_reduction_value(size=10, id='slice_reduction_value') }}
+                    <small class="form-text text-muted">Enter a value between 2 and 8</small>
+                </div>
+                <div class="form-group">
+                    {{ form.slice_reduction_orientation.label }} {{ form.slice_reduction_orientation(id='slice_reduction_orientation') }}
                 </div>
             </div>
             
@@ -511,6 +576,11 @@
                 <div class="form-group">
                     <label class="required-field">{{ form.perlin_full_frame_reverse.label }}</label>
                     {{ form.perlin_full_frame_reverse(required=True) }}
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.perlin_full_frame_pattern_width.label }}</label>
+                    {{ form.perlin_full_frame_pattern_width(required=True, min=1, max=8, type="number", value="1") }}
+                    <span class="help-text">Width of sorted patterns (1-8, higher = thicker lines)</span>
                 </div>
             </div>
             
@@ -704,12 +774,47 @@
             <div id="bit_manipulation_fields" class="effect-fields" style="display:none;">
                 <h3>Bit Manipulation</h3>
                 <div class="alert alert-info">
-                    <strong>About Bit Manipulation:</strong> This effect directly manipulates the binary data of your image, randomly flipping bits to create digital corruption artifacts. The result mimics data corruption or compression glitches, producing unpredictable but fascinating visual distortions that include color shifts, pixelation, and partial image scrambling.
+                    <strong>About Bit Manipulation:</strong> This effect directly manipulates the binary data of your image, creating digital corruption artifacts. Choose different manipulation types, patterns, and randomization to create unique glitch effects. This technique mimics data corruption or compression glitches, producing unpredictable but fascinating visual distortions.
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.bit_chunk_size.label }}</label>
                     {{ form.bit_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
-                    <span class="help-text">Size of square chunks (8-128, multiples of 8)</span>
+                    <span class="help-text">Size of chunks to process (8-128, multiples of 8)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.bit_manipulation_type.label }}</label>
+                    {{ form.bit_manipulation_type(required=True) }}
+                    <span class="help-text">Type of bit-level manipulation to apply</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.bit_skip_pattern.label }}</label>
+                    {{ form.bit_skip_pattern(required=True) }}
+                    <span class="help-text">Pattern for which chunks to process</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.bit_offset.label }}</label>
+                    {{ form.bit_offset(min=0, type="number") }}
+                    <span class="help-text">Number of bytes to skip at the beginning</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.bit_xor_value.label }}</label>
+                    {{ form.bit_xor_value(min=0, max=255, type="number") }}
+                    <span class="help-text">Value to XOR with bytes (0-255, used for XOR mode)</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.bit_shift.label }}</label>
+                    {{ form.bit_shift(min=-7, max=7, type="number") }}
+                    <span class="help-text">Number of bits to shift (-7 to 7, used for Shift mode)</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.bit_randomize.label }}</label>
+                    {{ form.bit_randomize() }}
+                    <span class="help-text">Add randomization to create more chaotic effects</span>
+                </div>
+                <div class="form-group">
+                    <label>{{ form.bit_random_seed.label }}</label>
+                    {{ form.bit_random_seed(min=1, max=9999, type="number") }}
+                    <span class="help-text">Seed for random operations (same seed = same result)</span>
                 </div>
             </div>
             
@@ -1013,17 +1118,17 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>{{ form.hist_r_mode.label }}</label>
-                        {{ form.hist_r_mode }}
+                        {{ form.hist_r_mode(value="solarize") }}
                         <span class="help-text">Mathematical transformation for the red channel</span>
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_g_mode.label }}</label>
-                        {{ form.hist_g_mode }}
+                        {{ form.hist_g_mode(value="solarize") }}
                         <span class="help-text">Mathematical transformation for the green channel</span>
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_b_mode.label }}</label>
-                        {{ form.hist_b_mode }}
+                        {{ form.hist_b_mode(value="solarize") }}
                         <span class="help-text">Mathematical transformation for the blue channel</span>
                     </div>
                 </div>
@@ -1033,12 +1138,12 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>{{ form.hist_r_freq.label }}</label>
-                        {{ form.hist_r_freq(min=0.1, max=10.0, step=0.1, type="number") }}
+                        {{ form.hist_r_freq(min=0.1, max=10.0, step=0.1, type="number", value="1.0") }}
                         <span class="help-text">Wave frequency for red solarization</span>
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_r_phase.label }}</label>
-                        {{ form.hist_r_phase(min=0.0, max=6.28, step=0.1, type="number") }}
+                        {{ form.hist_r_phase(min=0.0, max=6.28, step=0.1, type="number", value="0.0") }}
                         <span class="help-text">Wave phase shift for red solarization</span>
                     </div>
                 </div>
@@ -1046,12 +1151,12 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>{{ form.hist_g_freq.label }}</label>
-                        {{ form.hist_g_freq(min=0.1, max=10.0, step=0.1, type="number") }}
+                        {{ form.hist_g_freq(min=0.1, max=10.0, step=0.1, type="number", value="1.0") }}
                         <span class="help-text">Wave frequency for green solarization</span>
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_g_phase.label }}</label>
-                        {{ form.hist_g_phase(min=0.0, max=6.28, step=0.1, type="number") }}
+                        {{ form.hist_g_phase(min=0.0, max=6.28, step=0.1, type="number", value="0.2") }}
                         <span class="help-text">Wave phase shift for green solarization</span>
                     </div>
                 </div>
@@ -1059,12 +1164,12 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>{{ form.hist_b_freq.label }}</label>
-                        {{ form.hist_b_freq(min=0.1, max=10.0, step=0.1, type="number") }}
+                        {{ form.hist_b_freq(min=0.1, max=10.0, step=0.1, type="number", value="1.0") }}
                         <span class="help-text">Wave frequency for blue solarization</span>
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_b_phase.label }}</label>
-                        {{ form.hist_b_phase(min=0.0, max=6.28, step=0.1, type="number") }}
+                        {{ form.hist_b_phase(min=0.0, max=6.28, step=0.1, type="number", value="0.4") }}
                         <span class="help-text">Wave phase shift for blue solarization</span>
                     </div>
                 </div>
@@ -1074,7 +1179,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>{{ form.hist_gamma.label }}</label>
-                        {{ form.hist_gamma(min=0.1, max=3.0, step=0.1, type="number") }}
+                        {{ form.hist_gamma(min=0.1, max=3.0, step=0.1, type="number", value="0.5") }}
                         <span class="help-text">Gamma value for gamma transformation (0.1-3.0)</span>
                     </div>
                 </div>
@@ -1163,6 +1268,37 @@
                             <span class="help-text">Maximum magnitude for pixelation blend (1.0-20.0)</span>
                         </div>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Posterfy Effect fields -->
+            <div id="posterize_fields" class="effect-fields" style="display: none;">
+                <h3>Posterfy Settings</h3>
+                <div class="alert alert-info">
+                    <strong>About Posterfy:</strong> This effect reduces the number of colors in your image, creating a vintage poster-like look with well-defined color bands. Fewer levels create more dramatic, stylized results.
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.posterize_levels.label }}</label>
+                    {{ form.posterize_levels(required=True, min=2, max=32, type="number") }}
+                    <span class="help-text">Number of color levels per channel (2-32, lower = more stylized)</span>
+                </div>
+            </div>
+            
+            <!-- Hue Skrift Effect fields -->
+            <div id="curved_hue_shift_fields" class="effect-fields" style="display: none;">
+                <h3>Hue Skrift Settings</h3>
+                <div class="alert alert-info">
+                    <strong>About Hue Skrift:</strong> This effect applies a curved shift to the hue values of your image, creating complex color transformations that vary across the image based on the original colors. The curve parameter controls how the shift is distributed.
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.hue_curve.label }}</label>
+                    {{ form.hue_curve(required=True, min=1, max=360, type="number") }}
+                    <span class="help-text">Curve value (1-360): 180 = uniform shift, lower values increase shift in blues/greens, higher values increase shift in reds/yellows</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.hue_shift_amount.label }}</label>
+                    {{ form.hue_shift_amount(required=True, min=-180, max=180, type="number") }}
+                    <span class="help-text">Amount of hue shift in degrees (-180 to 180)</span>
                 </div>
             </div>
             
@@ -1335,6 +1471,56 @@
             
             // Trigger the effect selection change on page load
             $('#effect').trigger('change');
+        });
+
+        document.addEventListener("DOMContentLoaded", function(){
+            var effectField = document.getElementById("effect");
+            var offsetOptions = document.getElementById("offset-options");
+            var sliceShuffleOptions = document.getElementById("slice-shuffle-options");
+            var sliceOffsetOptions = document.getElementById("slice-offset-options");
+            var sliceReductionOptions = document.getElementById("slice-reduction-options");
+
+            // For slice offset mode toggle
+            var sliceOffsetModeField = document.getElementById("slice_offset_mode");
+            var sliceOffsetSineOptions = document.getElementById("slice_offset_sine_options");
+            var sliceOffsetRandomOptions = document.getElementById("slice_offset_random_options");
+
+            function toggleEffectOptions() {
+                // Hide all option sections first
+                offsetOptions.style.display = "none";
+                sliceShuffleOptions.style.display = "none";
+                sliceOffsetOptions.style.display = "none";
+                sliceReductionOptions.style.display = "none";
+
+                // Show the appropriate section based on selected effect
+                if(effectField.value === "offset") {
+                    offsetOptions.style.display = "block";
+                } else if(effectField.value === "slice_shuffle") {
+                    sliceShuffleOptions.style.display = "block";
+                } else if(effectField.value === "slice_offset") {
+                    sliceOffsetOptions.style.display = "block";
+                    toggleSliceOffsetMode(); // Also toggle the mode options
+                } else if(effectField.value === "slice_reduction") {
+                    sliceReductionOptions.style.display = "block";
+                }
+            }
+
+            function toggleSliceOffsetMode() {
+                if(sliceOffsetModeField.value === "sine") {
+                    sliceOffsetSineOptions.style.display = "block";
+                    sliceOffsetRandomOptions.style.display = "none";
+                } else {
+                    sliceOffsetSineOptions.style.display = "none";
+                    sliceOffsetRandomOptions.style.display = "block";
+                }
+            }
+
+            // Add event listeners
+            effectField.addEventListener("change", toggleEffectOptions);
+            sliceOffsetModeField.addEventListener("change", toggleSliceOffsetMode);
+            
+            // Initial setup
+            toggleEffectOptions(); // initial check on page load
         });
     </script>
 </body>

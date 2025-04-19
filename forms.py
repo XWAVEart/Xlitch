@@ -55,9 +55,19 @@ class ImageProcessForm(FlaskForm):
         ('color_shift_expansion', 'Color Shift Expansion'),
         ('pixelate', 'Pixelate'),
         ('concentric_shapes', 'Concentric Shapes'),
+        ('posterize', 'Posterfy'),
+        ('curved_hue_shift', 'Hue Skrift'),
         # Merge Effects
         ('double_expose', 'Double Expose'),
-        ('masked_merge', 'Masked Merge')
+        ('masked_merge', 'Masked Merge'),
+        # New Offset Effect
+        ('offset', 'Offset'),
+        # Slice Shuffle Effect
+        ('slice_shuffle', 'Slice Shuffle'),
+        # Slice Offset Effect
+        ('slice_offset', 'Slice Offset'),
+        # Slice Reduction Effect
+        ('slice_reduction', 'Slice Reduction')
     ], validators=[DataRequired()])
     
     # Pixel Sort Chunk (Combined pixel_sort_original and pixel_sort_corner)
@@ -176,6 +186,41 @@ class ImageProcessForm(FlaskForm):
                                 default=24,
                                 validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
     
+    bit_offset = IntegerField('Byte Offset',
+                            default=0,
+                            validators=[Optional(), NumberRange(min=0, max=1000000)])
+    
+    bit_xor_value = IntegerField('XOR Value',
+                               default=255,
+                               validators=[Optional(), NumberRange(min=0, max=255)])
+    
+    bit_skip_pattern = SelectField('Skip Pattern', choices=[
+        ('alternate', 'Every Other Chunk'),
+        ('every_third', 'Every Third Chunk'),
+        ('every_fourth', 'Every Fourth Chunk'),
+        ('random', 'Random Chunks')
+    ], default='alternate', validators=[Optional()])
+    
+    bit_manipulation_type = SelectField('Manipulation Type', choices=[
+        ('xor', 'XOR (Blend)'),
+        ('invert', 'Invert (Negative)'),
+        ('shift', 'Bit Shift'),
+        ('swap', 'Swap Chunks')
+    ], default='xor', validators=[Optional()])
+    
+    bit_shift = IntegerField('Bit Shift Amount',
+                           default=1,
+                           validators=[Optional(), NumberRange(min=-7, max=7)])
+    
+    bit_randomize = SelectField('Add Randomness', choices=[
+        ('false', 'No'),
+        ('true', 'Yes')
+    ], default='false', validators=[Optional()])
+    
+    bit_random_seed = IntegerField('Random Seed',
+                                 default=42,
+                                 validators=[Optional(), NumberRange(min=1, max=9999)])
+    
     # Full Frame Sorting
     full_frame_direction = SelectField('Direction', choices=[
         ('vertical', 'Vertical'), 
@@ -254,6 +299,9 @@ class ImageProcessForm(FlaskForm):
     perlin_full_frame_seed = IntegerField('Noise Seed',
                                         default=69,
                                         validators=[Optional(), NumberRange(min=1, max=9999)])
+    perlin_full_frame_pattern_width = IntegerField('Pattern Width',
+                                                 default=1,
+                                                 validators=[Optional(), NumberRange(min=1, max=8)])
     
     # Pixelate
     pixelate_width = IntegerField('Pixel Width',
@@ -304,26 +352,24 @@ class ImageProcessForm(FlaskForm):
                                  default=7,
                                  validators=[Optional(), NumberRange(min=1, max=100)])
     color_shift_amount = IntegerField('Shift Amount',
-                                 default=7,
-                                 validators=[Optional(), NumberRange(min=1, max=10)])
+                                 default=5,
+                                 validators=[Optional(), NumberRange(min=1, max=50)])
     expansion_type = SelectField('Expansion Type', choices=[
         ('square', 'Square (8 directions)'),
-        ('cross', 'Cross (4 directions)'),
-        ('circular', 'Circular')
-    ], default='circular', validators=[Optional()])
+        ('diamond', 'Diamond (4 directions)'),
+        ('circle', 'Circle')
+    ], default='circle', validators=[Optional()])
     pattern_type = SelectField('Seed Point Pattern', choices=[
         ('random', 'Random'),
         ('grid', 'Grid'),
-        ('radial', 'Radial'),
-        ('spiral', 'Spiral')
+        ('edges', 'Around Edges')
     ], default='random', validators=[Optional()])
     color_theme = SelectField('Color Theme', choices=[
         ('full-spectrum', 'Full Spectrum'),
         ('warm', 'Warm Colors'),
         ('cool', 'Cool Colors'),
-        ('complementary', 'Complementary'),
-        ('analogous', 'Analogous')
-    ], default='complementary', validators=[Optional()])
+        ('pastel', 'Pastel Colors')
+    ], default='full-spectrum', validators=[Optional()])
     saturation_boost = FloatField('Saturation Boost',
                               default=0.5,
                               validators=[Optional(), NumberRange(min=0.0, max=1.0)])
@@ -500,14 +546,14 @@ class ImageProcessForm(FlaskForm):
         ('log', 'Logarithmic Compression'),
         ('gamma', 'Gamma Adjustment'),
         ('normal', 'Normal (No Change)')
-    ], default='log', validators=[Optional()])
+    ], default='solarize', validators=[Optional()])
     
     hist_b_mode = SelectField('Blue Channel Treatment', choices=[
         ('solarize', 'Solarize (Sine Wave)'),
         ('log', 'Logarithmic Compression'),
         ('gamma', 'Gamma Adjustment'),
         ('normal', 'Normal (No Change)')
-    ], default='gamma', validators=[Optional()])
+    ], default='solarize', validators=[Optional()])
     
     hist_r_freq = FloatField('Red Solarize Frequency',
                            default=1.0,
@@ -522,7 +568,7 @@ class ImageProcessForm(FlaskForm):
                            validators=[Optional(), NumberRange(min=0.1, max=10.0)])
     
     hist_g_phase = FloatField('Green Solarize Phase',
-                            default=0.0,
+                            default=0.2,
                             validators=[Optional(), NumberRange(min=0.0, max=6.28)])
     
     hist_b_freq = FloatField('Blue Solarize Frequency',
@@ -530,7 +576,7 @@ class ImageProcessForm(FlaskForm):
                            validators=[Optional(), NumberRange(min=0.1, max=10.0)])
     
     hist_b_phase = FloatField('Blue Solarize Phase',
-                            default=0.0,
+                            default=0.4,
                             validators=[Optional(), NumberRange(min=0.0, max=6.28)])
     
     hist_gamma = FloatField('Gamma Value',
@@ -627,7 +673,54 @@ class ImageProcessForm(FlaskForm):
                                            default=16, # Provide a distinct default
                                            validators=[Optional(), NumberRange(min=2, max=100)])
     
-    # Submit Button (already present, no changes needed)
+    # Offset Effect Fields
+    offset_x_value = FloatField('Horizontal Offset', validators=[Optional()])
+    offset_x_unit = SelectField('Horizontal Offset Unit', choices=[('pixels', 'Pixels'), ('percentage', 'Percentage')], default='pixels', validators=[Optional()])
+    offset_y_value = FloatField('Vertical Offset', validators=[Optional()])
+    offset_y_unit = SelectField('Vertical Offset Unit', choices=[('pixels', 'Pixels'), ('percentage', 'Percentage')], default='pixels', validators=[Optional()])
+
+    # Slice Shuffle Effect Fields
+    slice_count = IntegerField('Slice Count', validators=[Optional(), NumberRange(min=4, max=128, message="Slice count must be between 4 and 128")])
+    slice_orientation = SelectField('Slice Orientation', choices=[('rows', 'Rows'), ('columns', 'Columns')], default='rows', validators=[Optional()])
+    slice_seed = IntegerField('Slice Shuffle Seed (optional)', validators=[Optional()])
+
+    # Slice Offset Effect Fields
+    slice_offset_count = IntegerField('Number of Slices', validators=[Optional(), NumberRange(min=4, max=128, message="Slice count must be between 4 and 128")])
+    slice_offset_max = IntegerField('Maximum Offset (pixels)', validators=[Optional(), NumberRange(min=1, max=512, message="Maximum offset must be between 1 and 512 pixels")])
+    slice_offset_orientation = SelectField('Slice Orientation', 
+                                     choices=[('rows', 'Rows (horizontal slices, horizontal offset)'), 
+                                             ('columns', 'Columns (vertical slices, vertical offset)')], 
+                                     default='rows', validators=[Optional()])
+    slice_offset_mode = SelectField('Offset Pattern', 
+                                  choices=[('random', 'Random Offsets'), 
+                                           ('sine', 'Sine Wave Pattern')], 
+                                  default='random', validators=[Optional()])
+    slice_offset_frequency = FloatField('Sine Wave Frequency', 
+                                      default=0.1,
+                                      validators=[Optional(), NumberRange(min=0.01, max=1.0, message="Frequency must be between 0.01 and 1.0")])
+    slice_offset_seed = IntegerField('Random Seed (optional)', validators=[Optional()])
+
+    # Slice Reduction Effect Fields
+    slice_reduction_count = IntegerField('Number of Slices', validators=[Optional(), NumberRange(min=16, max=256, message="Slice count must be between 16 and 256")])
+    slice_reduction_value = IntegerField('Reduction Value', validators=[Optional(), NumberRange(min=2, max=8, message="Reduction value must be between 2 and 8")])
+    slice_reduction_orientation = SelectField('Slice Orientation', 
+                                     choices=[('rows', 'Rows (horizontal slices)'), 
+                                             ('columns', 'Columns (vertical slices)')], 
+                                     default='rows', validators=[Optional()])
+
+    # Posterize Effect Field
+    posterize_levels = IntegerField('Color Levels',
+                              default=4,
+                              validators=[Optional(), NumberRange(min=2, max=32, message="Levels must be between 2 and 32")])
+
+    # Curved Hue Shift Effect Fields
+    hue_curve = FloatField('Curve Value',
+                         default=180,
+                         validators=[Optional(), NumberRange(min=1, max=360, message="Curve value must be between 1 and 360")])
+    hue_shift_amount = FloatField('Shift Amount (degrees)',
+                                 default=60,
+                                 validators=[Optional(), NumberRange(min=-180, max=180, message="Shift amount must be between -180 and 180 degrees")])
+
     submit = SubmitField('Process Image')
     
     def validate(self, extra_validators=None):
@@ -736,6 +829,13 @@ class ImageProcessForm(FlaskForm):
             if not self.perlin_full_frame_reverse.data:
                 self.perlin_full_frame_reverse.errors = ['Sort order is required for Perlin Full Frame']
                 logger.debug("Missing perlin_full_frame_reverse for perlin_full_frame")
+                return False
+            # Pattern width can have a default value if not provided
+            if self.perlin_full_frame_pattern_width.data is None:
+                self.perlin_full_frame_pattern_width.data = 1
+            elif self.perlin_full_frame_pattern_width.data < 1 or self.perlin_full_frame_pattern_width.data > 8:
+                self.perlin_full_frame_pattern_width.errors = ['Pattern width must be between 1 and 8']
+                logger.debug(f"Invalid perlin_full_frame_pattern_width: {self.perlin_full_frame_pattern_width.data}")
                 return False
                 
         elif effect == 'pixelate':
@@ -879,6 +979,54 @@ class ImageProcessForm(FlaskForm):
                 logger.debug("Missing channel_mode for channel_shift")
                 return False
                 
+        # Check if bit_manipulation is valid
+        elif effect == 'bit_manipulation':
+            logger.debug("Validating bit_manipulation fields")
+            if not self.bit_chunk_size.data:
+                self.bit_chunk_size.errors = ['Chunk size is required for Bit Manipulation']
+                logger.debug("Missing bit_chunk_size for bit_manipulation")
+                return False
+            if not self.bit_manipulation_type.data:
+                self.bit_manipulation_type.errors = ['Manipulation type is required for Bit Manipulation']
+                logger.debug("Missing bit_manipulation_type for bit_manipulation")
+                return False
+            if not self.bit_skip_pattern.data:
+                self.bit_skip_pattern.errors = ['Skip pattern is required for Bit Manipulation']
+                logger.debug("Missing bit_skip_pattern for bit_manipulation")
+                return False
+            
+            # Ensure offset is not negative
+            if self.bit_offset.data is None:
+                self.bit_offset.data = 0
+            elif self.bit_offset.data < 0:
+                self.bit_offset.errors = ['Offset must be non-negative']
+                logger.debug(f"Invalid bit_offset: {self.bit_offset.data}")
+                return False
+                
+            # Ensure XOR value is between 0-255
+            if self.bit_xor_value.data is None:
+                self.bit_xor_value.data = 255
+            elif self.bit_xor_value.data < 0 or self.bit_xor_value.data > 255:
+                self.bit_xor_value.errors = ['XOR value must be between 0 and 255']
+                logger.debug(f"Invalid bit_xor_value: {self.bit_xor_value.data}")
+                return False
+                
+            # Validate bit_shift is in range
+            if self.bit_shift.data is None:
+                self.bit_shift.data = 1
+            elif self.bit_shift.data < -7 or self.bit_shift.data > 7:
+                self.bit_shift.errors = ['Bit shift must be between -7 and 7']
+                logger.debug(f"Invalid bit_shift: {self.bit_shift.data}")
+                return False
+                
+            # Validate randomize
+            if not self.bit_randomize.data:
+                self.bit_randomize.data = 'false'
+                
+            # Set a default random seed if not provided
+            if self.bit_random_seed.data is None:
+                self.bit_random_seed.data = 42
+                
         # Check if pixel_scatter is valid
         elif effect == 'pixel_scatter':
             logger.debug("Validating pixel_scatter fields")
@@ -937,21 +1085,21 @@ class ImageProcessForm(FlaskForm):
             
             # Check solarize parameters if any channel is set to solarize mode
             if self.hist_r_mode.data == 'solarize':
-                if not self.hist_r_freq.data or not self.hist_r_phase.data:
+                if self.hist_r_freq.data is None or self.hist_r_phase.data is None:
                     self.hist_r_freq.errors = ['Frequency required for solarize mode']
                     self.hist_r_phase.errors = ['Phase required for solarize mode']
                     logger.debug("Missing solarize parameters for red channel")
                     return False
             
             if self.hist_g_mode.data == 'solarize':
-                if not self.hist_g_freq.data or not self.hist_g_phase.data:
+                if self.hist_g_freq.data is None or self.hist_g_phase.data is None:
                     self.hist_g_freq.errors = ['Frequency required for solarize mode']
                     self.hist_g_phase.errors = ['Phase required for solarize mode']
                     logger.debug("Missing solarize parameters for green channel")
                     return False
             
             if self.hist_b_mode.data == 'solarize':
-                if not self.hist_b_freq.data or not self.hist_b_phase.data:
+                if self.hist_b_freq.data is None or self.hist_b_phase.data is None:
                     self.hist_b_freq.errors = ['Frequency required for solarize mode']
                     self.hist_b_phase.errors = ['Phase required for solarize mode']
                     logger.debug("Missing solarize parameters for blue channel")
@@ -967,6 +1115,67 @@ class ImageProcessForm(FlaskForm):
                     self.hist_gamma.errors = ['Gamma value must be between 0.1 and 3.0']
                     return False
         
+        elif effect == 'offset':
+            # For the offset effect, both horizontal and vertical offsets are required (can be 0)
+            if self.offset_x_value.data is None:
+                self.offset_x_value.errors = ['Horizontal offset is required for Offset effect']
+                return False
+            if self.offset_y_value.data is None:
+                self.offset_y_value.errors = ['Vertical offset is required for Offset effect']
+                return False
+
+        elif effect == 'slice_shuffle':
+            # For the slice shuffle effect, slice_count and slice_orientation are required
+            if self.slice_count.data is None:
+                self.slice_count.errors = ['Slice count is required for Slice Shuffle effect']
+                return False
+            if self.slice_orientation.data is None:
+                self.slice_orientation.errors = ['Slice orientation is required for Slice Shuffle effect']
+                return False
+
+        elif effect == 'slice_offset':
+            # For the slice offset effect, slice_offset_count, slice_offset_max, and slice_offset_orientation are required
+            if self.slice_offset_count.data is None:
+                self.slice_offset_count.errors = ['Number of slices is required for Slice Offset effect']
+                return False
+            if self.slice_offset_max.data is None:
+                self.slice_offset_max.errors = ['Maximum offset is required for Slice Offset effect']
+                return False
+            if self.slice_offset_orientation.data is None:
+                self.slice_offset_orientation.errors = ['Slice orientation is required for Slice Offset effect']
+                return False
+            if self.slice_offset_mode.data is None:
+                self.slice_offset_mode.errors = ['Offset pattern is required for Slice Offset effect']
+                return False
+            # Sine frequency is required only when sine mode is selected
+            if self.slice_offset_mode.data == 'sine' and self.slice_offset_frequency.data is None:
+                self.slice_offset_frequency.errors = ['Sine frequency is required when using Sine Wave Pattern']
+                return False
+
+        # Slice Reduction Effect Fields
+        elif effect == 'slice_reduction':
+            if self.slice_reduction_count.data is None:
+                self.slice_reduction_count.errors = ['Number of slices is required for Slice Reduction effect']
+                return False
+            if self.slice_reduction_value.data is None:
+                self.slice_reduction_value.errors = ['Reduction value is required for Slice Reduction effect']
+                return False
+            if self.slice_reduction_orientation.data is None:
+                self.slice_reduction_orientation.errors = ['Slice orientation is required for Slice Reduction effect']
+                return False
+
+        # Posterize Effect Fields
+        elif effect == 'posterize':
+            logger.debug("Validating posterize fields")
+            if self.posterize_levels.data is None:
+                self.posterize_levels.errors = ['Color levels is required for Posterfy effect']
+                logger.debug("Missing posterize_levels for posterize")
+                return False
+            if self.posterize_levels.data < 2:
+                self.posterize_levels.errors = ['Levels must be at least 2']
+                logger.debug(f"Invalid posterize_levels: {self.posterize_levels.data}")
+                return False
+
         # If we get here, validation passed
         logger.debug("Validation passed")
         return True

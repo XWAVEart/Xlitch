@@ -183,7 +183,7 @@ def voronoi_pixel_sort(image, num_cells=100, size_variation=0.5, sort_by='color'
     processed_image = Image.fromarray(image_np)
     return processed_image
 
-def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, height=32, random_seed=None, stripe_width=16, stripe_angle=45, perlin_noise_scale=0.1, threshold=0.5, voronoi_cells=50):
+def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, height=32, random_seed=None, stripe_width=16, stripe_angle=45, perlin_noise_scale=0.1, threshold=0.5, voronoi_cells=50, perlin_octaves=1):
     """
     Merge two images using a mask pattern.
     
@@ -199,6 +199,7 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         perlin_noise_scale (float): Scale of the perlin noise (for 'perlin' mask type).
         threshold (float): Threshold for the perlin noise (for 'perlin' mask type).
         voronoi_cells (int): Number of Voronoi cells for the voronoi mask type.
+        perlin_octaves (int): Number of octaves for Perlin noise (1=smooth curves, higher=more detailed).
     
     Returns:
         PIL.Image: Merged image.
@@ -288,38 +289,31 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     
     elif mask_type == 'perlin':
         # Create a perlin noise pattern
-        if random_seed is not None:
-            np.random.seed(random_seed)
-        
+        # Use the simple, reliable implementation from perlin_noise_replacement
         try:
             import noise
-            # Generate perlin noise
+            # Generate perlin noise map
             noise_map = np.zeros((img_height, img_width), dtype=np.float32)
             for y in range(img_height):
                 for x in range(img_width):
-                    noise_map[y, x] = noise.pnoise2(x / (img_width * perlin_noise_scale), 
-                                                   y / (img_height * perlin_noise_scale), 
-                                                   octaves=6, 
-                                                   base=random_seed or 42)
+                    # Simple scaling approach that works well
+                    if random_seed is not None:
+                        noise_map[y, x] = noise.pnoise2(y * perlin_noise_scale, x * perlin_noise_scale, 
+                                                       octaves=perlin_octaves, base=random_seed)
+                    else:
+                        noise_map[y, x] = noise.pnoise2(y * perlin_noise_scale, x * perlin_noise_scale,
+                                                       octaves=perlin_octaves)
         except ImportError:
             # Fallback to random noise if noise module is not available
             print("Warning: noise module not found, using random noise instead")
             noise_map = np.random.rand(img_height, img_width) * 2 - 1  # Scale to [-1, 1] like perlin noise
         
-        # Apply threshold to create binary mask
-        # Ensure noise_map has the correct dimensions (height, width)
-        if noise_map.shape != (img_height, img_width):
-            # Resize or reshape the noise map to match image dimensions
-            from scipy.ndimage import zoom
-            zoom_factors = (img_height / noise_map.shape[0], img_width / noise_map.shape[1])
-            noise_map = zoom(noise_map, zoom_factors, order=1)
-        
-        # Normalize the noise_map from [-1, 1] to [0, 1] for easier thresholding
-        normalized_noise = (noise_map + 1) / 2.0
+        # Normalize the noise map from [-1, 1] to [0, 1]
+        noise_map = (noise_map - noise_map.min()) / (noise_map.max() - noise_map.min())
         
         # Create the mask array
         mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
-        mask_array[normalized_noise > threshold] = 255
+        mask_array[noise_map > threshold] = 255
         
         # Convert the mask array to a PIL image
         mask = Image.fromarray(mask_array)
@@ -398,6 +392,47 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         
         # Convert the mask array to a PIL image
         mask = Image.fromarray(mask_array)
+    
+    elif mask_type == 'concentric_rectangles':
+        # No seed or height needed for this type
+        # width parameter determines the thickness of the rectangle bands
+        img_width, img_height = image.size
+        mask = Image.new('L', (img_width, img_height), 0) # Start with a black background
+        draw = ImageDraw.Draw(mask)
+        
+        # Calculate aspect ratio
+        aspect_ratio = img_width / img_height
+        
+        x_offset = 0
+        y_offset = 0
+        fill_value = 255 # Start with white
+        
+        # The 'width' parameter now directly corresponds to the band thickness
+        band_thickness = max(1, width) # Ensure at least 1 pixel thickness
+        
+        while x_offset < img_width / 2 and y_offset < img_height / 2:
+            # Calculate rectangle width and height for this step based on aspect ratio and band thickness
+            # This ensures bands are uniform visually
+            rect_width = band_thickness
+            rect_height = band_thickness / aspect_ratio if aspect_ratio > 0 else band_thickness
+            
+            # Adjust heights if aspect ratio makes height smaller than 1 pixel
+            if rect_height < 1:
+                rect_height = 1
+                rect_width = aspect_ratio # Adjust width proportionally
+                
+            # Ensure integers
+            rect_width = max(1, int(round(rect_width)))
+            rect_height = max(1, int(round(rect_height)))
+                
+            # Draw the outer rectangle for the current band
+            draw.rectangle([x_offset, y_offset, img_width - x_offset, img_height - y_offset],
+                             fill=fill_value)
+            
+            # Update offsets and fill value for the next rectangle
+            x_offset += rect_width # Increment by the calculated width for this dimension
+            y_offset += rect_height # Increment by the calculated height for this dimension
+            fill_value = 255 - fill_value # Alternate between black and white
     
     # Merge the images using the mask
     merged_image = Image.composite(image, secondary_image, mask)

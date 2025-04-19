@@ -412,13 +412,29 @@ def databend_image(image, intensity=0.1, preserve_header=True, seed=None):
     
     return img
 
-def bit_manipulation(image, chunk_size=1):
+def bit_manipulation(image, chunk_size=1, offset=0, xor_value=0xFF, skip_pattern='alternate', 
+                    manipulation_type='xor', bit_shift=1, randomize=False, random_seed=None):
     """
-    Apply a bit manipulation effect by inverting bytes of the image data in chunks.
+    Apply a bit manipulation effect by modifying bytes of the image data in chunks.
     
     Args:
         image (Image): PIL Image object to process.
-        chunk_size (int): Size of chunks to process together (1=every other byte, 2=every other 2 bytes, etc.)
+        chunk_size (int): Size of chunks to process together.
+        offset (int): Number of bytes to skip at the beginning.
+        xor_value (int): Value to XOR with bytes (0-255) when manipulation_type is 'xor'.
+        skip_pattern (str): Pattern for processing chunks:
+            - 'alternate': Process every other chunk
+            - 'every_third': Process every third chunk
+            - 'every_fourth': Process every fourth chunk
+            - 'random': Randomly select chunks to process
+        manipulation_type (str): Type of bit manipulation:
+            - 'xor': XOR with xor_value
+            - 'invert': Invert all bits (same as XOR with 0xFF)
+            - 'shift': Shift bits left or right
+            - 'swap': Swap adjacent chunks
+        bit_shift (int): Number of bits to shift when manipulation_type is 'shift'.
+        randomize (bool): Add additional randomness to the effect.
+        random_seed (int): Seed for random operations, for reproducible results.
     
     Returns:
         Image: Processed image with bit-level glitches.
@@ -427,22 +443,94 @@ def bit_manipulation(image, chunk_size=1):
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
+    # Set random seed if provided
+    if random_seed is not None:
+        random.seed(random_seed)
+    
     # Get image data as bytes
     image_bytes = bytearray(image.tobytes())
     
-    # Manipulate bytes in chunks
+    # Ensure parameters are valid
     chunk_size = max(1, chunk_size)  # Ensure chunk_size is at least 1
-    chunk_total = chunk_size * 2  # Total size of a chunk pair (manipulated + skipped)
+    xor_value = max(0, min(255, xor_value))  # Ensure xor_value is in valid range
+    offset = max(0, min(len(image_bytes) - 1, offset))  # Ensure offset is valid
     
-    for i in range(0, len(image_bytes), chunk_total):
-        # Manipulate 'chunk_size' bytes, then skip 'chunk_size' bytes
-        for j in range(chunk_size):
-            if i + j < len(image_bytes):
-                image_bytes[i + j] = image_bytes[i + j] ^ 0xFF  # XOR with 0xFF to invert bits
+    # Determine chunk spacing based on skip pattern
+    if skip_pattern == 'alternate':
+        # Every other chunk
+        chunk_spacing = 2
+    elif skip_pattern == 'every_third':
+        # Every third chunk
+        chunk_spacing = 3
+    elif skip_pattern == 'every_fourth':
+        # Every fourth chunk
+        chunk_spacing = 4
+    elif skip_pattern == 'random':
+        # Random processing will be handled specially
+        chunk_spacing = 2  # Placeholder, not used for random
+    else:
+        # Default to every other chunk
+        chunk_spacing = 2
+    
+    # Process chunks
+    if skip_pattern == 'random':
+        # Randomly select chunks to process
+        for i in range(offset, len(image_bytes), chunk_size):
+            if random.random() < 0.5:  # 50% chance to process each chunk
+                end_idx = min(i + chunk_size, len(image_bytes))
+                apply_manipulation(image_bytes, i, end_idx, manipulation_type, xor_value, bit_shift, randomize)
+    elif manipulation_type == 'swap':
+        # Special handling for swap - it needs two consecutive chunks
+        for i in range(offset, len(image_bytes) - chunk_size * 2, chunk_size * chunk_spacing):
+            # Ensure we don't go out of bounds
+            if i + chunk_size * 2 <= len(image_bytes):
+                # Swap chunks
+                for j in range(chunk_size):
+                    if i + j < len(image_bytes) and i + chunk_size + j < len(image_bytes):
+                        # Swap bytes at positions i+j and i+chunk_size+j
+                        image_bytes[i + j], image_bytes[i + chunk_size + j] = image_bytes[i + chunk_size + j], image_bytes[i + j]
+    else:
+        # Regular chunk processing
+        for i in range(offset, len(image_bytes), chunk_size * chunk_spacing):
+            end_idx = min(i + chunk_size, len(image_bytes))
+            apply_manipulation(image_bytes, i, end_idx, manipulation_type, xor_value, bit_shift, randomize)
     
     # Create a new image from the manipulated bytes
     manipulated_image = Image.frombytes('RGB', image.size, bytes(image_bytes))
     return manipulated_image
+
+def apply_manipulation(byte_array, start_idx, end_idx, manipulation_type, xor_value, bit_shift, randomize):
+    """
+    Apply a specific bit manipulation to a range of bytes in the array.
+    
+    Args:
+        byte_array (bytearray): The byte array to manipulate.
+        start_idx (int): Start index of the range to process.
+        end_idx (int): End index of the range to process.
+        manipulation_type (str): Type of manipulation to apply.
+        xor_value (int): Value to use for XOR operation.
+        bit_shift (int): Number of bits to shift.
+        randomize (bool): Whether to add randomness to the effect.
+    """
+    for i in range(start_idx, end_idx):
+        if randomize and random.random() < 0.3:  # 30% chance to skip when randomizing
+            continue
+            
+        if manipulation_type == 'xor':
+            # XOR with the specified value
+            actual_xor = xor_value if not randomize else random.randint(1, 255)
+            byte_array[i] = byte_array[i] ^ actual_xor
+        elif manipulation_type == 'invert':
+            # Invert all bits (equivalent to XOR with 0xFF)
+            byte_array[i] = byte_array[i] ^ 0xFF
+        elif manipulation_type == 'shift':
+            # Shift bits left or right
+            actual_shift = bit_shift if not randomize else random.randint(1, 7)
+            # Positive shift = left, negative shift = right
+            if actual_shift >= 0:
+                byte_array[i] = (byte_array[i] << actual_shift) & 0xFF  # Left shift with wrap
+            else:
+                byte_array[i] = (byte_array[i] >> abs(actual_shift)) | ((byte_array[i] << (8 - abs(actual_shift))) & 0xFF)  # Right shift with wrap
 
 def simulate_jpeg_artifacts(image, intensity):
     """

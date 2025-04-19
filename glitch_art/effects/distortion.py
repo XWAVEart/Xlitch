@@ -5,6 +5,7 @@ import cv2
 import colorsys
 import math
 import noise
+from PIL import ImageChops
 
 def pixel_drift(image, direction='down', num_bands=10, intensity=1.0):
     """
@@ -390,21 +391,21 @@ def voronoi_distortion(image, num_seeds=100, distortion_amount=20.0):
     warped_image = cv2.cvtColor(warped_image, cv2.COLOR_BGR2RGB)
     return Image.fromarray(warped_image)
 
-def Ripple(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01, distortion_type="color_shift", distortion_params={}):
+def ripple_effect(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01, distortion_type="color_shift", distortion_params={}):
     """
-    Apply a ripple effect to the image, simulating water droplets, with optional distortion effects.
-
+    Apply a ripple effect to the image, simulating water droplets.
+    
     Args:
         image (Image): PIL Image object to process.
-        num_droplets (int): Number of droplet centers (default: 5).
-        amplitude (float): Strength of the ripple displacement (default: 10).
-        frequency (float): Frequency of the ripple waves (default: 0.1).
-        decay (float): Decay rate of the ripple amplitude with distance (default: 0.01).
-        distortion_type (str): Type of distortion to apply ("color_shift", "pixelation", "none"; default: "color_shift").
-        distortion_params (dict): Additional parameters for the distortion effect (default: {}).
-
+        num_droplets (int): Number of ripple sources.
+        amplitude (float): Maximum pixel displacement.
+        frequency (float): Ripple frequency.
+        decay (float): How quickly ripples fade with distance.
+        distortion_type (str): Type of distortion to apply ('color_shift', 'displacement').
+        distortion_params (dict): Additional parameters for the distortion.
+    
     Returns:
-        Image: The distorted image with ripple effect applied.
+        Image: Processed image with ripple effect.
     """
     # Convert PIL Image to OpenCV format (BGR)
     if image.mode != 'RGB':
@@ -492,4 +493,359 @@ def Ripple(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01, disto
     
     # Convert back to RGB and return as PIL image
     warped_image = cv2.cvtColor(warped_image, cv2.COLOR_BGR2RGB)
-    return Image.fromarray(warped_image) 
+    return Image.fromarray(warped_image)
+
+def pixel_scatter(image, direction, select_by, min_val, max_val):
+    """
+    Apply pixel scattering effect across an image based on pixel properties.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        direction (str): 'horizontal' or 'vertical'.
+        select_by (str): Pixel attribute to select by ('hue', 'saturation', 'luminance', 'red', 'green', 'blue', 'contrast').
+        min_val (float): Minimum value for selection range.
+        max_val (float): Maximum value for selection range.
+    
+    Returns:
+        Image: Processed image with pixel scattering effect.
+    """
+    # Convert to RGB mode if the image is not already in RGB mode
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    width, height = image.size
+    
+    # Get all the pixels
+    pixels = list(image.getdata())
+    result_image = Image.new('RGB', (width, height))
+    modified_pixels = []
+    
+    # Define attribute functions 
+    # For different pixel properties
+    def rgb_to_hue(pixel):
+        r, g, b = [c / 255.0 for c in pixel[:3]]
+        h, _, _ = colorsys.rgb_to_hsv(r, g, b)
+        return h * 360  # Convert to 0-360 range
+    
+    def rgb_to_saturation(pixel):
+        r, g, b = [c / 255.0 for c in pixel[:3]]
+        _, s, _ = colorsys.rgb_to_hsv(r, g, b)
+        return s * 100  # Convert to 0-100 range
+    
+    def rgb_to_luminance(pixel):
+        r, g, b = [c / 255.0 for c in pixel[:3]]
+        _, _, v = colorsys.rgb_to_hsv(r, g, b)
+        return v * 100  # Convert to 0-100 range
+    
+    def calculate_contrast(pixel):
+        return max(pixel[:3]) - min(pixel[:3])
+    
+    # Choose the selection function based on the select_by parameter
+    if select_by == 'hue':
+        selection_func = rgb_to_hue
+    elif select_by == 'saturation':
+        selection_func = rgb_to_saturation
+    elif select_by == 'luminance':
+        selection_func = rgb_to_luminance
+    elif select_by == 'red':
+        selection_func = lambda p: p[0]
+    elif select_by == 'green':
+        selection_func = lambda p: p[1]
+    elif select_by == 'blue':
+        selection_func = lambda p: p[2]
+    elif select_by == 'contrast':
+        selection_func = calculate_contrast
+    else:
+        # Default to luminance
+        selection_func = rgb_to_luminance
+    
+    if direction == 'horizontal':
+        # First pass: Identify pixels to scatter
+        for y in range(height):
+            row = []
+            selected_pixels = []
+            for x in range(width):
+                idx = y * width + x
+                pixel = pixels[idx]
+                value = selection_func(pixel)
+                if min_val <= value <= max_val:
+                    # Save selected pixels
+                    selected_pixels.append(pixel)
+                    # Add placeholder
+                    row.append(None)
+                else:
+                    # Keep unselected pixels in place
+                    row.append(pixel)
+            
+            # Randomize the selected pixels
+            random.shuffle(selected_pixels)
+            
+            # Second pass: Replace placeholders with shuffled pixels
+            pixel_index = 0
+            for x in range(width):
+                if row[x] is None:
+                    if pixel_index < len(selected_pixels):
+                        row[x] = selected_pixels[pixel_index]
+                        pixel_index += 1
+                    else:
+                        # If we run out of selected pixels (shouldn't happen)
+                        row[x] = (0, 0, 0)  # Black as a fallback
+            
+            # Add the row to the modified pixels
+            modified_pixels.extend(row)
+    
+    elif direction == 'vertical':
+        # Initialize columns for vertical scattering
+        columns = [[] for _ in range(width)]
+        selected_columns = [[] for _ in range(width)]
+        selected_masks = [[] for _ in range(width)]
+        
+        # First pass: Identify pixels to scatter, organize by columns
+        for y in range(height):
+            for x in range(width):
+                idx = y * width + x
+                pixel = pixels[idx]
+                value = selection_func(pixel)
+                
+                if min_val <= value <= max_val:
+                    # Mark for scatter
+                    selected_columns[x].append(pixel)
+                    selected_masks[x].append(True)
+                    columns[x].append(None)  # Placeholder
+                else:
+                    # Keep in place
+                    selected_masks[x].append(False)
+                    columns[x].append(pixel)
+        
+        # Shuffle selected pixels in each column
+        for x in range(width):
+            random.shuffle(selected_columns[x])
+        
+        # Second pass: Replace placeholders with shuffled pixels
+        for x in range(width):
+            pixel_index = 0
+            for y in range(height):
+                if selected_masks[x][y]:
+                    if pixel_index < len(selected_columns[x]):
+                        columns[x][y] = selected_columns[x][pixel_index]
+                        pixel_index += 1
+                    else:
+                        # Fallback (shouldn't happen)
+                        columns[x][y] = (0, 0, 0)
+        
+        # Convert columns back to row-major format
+        for y in range(height):
+            for x in range(width):
+                modified_pixels.append(columns[x][y])
+    
+    # Update the result image with modified pixels
+    result_image.putdata(modified_pixels)
+    return result_image
+
+# Offset Effect
+def offset_effect(image, offset_x=0, offset_y=0, unit_x='pixels', unit_y='pixels'):
+    """
+    Apply an offset effect to the image, shifting it horizontally and vertically.
+    
+    This function accepts offset values either as absolute pixels or as percentages of the image dimensions.
+    The offset is applied with a wrap-around, so pixels that move off one edge reappear on the opposite edge.
+    
+    Args:
+        image (PIL.Image): The input image to process.
+        offset_x (float): Horizontal offset. If unit_x is 'percentage', this is interpreted as a percentage of the image width.
+        offset_y (float): Vertical offset. If unit_y is 'percentage', this is interpreted as a percentage of the image height.
+        unit_x (str): Unit for horizontal offset: 'pixels' (default) or 'percentage'.
+        unit_y (str): Unit for vertical offset: 'pixels' (default) or 'percentage'.
+    
+    Returns:
+        PIL.Image: The offset image.
+    """
+    width, height = image.size
+
+    if unit_x == 'percentage':
+        offset_px = int(width * (offset_x / 100.0))
+    else:
+        offset_px = int(offset_x)
+
+    if unit_y == 'percentage':
+        offset_py = int(height * (offset_y / 100.0))
+    else:
+        offset_py = int(offset_y)
+        
+    return ImageChops.offset(image, offset_px, offset_py)
+
+# Slice Shuffle Effect
+def slice_shuffle(image, slice_count, orientation, seed=None):
+    """
+    Apply the Slice Shuffle effect by dividing the image into a specified number of slices and shuffling them randomly.
+
+    Args:
+        image (PIL.Image): Input image to process.
+        slice_count (int): Number of slices (must be between 4 and 128).
+        orientation (str): Either 'rows' (to shuffle horizontal slices) or 'columns' (to shuffle vertical slices).
+        seed (int, optional): Optional random seed for reproducibility.
+
+    Returns:
+        PIL.Image: Image with shuffled slices.
+    """
+    image_np = np.array(image)
+
+    # Set seed if provided
+    if seed is not None:
+        random.seed(seed)
+
+    # Split image into slices along the specified axis
+    if orientation == 'rows':
+        slices = np.array_split(image_np, slice_count, axis=0)
+        random.shuffle(slices)
+        shuffled_np = np.vstack(slices)
+    elif orientation == 'columns':
+        slices = np.array_split(image_np, slice_count, axis=1)
+        random.shuffle(slices)
+        shuffled_np = np.hstack(slices)
+    else:
+        # If orientation is unrecognized, return the original image
+        return image
+
+    return Image.fromarray(shuffled_np)
+
+# Slice Offset Effect
+def slice_offset(image, slice_count, max_offset, orientation, offset_mode='random', sine_frequency=0.1, seed=None):
+    """
+    Apply the Slice Offset effect by dividing the image into a specified number of slices 
+    and offsetting each slice horizontally or vertically using either random offsets or a sine wave pattern.
+
+    Args:
+        image (PIL.Image): Input image to process.
+        slice_count (int): Number of slices (must be between 4 and 128).
+        max_offset (int): Maximum offset in pixels (positive or negative, up to 512).
+        orientation (str): Either 'rows' (horizontal slices with horizontal offsets) 
+                           or 'columns' (vertical slices with vertical offsets).
+        offset_mode (str): Either 'random' (random offsets) or 'sine' (sine wave pattern).
+        sine_frequency (float): Frequency of the sine wave when using sine mode (0.01-1.0).
+        seed (int, optional): Optional random seed for reproducibility when using random mode.
+
+    Returns:
+        PIL.Image: Image with offset slices.
+    """
+    # Convert to NumPy array
+    image_np = np.array(image)
+    height, width = image_np.shape[:2]
+    
+    # Set random seed if provided
+    if seed is not None:
+        np.random.seed(seed)
+    
+    # Generate offsets for each slice
+    if offset_mode == 'sine':
+        # Generate sine wave offsets
+        slice_indices = np.arange(slice_count)
+        # Scale the sine wave to have amplitude of max_offset
+        offsets = (np.sin(2 * np.pi * sine_frequency * slice_indices) * max_offset).astype(int)
+    else:  # random mode (default)
+        # Generate random offsets, between -max_offset and max_offset
+        offsets = np.random.randint(-max_offset, max_offset + 1, slice_count)
+    
+    # Process based on orientation
+    if orientation == 'rows':
+        # Split into horizontal slices, offset horizontally
+        slices = np.array_split(image_np, slice_count, axis=0)
+        result = np.zeros_like(image_np)
+        
+        # Process each slice
+        for i, slice_data in enumerate(slices):
+            slice_height = slice_data.shape[0]
+            y_start = i * slice_height
+            y_end = min(y_start + slice_height, height)
+            
+            # Apply horizontal offset to each row
+            offset_x = offsets[i]
+            
+            # For each row in this slice, shift it horizontally
+            for y in range(y_start, y_end):
+                row = image_np[y]
+                if offset_x > 0:
+                    # Shift right with wraparound
+                    result[y] = np.roll(row, offset_x, axis=0)
+                elif offset_x < 0:
+                    # Shift left with wraparound
+                    result[y] = np.roll(row, offset_x, axis=0)
+                else:
+                    # No offset
+                    result[y] = row
+            
+    elif orientation == 'columns':
+        # Split into vertical slices, offset vertically
+        slices = np.array_split(image_np, slice_count, axis=1)
+        result = np.zeros_like(image_np)
+        
+        # Process each slice
+        for i, slice_data in enumerate(slices):
+            slice_width = slice_data.shape[1]
+            x_start = i * slice_width
+            x_end = min(x_start + slice_width, width)
+            
+            # Apply vertical offset to each column
+            offset_y = offsets[i]
+            
+            # Extract this slice
+            slice_columns = image_np[:, x_start:x_end]
+            
+            # Apply vertical offset with wraparound
+            if offset_y != 0:
+                shifted_columns = np.roll(slice_columns, offset_y, axis=0)
+            else:
+                shifted_columns = slice_columns
+            
+            # Place the shifted slice back into the result
+            result[:, x_start:x_end] = shifted_columns
+    
+    else:
+        # If orientation is unrecognized, return the original image
+        return image
+
+    return Image.fromarray(result)
+
+# Slice Reduction Effect
+def slice_reduction(image, slice_count, reduction_value, orientation):
+    """
+    Apply the Slice Reduction effect by dividing the image into a specified number of slices
+    and reordering them based on a reduction value.
+
+    Args:
+        image (PIL.Image): Input image to process.
+        slice_count (int): Number of slices (must be between 16 and 256).
+        reduction_value (int): The reduction value (must be between 2 and 8) that determines
+                              how slices are reordered.
+        orientation (str): Either 'rows' (to process horizontal slices) or 'columns' (to process vertical slices).
+
+    Returns:
+        PIL.Image: Image with reordered slices.
+    """
+    # Convert to NumPy array
+    image_np = np.array(image)
+    
+    # Split image into slices along the specified axis
+    if orientation == 'rows':
+        slices = np.array_split(image_np, slice_count, axis=0)
+    elif orientation == 'columns':
+        slices = np.array_split(image_np, slice_count, axis=1)
+    else:
+        # If orientation is unrecognized, return the original image
+        return image
+    
+    # Create new order of slices based on reduction value
+    new_order = []
+    for offset in range(reduction_value):
+        new_order.extend(range(offset, slice_count, reduction_value))
+    
+    # Reorder slices according to new_order
+    reordered_slices = [slices[i] for i in new_order]
+    
+    # Recombine the slices
+    if orientation == 'rows':
+        result_np = np.vstack(reordered_slices)
+    else:  # columns
+        result_np = np.hstack(reordered_slices)
+    
+    return Image.fromarray(result_np) 
