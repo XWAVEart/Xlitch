@@ -459,11 +459,11 @@
                 <div class="form-group">
                     <label class="required-field">Chunk Size</label>
                     <div class="chunk-size-inputs">
-                        {{ form.chunk_width(required=True, placeholder="Width", value="48", min=8, max=2048, step=8) }}
+                        {{ form.chunk_width(required=True, placeholder="Width", value="48", min=2, max=2048, step=2) }}
                         <span>x</span>
-                        {{ form.chunk_height(required=True, placeholder="Height", value="48", min=8, max=2048, step=8) }}
+                        {{ form.chunk_height(required=True, placeholder="Height", value="48", min=2, max=2048, step=2) }}
                     </div>
-                    <span class="help-text">Values must be multiples of 8 (8-2048)</span>
+                    <span class="help-text">Values must be multiples of 2 (2-2048)</span>
                 </div>
                 <div id="diagonal_fields" class="sub-effect-fields" style="display:none;">
                     <div class="form-group">
@@ -1143,7 +1143,7 @@
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_r_phase.label }}</label>
-                        {{ form.hist_r_phase(min=0.0, max=6.28, step=0.1, type="number", value="0.0") }}
+                        {{ form.hist_r_phase(min=0.0, max=6.28, step=0.1, type="number") }}
                         <span class="help-text">Wave phase shift for red solarization</span>
                     </div>
                 </div>
@@ -1156,7 +1156,7 @@
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_g_phase.label }}</label>
-                        {{ form.hist_g_phase(min=0.0, max=6.28, step=0.1, type="number", value="0.2") }}
+                        {{ form.hist_g_phase(min=0.0, max=6.28, step=0.1, type="number") }}
                         <span class="help-text">Wave phase shift for green solarization</span>
                     </div>
                 </div>
@@ -1169,7 +1169,7 @@
                     </div>
                     <div class="form-group">
                         <label>{{ form.hist_b_phase.label }}</label>
-                        {{ form.hist_b_phase(min=0.0, max=6.28, step=0.1, type="number", value="0.4") }}
+                        {{ form.hist_b_phase(min=0.0, max=6.28, step=0.1, type="number") }}
                         <span class="help-text">Wave phase shift for blue solarization</span>
                     </div>
                 </div>
@@ -1288,17 +1288,70 @@
             <div id="curved_hue_shift_fields" class="effect-fields" style="display: none;">
                 <h3>Hue Skrift Settings</h3>
                 <div class="alert alert-info">
-                    <strong>About Hue Skrift:</strong> This effect applies a curved shift to the hue values of your image, creating complex color transformations that vary across the image based on the original colors. The curve parameter controls how the shift is distributed.
+                    <strong>About Hue Skrift:</strong> This effect applies a curved hue shift across your image, creating gradual color transformations. The curve value controls how colors are redistributed, while the shift amount determines the intensity of the transformation.
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.hue_curve.label }}</label>
                     {{ form.hue_curve(required=True, min=1, max=360, type="number") }}
-                    <span class="help-text">Curve value (1-360): 180 = uniform shift, lower values increase shift in blues/greens, higher values increase shift in reds/yellows</span>
+                    <span class="help-text">Controls the curve of the hue transformation (1-360)</span>
                 </div>
                 <div class="form-group">
                     <label class="required-field">{{ form.hue_shift_amount.label }}</label>
                     {{ form.hue_shift_amount(required=True, min=-180, max=180, type="number") }}
-                    <span class="help-text">Amount of hue shift in degrees (-180 to 180)</span>
+                    <span class="help-text">Controls the intensity of the hue shift (-180 to 180)</span>
+                </div>
+            </div>
+            
+            <!-- Contour Effect fields -->
+            <div id="contour_fields" class="effect-fields" style="display: none;">
+                <h3>Contour Settings</h3>
+                <div class="alert alert-info">
+                    <strong>About Contour:</strong> This effect creates line art from your image by tracing contours at different intensity levels. The result is a sketch-like rendering with clean lines on a black background, similar to topographic maps or technical drawings. Adjust settings to control the level of detail and style of the lines.
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_num_levels.label }}</label>
+                    {{ form.contour_num_levels(required=True, min=5, max=30, type="number", value="10") }}
+                    <span class="help-text">Number of contour levels to trace (5-30, higher = more detail)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_blur_kernel_size.label }}</label>
+                    {{ form.contour_blur_kernel_size(required=True, min=3, max=33, step=2, type="number", value="5") }}
+                    <span class="help-text">Size of blur kernel (3-33, must be odd, higher = smoother edges)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_sobel_kernel_size.label }}</label>
+                    {{ form.contour_sobel_kernel_size(required=True, min=3, max=33, step=2, type="number", value="15") }}
+                    <span class="help-text">Size of edge detection kernel (3-33, must be odd, higher = stronger/wider edges)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_noise_std.label }}</label>
+                    {{ form.contour_noise_std(required=True, min=0, max=10, type="number", value="5") }}
+                    <span class="help-text">Amount of noise to add to contours (0-10, higher = more jittery lines)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_smooth_sigma.label }}</label>
+                    {{ form.contour_smooth_sigma(required=True, min=1, max=20, type="number", value="16") }}
+                    <span class="help-text">Smoothness of contour lines (1-20, higher = smoother lines)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_line_thickness.label }}</label>
+                    {{ form.contour_line_thickness(required=True, min=1, max=5, type="number", value="1") }}
+                    <span class="help-text">Thickness of contour lines (1-5 pixels)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_grad_threshold.label }}</label>
+                    {{ form.contour_grad_threshold(required=True, min=1, max=100, type="number", value="28") }}
+                    <span class="help-text">Gradient threshold for filtering contours (1-100, higher = fewer background lines)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_min_distance.label }}</label>
+                    {{ form.contour_min_distance(required=True, min=1, max=20, type="number", value="3") }}
+                    <span class="help-text">Minimum distance between points (1-20, higher = less dense lines)</span>
+                </div>
+                <div class="form-group">
+                    <label class="required-field">{{ form.contour_max_line_length.label }}</label>
+                    {{ form.contour_max_line_length(required=True, min=50, max=500, type="number", value="256") }}
+                    <span class="help-text">Maximum length of a line segment (50-500, lower = more segments)</span>
                 </div>
             </div>
             
@@ -1351,6 +1404,12 @@
                         <label class="required-field">{{ form.stripe_angle.label }}</label>
                         {{ form.stripe_angle(min=0, max=180, type="number", required=True) }}
                         <span class="help-text">Angle of the stripes in degrees (0-180)</span>
+                    </div>
+                    <!-- Linear Gradient Direction (shown only for linear_gradient_striped) -->
+                    <div class="form-group" id="gradient_direction_field" style="display: none;">
+                        <label class="required-field">{{ form.gradient_direction.label }}</label>
+                        {{ form.gradient_direction(required=True) }}
+                        <span class="help-text">Direction of the linear gradient across each stripe</span>
                     </div>
                 </div>
                 
@@ -1419,6 +1478,64 @@
                         <span class="help-text">Width of each rectangle band in pixels (2-100, smaller values create more detailed patterns)</span>
                     </div>
                 </div>
+                
+                <!-- Concentric Circles fields -->
+                <div id="concentric_circles_fields" class="nested-fields" style="display: none;">
+                    <div class="form-group">
+                        <div class="alert alert-info">
+                            <strong>About Concentric Circles:</strong> Creates a mask of concentric circles (or ellipses, depending on image aspect ratio) originating from a specified point. Alternating rings show either the primary or secondary image, creating a ripple-like merge effect.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.concentric_circle_width.label }}</label>
+                        {{ form.concentric_circle_width(min=2, max=100, type="number", required=True) }}
+                        <span class="help-text">Width of each circle band (2-100, smaller values = more rings)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.concentric_origin.label }}</label>
+                        {{ form.concentric_origin(required=True) }}
+                        <span class="help-text">Point where the circles originate (center or corners)</span>
+                    </div>
+                </div>
+                
+                <!-- Random Triangles fields -->
+                <div id="random_triangles_fields" class="nested-fields" style="display: none;">
+                    <div class="form-group">
+                        <div class="alert alert-info">
+                            <strong>About Random Triangles:</strong> Creates a mask from a grid of randomly filled equilateral triangles, similar to Random Checkerboard but with triangular geometry.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.triangle_size.label }}</label>
+                        {{ form.triangle_size(min=4, max=256, type="number", required=True) }}
+                        <span class="help-text">Side length of each equilateral triangle (4-256 pixels)</span>
+                    </div>
+                    <!-- Random seed field will be shown by JS when this mask type is selected -->
+                </div>
+            </div>
+            
+            <div id="block_shuffle_fields" class="effect-fields" style="display:none;">
+                <h3>Block Shuffle</h3>
+                <div class="alert alert-info">
+                    <strong>About Block Shuffle:</strong> This effect divides your image into blocks of the specified width and height, then randomly rearranges the blocks. You can optionally enter a random seed for reproducible shuffles.
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required-field">{{ form.block_shuffle_block_width.label }}</label>
+                        {{ form.block_shuffle_block_width(required=True, min=2, max=512, type="number") }}
+                        <span class="help-text">Width of each block (2-512)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="required-field">{{ form.block_shuffle_block_height.label }}</label>
+                        {{ form.block_shuffle_block_height(required=True, min=2, max=512, type="number") }}
+                        <span class="help-text">Height of each block (2-512)</span>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ form.block_shuffle_seed.label }}</label>
+                        {{ form.block_shuffle_seed(min=1, max=9999, type="number") }}
+                        <span class="help-text">Optional: Enter a seed for repeatable shuffles</span>
+                    </div>
+                </div>
             </div>
             
             <div class="content-block form-buttons-block">
@@ -1479,6 +1596,7 @@
             var sliceShuffleOptions = document.getElementById("slice-shuffle-options");
             var sliceOffsetOptions = document.getElementById("slice-offset-options");
             var sliceReductionOptions = document.getElementById("slice-reduction-options");
+            var blockShuffleFields = document.getElementById("block_shuffle_fields");
 
             // For slice offset mode toggle
             var sliceOffsetModeField = document.getElementById("slice_offset_mode");
@@ -1491,6 +1609,7 @@
                 sliceShuffleOptions.style.display = "none";
                 sliceOffsetOptions.style.display = "none";
                 sliceReductionOptions.style.display = "none";
+                blockShuffleFields.style.display = "none";
 
                 // Show the appropriate section based on selected effect
                 if(effectField.value === "offset") {
@@ -1502,6 +1621,8 @@
                     toggleSliceOffsetMode(); // Also toggle the mode options
                 } else if(effectField.value === "slice_reduction") {
                     sliceReductionOptions.style.display = "block";
+                } else if(effectField.value === "block_shuffle") {
+                    blockShuffleFields.style.display = "block";
                 }
             }
 
@@ -1521,6 +1642,47 @@
             
             // Initial setup
             toggleEffectOptions(); // initial check on page load
+        });
+
+        // JavaScript to show/hide effect parameters based on selected effect
+        document.addEventListener("DOMContentLoaded", function() {
+            var effectSelect = document.getElementById("effect");
+            // ... existing code ...
+            
+            // Define all field divs
+            var fieldDivs = [
+                // ... existing field divs ...
+                document.getElementById("curved_hue_shift_fields"),
+                document.getElementById("contour_fields")
+            ];
+            
+            function hideAllFieldDivs() {
+                for (var i = 0; i < fieldDivs.length; i++) {
+                    if (fieldDivs[i]) {
+                        fieldDivs[i].style.display = "none";
+                    }
+                }
+            }
+            
+            function updateVisibleFields() {
+                hideAllFieldDivs();
+                var selectedEffect = effectSelect.value;
+                
+                // Show the appropriate field div based on selected effect
+                // ... existing cases ...
+                
+                if (selectedEffect === "curved_hue_shift") {
+                    document.getElementById("curved_hue_shift_fields").style.display = "block";
+                }
+                
+                if (selectedEffect === "contour") {
+                    document.getElementById("contour_fields").style.display = "block";
+                }
+            }
+            
+            // Initial update and add listener for changes
+            effectSelect.addEventListener("change", updateVisibleFields);
+            updateVisibleFields();
         });
     </script>
 </body>

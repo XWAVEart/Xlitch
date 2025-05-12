@@ -183,24 +183,29 @@ def voronoi_pixel_sort(image, num_cells=100, size_variation=0.5, sort_by='color'
     processed_image = Image.fromarray(image_np)
     return processed_image
 
-def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, height=32, random_seed=None, stripe_width=16, stripe_angle=45, perlin_noise_scale=0.1, threshold=0.5, voronoi_cells=50, perlin_octaves=1):
+def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, height=32, random_seed=None, stripe_width=16, stripe_angle=45, perlin_noise_scale=0.1, threshold=0.5, voronoi_cells=50, perlin_octaves=1, circle_origin='center', gradient_direction='up', triangle_size=32):
     """
     Merge two images using a mask pattern.
     
     Args:
         image (PIL.Image): Primary image.
         secondary_image (PIL.Image): Secondary image to merge with.
-        mask_type (str): Type of mask ('checkerboard', 'random_checkerboard', 'striped', 'gradient_striped', 'perlin', 'voronoi').
-        width (int): Width of the squares/rectangles in the checkerboard mask pattern.
+        mask_type (str): Type of mask ('checkerboard', 'random_checkerboard', 'striped', 
+                       'gradient_striped', 'linear_gradient_striped', 'perlin', 'voronoi', 
+                       'concentric_rectangles', 'concentric_circles', 'random_triangles').
+        width (int): Width of the squares/rectangles in the checkerboard mask pattern, or band thickness for concentric rectangles/circles.
         height (int): Height of the squares/rectangles in the checkerboard mask pattern.
-        random_seed (int): Seed for random generation (for 'random_checkerboard' mask type) or Perlin noise (for 'perlin' mask type)
-        stripe_width (int): Width of stripes in pixels (for 'striped' and 'gradient_striped' mask types).
-        stripe_angle (int): Angle of stripes in degrees (for 'striped' and 'gradient_striped' mask types).
+        random_seed (int): Seed for random generation (for 'random_checkerboard', 'random_triangles', 'perlin', 'voronoi' mask types).
+        stripe_width (int): Width of stripes in pixels (for 'striped', 'gradient_striped', 'linear_gradient_striped' mask types).
+        stripe_angle (int): Angle of stripes in degrees (for 'striped', 'gradient_striped', 'linear_gradient_striped' mask types).
         perlin_noise_scale (float): Scale of the perlin noise (for 'perlin' mask type).
         threshold (float): Threshold for the perlin noise (for 'perlin' mask type).
         voronoi_cells (int): Number of Voronoi cells for the voronoi mask type.
         perlin_octaves (int): Number of octaves for Perlin noise (1=smooth curves, higher=more detailed).
-    
+        circle_origin (str): Origin for concentric circles ('center', 'top-left', 'top-right', 'bottom-left', 'bottom-right').
+        gradient_direction (str): Direction for linear gradient stripes ('up' for 0->255, 'down' for 255->0).
+        triangle_size (int): Side length for the 'random_triangles' mask type.
+
     Returns:
         PIL.Image: Merged image.
     """
@@ -259,7 +264,7 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         mask = Image.fromarray(mask_array)
     
     elif mask_type == 'gradient_striped':
-        # Draw gradient stripes at the specified angle
+        # Draw gradient stripes using a sawtooth wave for linear alpha blend within stripes
         img_width, img_height = image.size
         
         # Convert angle to radians
@@ -275,14 +280,65 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         # Calculate the perpendicular distance for each pixel using vectorization
         distances = x_coords * nx + y_coords * ny
         
-        # Create gradient stripes using cosine for smooth transitions
+        # Ensure stripe_width is at least 1 to avoid division by zero
+        safe_stripe_width = max(1, stripe_width)
+        
+        # Calculate band index (0, 1, 2, 3...)
+        band_index = np.int32(distances // safe_stripe_width)
+        
+        # Calculate position within the stripe (0.0 to 1.0)
+        # Distance from the start of the current stripe
+        start_of_stripe = band_index * safe_stripe_width
+        pos_in_stripe = (distances - start_of_stripe) / safe_stripe_width
+        pos_in_stripe = np.clip(pos_in_stripe, 0.0, 1.0) # Ensure it stays within 0-1
+
+        # Initialize mask array
         mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
+
+        # Apply sawtooth gradient based on even/odd bands
+        even_bands = (band_index % 2 == 0)
+        odd_bands = ~even_bands
+
+        # For even bands (e.g., 0, 2, 4...), gradient 0 -> 255 (secondary -> primary)
+        mask_array[even_bands] = (pos_in_stripe[even_bands] * 255).astype(np.uint8)
+
+        # For odd bands (e.g., 1, 3, 5...), gradient 255 -> 0 (primary -> secondary)
+        mask_array[odd_bands] = ((1.0 - pos_in_stripe[odd_bands]) * 255).astype(np.uint8)
         
-        # Scale distances to appropriate frequency
-        normalized_distances = 2 * np.pi * distances / (2 * stripe_width)
+        # Convert the mask array to a PIL image
+        mask = Image.fromarray(mask_array)
+    
+    elif mask_type == 'linear_gradient_striped':
+        # Draw stripes with a consistent linear gradient (sawtooth across whole image)
+        img_width, img_height = image.size
         
-        # Generate smooth transitions with cosine
-        mask_array = np.uint8(((np.cos(normalized_distances) + 1) / 2) * 255)
+        # Convert angle to radians
+        angle_rad = math.radians(stripe_angle)
+        
+        # Calculate normal vector
+        nx = math.cos(angle_rad)
+        ny = math.sin(angle_rad)
+        
+        # Create coordinate arrays
+        y_coords, x_coords = np.mgrid[:img_height, :img_width]
+        
+        # Calculate perpendicular distance
+        distances = x_coords * nx + y_coords * ny
+        
+        # Ensure stripe_width is at least 1
+        safe_stripe_width = max(1, stripe_width)
+        
+        # Calculate position within the repeating pattern (0.0 to 1.0)
+        # Use modulo arithmetic for a repeating sawtooth wave
+        pos_in_pattern = (distances % safe_stripe_width) / safe_stripe_width
+
+        # Apply the gradient based on direction
+        if gradient_direction == 'down':
+            # Ramp down from 255 to 0
+            mask_array = ((1.0 - pos_in_pattern) * 255).astype(np.uint8)
+        else: # Default to 'up'
+            # Ramp up from 0 to 255
+            mask_array = (pos_in_pattern * 255).astype(np.uint8)
         
         # Convert the mask array to a PIL image
         mask = Image.fromarray(mask_array)
@@ -434,6 +490,97 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
             y_offset += rect_height # Increment by the calculated height for this dimension
             fill_value = 255 - fill_value # Alternate between black and white
     
+    elif mask_type == 'concentric_circles':
+        # width parameter determines the thickness of the circle bands
+        img_width, img_height = image.size
+        mask = Image.new('L', (img_width, img_height), 0) # Start with a black background
+        draw = ImageDraw.Draw(mask)
+
+        # Determine the center coordinates based on circle_origin
+        if circle_origin == 'top-left':
+            cx, cy = 0, 0
+        elif circle_origin == 'top-right':
+            cx, cy = img_width, 0
+        elif circle_origin == 'bottom-left':
+            cx, cy = 0, img_height
+        elif circle_origin == 'bottom-right':
+            cx, cy = img_width, img_height
+        else: # default to center
+            cx, cy = img_width / 2, img_height / 2
+
+        # Calculate the maximum radius needed to cover the image from the origin
+        corners = [(0, 0), (img_width, 0), (0, img_height), (img_width, img_height)]
+        max_radius = 0
+        for corner_x, corner_y in corners:
+            dist_sq = (corner_x - cx)**2 + (corner_y - cy)**2
+            max_radius = max(max_radius, math.sqrt(dist_sq))
+
+        # The 'width' parameter now directly corresponds to the band thickness
+        band_thickness = max(1, width) # Ensure at least 1 pixel thickness
+        
+        current_radius = max_radius
+        fill_value = 255 # Start with white (outermost ring)
+
+        while current_radius > 0:
+            # Define the bounding box for the ellipse
+            bbox = [cx - current_radius, cy - current_radius, 
+                    cx + current_radius, cy + current_radius]
+            
+            # Draw the ellipse for the current band
+            draw.ellipse(bbox, fill=fill_value)
+            
+            # Update radius and fill value for the next inner ring
+            current_radius -= band_thickness
+            fill_value = 255 - fill_value # Alternate between black and white
+
+    elif mask_type == 'random_triangles':
+        # Draw a random pattern of equilateral triangles
+        if random_seed is not None:
+            random.seed(random_seed)
+        
+        img_width, img_height = image.size
+        mask = Image.new('L', (img_width, img_height), 0) # Start black
+        draw = ImageDraw.Draw(mask)
+        
+        # Calculate triangle dimensions
+        side = max(2, triangle_size) # Ensure minimum size
+        tri_height = math.sqrt(3) / 2 * side
+        half_side = side / 2
+        
+        # Calculate grid steps
+        step_x = side
+        step_y = tri_height
+        
+        # Determine number of rows/cols needed (add extra to cover edges)
+        cols = int(math.ceil(img_width / step_x)) + 1
+        rows = int(math.ceil(img_height / step_y)) + 1
+        
+        for row in range(rows):
+            for col in range(cols):
+                # Calculate top-left corner of the rhombus formed by two triangles
+                start_x = col * step_x
+                start_y = row * step_y
+                
+                # Shift every other row horizontally for tiling
+                if row % 2 == 1:
+                    start_x -= half_side
+                    
+                # Define vertices for the two triangles in the rhombus
+                p1 = (start_x, start_y)                           # Top vertex
+                p2 = (start_x + side, start_y)                  # Top right vertex (for rhombus)
+                p3 = (start_x + half_side, start_y + tri_height) # Bottom vertex
+                p4 = (start_x - half_side, start_y + tri_height) # Bottom left vertex (for next rhombus)
+                
+                # Triangle 1 (pointing down)
+                triangle1 = [p1, p2, p3]
+                if random.random() > 0.5:
+                    draw.polygon(triangle1, fill=255)
+                
+                # Triangle 2 (pointing up)
+                triangle2 = [p1, p3, p4]
+                if random.random() > 0.5:
+                    draw.polygon(triangle2, fill=255)
+
     # Merge the images using the mask
     merged_image = Image.composite(image, secondary_image, mask)
     

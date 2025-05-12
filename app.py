@@ -39,6 +39,8 @@ try:
     from glitch_art.effects.blend import double_expose
     # Import core utilities
     from glitch_art.core.image_utils import load_image, generate_output_filename, resize_image_if_needed
+    from glitch_art.effects import contour_effect
+    from glitch_art.effects.distortion import block_shuffle
     
     logger.info("Successfully imported all glitch_art modules")
 except ImportError as e:
@@ -131,6 +133,11 @@ def index():
                 primary_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 primary_image.save(primary_path)
                 logger.debug(f"Primary image saved to {primary_path}")
+                
+                # Log all form data for debugging
+                logger.debug(f"Raw form data: {request.form}")
+                logger.debug(f"mask_width raw value: {request.form.getlist('mask_width')}")
+                logger.debug(f"Form mask_width.data: {form.mask_width.data}")
                 
                 # Load the image and check if it was resized
                 original_image = Image.open(primary_path)
@@ -506,24 +513,62 @@ def index():
                     secondary_image = form.masked_merge_secondary.data
                     mask_type = form.mask_type.data
                     
-                    # Determine the correct width parameter based on the mask type
+                    # Initialize all parameters with defaults
+                    current_mask_width = form.mask_width.data or 32
+                    mask_height = form.mask_height.data or 32
+                    stripe_width = 16
+                    stripe_angle = 45
+                    perlin_noise_scale = 0.1
+                    perlin_threshold = 0.5
+                    perlin_octaves = 1
+                    voronoi_cells = 50
+                    circle_origin = 'center'
+                    gradient_direction = 'up'
+                    triangle_size = 32
+                    random_seed = None
+
+                    # Handle the case where mask_width might have multiple values - use the last one
+                    # This fixes an issue where the form submits both default and user-specified values
+                    if isinstance(form.mask_width.data, list):
+                        logger.debug(f"Multiple mask_width values detected: {form.mask_width.data}")
+                        if len(form.mask_width.data) > 0:
+                            current_mask_width = form.mask_width.data[-1] or 32
+                        logger.debug(f"Using last mask_width value: {current_mask_width}")
+
+                    # Fetch specific parameters based on mask_type, overwriting defaults
                     if mask_type == 'concentric_rectangles':
-                        current_mask_width = form.concentric_rectangle_width.data
-                    else:
-                        # Use the general mask_width for other types like checkerboard
-                        current_mask_width = form.mask_width.data 
-                        
-                    # Keep mask_height for checkerboard types
-                    mask_height = form.mask_height.data 
+                        current_mask_width = form.concentric_rectangle_width.data or 16
+                    elif mask_type == 'concentric_circles':
+                        # Use dedicated field for concentric circle width
+                        current_mask_width = form.concentric_circle_width.data or 32
+                        circle_origin = form.concentric_origin.data or 'center'
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, band_thickness={current_mask_width}, "
+                                    f"circle_origin={circle_origin}")
+                    elif mask_type in ['striped', 'gradient_striped', 'linear_gradient_striped']:
+                        stripe_width = form.stripe_width.data or 16
+                        stripe_angle = form.stripe_angle.data or 45
+                        if mask_type == 'linear_gradient_striped':
+                            gradient_direction = form.gradient_direction.data or 'up'
+                    elif mask_type == 'perlin':
+                        perlin_noise_scale = form.perlin_noise_scale.data or 0.01
+                        perlin_threshold = form.perlin_threshold.data or 0.5
+                        perlin_octaves = form.perlin_octaves.data or 1
+                        random_seed = form.mask_random_seed.data # Optional, no default needed
+                    elif mask_type == 'voronoi':
+                        voronoi_cells = form.voronoi_cells.data or 50
+                        random_seed = form.mask_random_seed.data # Optional
+                    elif mask_type == 'random_triangles':
+                        triangle_size = form.triangle_size.data or 32
+                        random_seed = form.mask_random_seed.data # Optional
+                    elif mask_type == 'random_checkerboard':
+                        current_mask_width = form.mask_width.data or 32
+                        mask_height = form.mask_height.data or 32
+                        random_seed = form.mask_random_seed.data # Optional
                     
-                    random_seed = form.mask_random_seed.data if mask_type in ['random_checkerboard', 'perlin', 'voronoi'] else None
-                    stripe_width = form.stripe_width.data
-                    stripe_angle = form.stripe_angle.data
-                    perlin_noise_scale = form.perlin_noise_scale.data
-                    perlin_threshold = form.perlin_threshold.data
-                    perlin_octaves = form.perlin_octaves.data
-                    voronoi_cells = form.voronoi_cells.data
-                    
+                    # Ensure the correct width is used if not concentric rectangles/circles
+                    if mask_type not in ['concentric_rectangles', 'concentric_circles']:
+                        current_mask_width = form.mask_width.data or 32 # Use general width
+
                     if not secondary_image:
                         logger.error("Secondary image required for Masked Merge but not provided")
                         error_msg = "Secondary image required for Masked Merge"
@@ -541,6 +586,9 @@ def index():
                     elif mask_type in ['striped', 'gradient_striped']:
                         logger.debug(f"Masked merge params: mask_type={mask_type}, stripe_width={stripe_width}, "
                                     f"stripe_angle={stripe_angle}")
+                    elif mask_type == 'linear_gradient_striped':
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, stripe_width={stripe_width}, "
+                                    f"stripe_angle={stripe_angle}, direction={gradient_direction}")
                     elif mask_type == 'perlin':
                         logger.debug(f"Masked merge params: mask_type={mask_type}, noise_scale={perlin_noise_scale}, "
                                     f"threshold={perlin_threshold}, random_seed={random_seed}, octaves={perlin_octaves}")
@@ -548,8 +596,14 @@ def index():
                         logger.debug(f"Masked merge params: mask_type={mask_type}, voronoi_cells={voronoi_cells}, "
                                     f"random_seed={random_seed}")
                     elif mask_type == 'concentric_rectangles':
-                        # Use the specific width variable for logging
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, width={current_mask_width}")
+                        # Use the specific width variable for settings
+                        settings = f"maskedmerge_{mask_type}_{current_mask_width}px"
+                    elif mask_type == 'concentric_circles':
+                        # Use the general width parameter (already stored in current_mask_width) 
+                        # for band thickness and add origin
+                        settings = f"maskedmerge_{mask_type}_band_thickness={current_mask_width}px_{circle_origin}"
+                    elif mask_type == 'random_triangles':
+                        logger.debug(f"Masked merge params: mask_type={mask_type}, triangle_size={triangle_size}, random_seed={random_seed}")
                     
                     secondary_img = load_image(secondary_path)
                     if secondary_img is None:
@@ -559,6 +613,7 @@ def index():
                     
                     # Call the function with appropriate parameters
                     # Pass the determined width (current_mask_width) as the 'width' parameter
+                    logger.debug(f"Calling masked_merge with width={current_mask_width} for mask_type={mask_type}")
                     processed_image = masked_merge(
                         image,
                         secondary_img,
@@ -571,7 +626,10 @@ def index():
                         perlin_noise_scale=perlin_noise_scale,
                         threshold=perlin_threshold,
                         voronoi_cells=voronoi_cells,
-                        perlin_octaves=perlin_octaves
+                        perlin_octaves=perlin_octaves,
+                        circle_origin=circle_origin, # Pass the new parameter
+                        gradient_direction=gradient_direction, # Pass the new parameter
+                        triangle_size=triangle_size # Pass the new parameter
                     )
                     
                     # Create settings string based on mask type
@@ -581,6 +639,8 @@ def index():
                             settings += f"_{random_seed}"
                     elif mask_type in ['striped', 'gradient_striped']:
                         settings = f"maskedmerge_{mask_type}_{stripe_width}px_{stripe_angle}deg"
+                    elif mask_type == 'linear_gradient_striped':
+                        settings = f"maskedmerge_{mask_type}_{stripe_width}px_{stripe_angle}deg_{gradient_direction}"
                     elif mask_type == 'perlin':
                         settings = f"maskedmerge_{mask_type}_{perlin_noise_scale}_{perlin_threshold}"
                         if random_seed:
@@ -589,9 +649,17 @@ def index():
                         settings = f"maskedmerge_{mask_type}_{voronoi_cells}"
                         if random_seed:
                             settings += f"_{random_seed}"
+                    elif mask_type == 'random_triangles':
+                        settings = f"maskedmerge_{mask_type}_{triangle_size}px"
+                        if random_seed:
+                            settings += f"_{random_seed}"
                     elif mask_type == 'concentric_rectangles':
                         # Use the specific width variable for settings
                         settings = f"maskedmerge_{mask_type}_{current_mask_width}px"
+                    elif mask_type == 'concentric_circles':
+                        # Use the general width parameter (already stored in current_mask_width) 
+                        # for band thickness and add origin
+                        settings = f"maskedmerge_{mask_type}_band_thickness={current_mask_width}px_{circle_origin}"
                 elif effect == 'offset':
                     # process offset effect
                     processed_image = offset_effect(image, 
@@ -646,6 +714,47 @@ def index():
                     # process curved hue shift effect
                     processed_image = curved_hue_shift(image, form.hue_curve.data, form.hue_shift_amount.data)
                     settings = f"hue_skrift_C{form.hue_curve.data}_A{form.hue_shift_amount.data}"
+                elif effect == 'contour':
+                    # Process contour effect
+                    num_levels = form.contour_num_levels.data
+                    noise_std = form.contour_noise_std.data
+                    smooth_sigma = form.contour_smooth_sigma.data
+                    line_thickness = form.contour_line_thickness.data
+                    grad_threshold = form.contour_grad_threshold.data
+                    min_distance = form.contour_min_distance.data
+                    max_line_length = form.contour_max_line_length.data
+                    blur_kernel_size = form.contour_blur_kernel_size.data
+                    sobel_kernel_size = form.contour_sobel_kernel_size.data
+                    
+                    logger.debug(f"Contour effect params: num_levels={num_levels}, noise_std={noise_std}, "
+                               f"smooth_sigma={smooth_sigma}, line_thickness={line_thickness}, "
+                               f"grad_threshold={grad_threshold}, min_distance={min_distance}, "
+                               f"max_line_length={max_line_length}, blur_kernel_size={blur_kernel_size}, "
+                               f"sobel_kernel_size={sobel_kernel_size}")
+                    
+                    processed_image = contour_effect(
+                        image,
+                        num_levels=num_levels,
+                        noise_std=noise_std,
+                        smooth_sigma=smooth_sigma,
+                        line_thickness=line_thickness,
+                        grad_threshold=grad_threshold,
+                        min_distance=min_distance,
+                        max_line_length=max_line_length,
+                        blur_kernel_size=blur_kernel_size,
+                        sobel_kernel_size=sobel_kernel_size
+                    )
+                    
+                    settings = f"contour_{num_levels}_{noise_std}_{smooth_sigma}_{line_thickness}_{grad_threshold}_{min_distance}_{max_line_length}_{blur_kernel_size}_{sobel_kernel_size}"
+                elif effect == 'block_shuffle':
+                    block_width = form.block_shuffle_block_width.data
+                    block_height = form.block_shuffle_block_height.data
+                    seed = form.block_shuffle_seed.data
+                    logger.debug(f"Block Shuffle params: block_width={block_width}, block_height={block_height}, seed={seed}")
+                    processed_image = block_shuffle(image, block_width, block_height, seed)
+                    settings = f"blockshuffle_{block_width}x{block_height}"
+                    if seed:
+                        settings += f"_seed{seed}"
                 else:
                     logger.error(f"Unknown effect: {effect}")
                     error_msg = f"Unknown effect: {effect}"

@@ -23,6 +23,13 @@ def validate_multiple_of_8(form, field):
     if field.data % 8 != 0:
         raise ValidationError('Value must be a multiple of 8 (e.g., 8, 16, 24, 32, etc.)')
 
+def validate_multiple_of_2(form, field):
+    """Validate that the value is a multiple of 2."""
+    if not field.data:
+        return
+    if field.data % 2 != 0:
+        raise ValidationError('Value must be a multiple of 2 (e.g., 2, 4, 6, 8, etc.)')
+
 class ImageProcessForm(FlaskForm):
     """Form for image upload and effect selection."""
     primary_image = FileField('Primary Image', validators=[
@@ -67,16 +74,19 @@ class ImageProcessForm(FlaskForm):
         # Slice Offset Effect
         ('slice_offset', 'Slice Offset'),
         # Slice Reduction Effect
-        ('slice_reduction', 'Slice Reduction')
+        ('slice_reduction', 'Slice Reduction'),
+        # Contour Effect
+        ('contour', 'Contour'),
+        ('block_shuffle', 'Block Shuffle'),
     ], validators=[DataRequired()])
     
     # Pixel Sort Chunk (Combined pixel_sort_original and pixel_sort_corner)
     chunk_width = IntegerField('Chunk Width', 
                               default=48,
-                              validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
+                              validators=[Optional(), NumberRange(min=2, max=2048), validate_multiple_of_2])
     chunk_height = IntegerField('Chunk Height', 
                                default=48,
-                               validators=[Optional(), NumberRange(min=8, max=2048), validate_multiple_of_8])
+                               validators=[Optional(), NumberRange(min=2, max=2048), validate_multiple_of_2])
     sort_by = SelectField('Sort By', choices=[
         ('color', 'Color (R+G+B)'), 
         ('brightness', 'Brightness'), 
@@ -560,7 +570,7 @@ class ImageProcessForm(FlaskForm):
                            validators=[Optional(), NumberRange(min=0.1, max=10.0)])
     
     hist_r_phase = FloatField('Red Solarize Phase',
-                            default=0.0,
+                            default=0.4,
                             validators=[Optional(), NumberRange(min=0.0, max=6.28)])
     
     hist_g_freq = FloatField('Green Solarize Frequency',
@@ -568,7 +578,7 @@ class ImageProcessForm(FlaskForm):
                            validators=[Optional(), NumberRange(min=0.1, max=10.0)])
     
     hist_g_phase = FloatField('Green Solarize Phase',
-                            default=0.2,
+                            default=0.3,
                             validators=[Optional(), NumberRange(min=0.0, max=6.28)])
     
     hist_b_freq = FloatField('Blue Solarize Frequency',
@@ -576,7 +586,7 @@ class ImageProcessForm(FlaskForm):
                            validators=[Optional(), NumberRange(min=0.1, max=10.0)])
     
     hist_b_phase = FloatField('Blue Solarize Phase',
-                            default=0.4,
+                            default=0.2,
                             validators=[Optional(), NumberRange(min=0.0, max=6.28)])
     
     hist_gamma = FloatField('Gamma Value',
@@ -635,10 +645,13 @@ class ImageProcessForm(FlaskForm):
         ('checkerboard', 'Checkerboard'),
         ('random_checkerboard', 'Random Checkerboard'),
         ('striped', 'Striped'),
-        ('gradient_striped', 'Gradient Striped'),
+        ('gradient_striped', 'Gradient Striped (Sawtooth)'),
+        ('linear_gradient_striped', 'Linear Gradient Striped'),
         ('perlin', 'Perlin Noise'),
         ('voronoi', 'Voronoi Cells'),
-        ('concentric_rectangles', 'Concentric Rectangles')
+        ('concentric_rectangles', 'Concentric Rectangles'),
+        ('concentric_circles', 'Concentric Circles'),
+        ('random_triangles', 'Random Triangles')
     ], default='checkerboard', validators=[Optional()])
     mask_width = IntegerField('Width (pixels)',
                           default=32,
@@ -720,6 +733,72 @@ class ImageProcessForm(FlaskForm):
     hue_shift_amount = FloatField('Shift Amount (degrees)',
                                  default=60,
                                  validators=[Optional(), NumberRange(min=-180, max=180, message="Shift amount must be between -180 and 180 degrees")])
+
+    # Concentric Circles Mask Specific
+    concentric_origin = SelectField('Circle Origin', choices=[
+        ('center', 'Center'),
+        ('top-left', 'Top-Left'),
+        ('top-right', 'Top-Right'),
+        ('bottom-left', 'Bottom-Left'),
+        ('bottom-right', 'Bottom-Right')
+    ], default='center', validators=[Optional()])
+
+    # Linear Gradient Stripe Specific                             
+    gradient_direction = SelectField('Gradient Direction', choices=[
+        ('up', 'Up (0 -> 255)'),
+        ('down', 'Down (255 -> 0)')
+    ], default='up', validators=[Optional()])
+
+    # Random Triangles Mask Specific
+    triangle_size = IntegerField('Triangle Size (pixels)',
+                           [Optional(),
+                            NumberRange(min=4, max=256)])
+    
+    mask_width = IntegerField('Width (pixels)',
+                           [Optional(),
+                            NumberRange(min=2, max=512)])
+    
+    concentric_circle_width = IntegerField('Circle Band Thickness (pixels)',
+                           [Optional(),
+                            NumberRange(min=2, max=100)])
+                            
+    mask_height = IntegerField('Height (pixels)',
+                           default=32,
+                           validators=[Optional(), NumberRange(min=8, max=512)])
+
+    # Contour Effect Fields
+    contour_num_levels = IntegerField('Number of Contour Levels',
+                                  default=10,
+                                  validators=[Optional(), NumberRange(min=5, max=30, message="Number of contour levels must be between 5 and 30")])
+    contour_noise_std = IntegerField('Noise Amount',
+                                 default=5,
+                                 validators=[Optional(), NumberRange(min=0, max=10, message="Noise amount must be between 0 and 10")])
+    contour_smooth_sigma = IntegerField('Contour Smoothness',
+                                    default=16,
+                                    validators=[Optional(), NumberRange(min=1, max=20, message="Smoothness must be between 1 and 20")])
+    contour_line_thickness = IntegerField('Line Thickness',
+                                      default=1,
+                                      validators=[Optional(), NumberRange(min=1, max=5, message="Line thickness must be between 1 and 5")])
+    contour_grad_threshold = IntegerField('Gradient Threshold',
+                                      default=28,
+                                      validators=[Optional(), NumberRange(min=1, max=100, message="Gradient threshold must be between 1 and 100")])
+    contour_min_distance = IntegerField('Minimum Distance Between Points',
+                                    default=3,
+                                    validators=[Optional(), NumberRange(min=1, max=20, message="Minimum distance must be between 1 and 20")])
+    contour_max_line_length = IntegerField('Maximum Line Segment Length',
+                                       default=256,
+                                       validators=[Optional(), NumberRange(min=50, max=500, message="Maximum line length must be between 50 and 500")])
+    contour_blur_kernel_size = IntegerField('Blur Kernel Size',
+                                       default=5,
+                                       validators=[Optional(), NumberRange(min=3, max=33, message="Blur kernel size must be between 3 and 33")])
+    contour_sobel_kernel_size = IntegerField('Edge Detection Kernel Size',
+                                       default=15,
+                                       validators=[Optional(), NumberRange(min=3, max=33, message="Edge detection kernel size must be between 3 and 33")])
+
+    # Block Shuffle
+    block_shuffle_block_width = IntegerField('Block Width', validators=[Optional(), NumberRange(min=2, max=512)])
+    block_shuffle_block_height = IntegerField('Block Height', validators=[Optional(), NumberRange(min=2, max=512)])
+    block_shuffle_seed = IntegerField('Random Seed (optional)', validators=[Optional(), NumberRange(min=1, max=9999)])
 
     submit = SubmitField('Process Image')
     
@@ -1175,6 +1254,52 @@ class ImageProcessForm(FlaskForm):
                 self.posterize_levels.errors = ['Levels must be at least 2']
                 logger.debug(f"Invalid posterize_levels: {self.posterize_levels.data}")
                 return False
+
+        # Contour Effect Fields
+        elif effect == 'contour':
+            if self.contour_num_levels.data is None:
+                self.contour_num_levels.errors = ['Number of contour levels is required for Contour effect']
+                return False
+            if self.contour_noise_std.data is None:
+                self.contour_noise_std.errors = ['Noise amount is required for Contour effect']
+                return False
+            if self.contour_smooth_sigma.data is None:
+                self.contour_smooth_sigma.errors = ['Contour smoothness is required for Contour effect']
+                return False
+            if self.contour_line_thickness.data is None:
+                self.contour_line_thickness.errors = ['Line thickness is required for Contour effect']
+                return False
+            if self.contour_grad_threshold.data is None:
+                self.contour_grad_threshold.errors = ['Gradient threshold is required for Contour effect'] 
+                return False
+            if self.contour_min_distance.data is None:
+                self.contour_min_distance.errors = ['Minimum distance is required for Contour effect']
+                return False
+            if self.contour_max_line_length.data is None:
+                self.contour_max_line_length.errors = ['Maximum line length is required for Contour effect']
+                return False
+            if self.contour_blur_kernel_size.data is None:
+                self.contour_blur_kernel_size.errors = ['Blur kernel size is required for Contour effect']
+                return False
+            if self.contour_blur_kernel_size.data % 2 == 0:
+                self.contour_blur_kernel_size.errors = ['Blur kernel size must be an odd number']
+                return False
+            if self.contour_sobel_kernel_size.data is None:
+                self.contour_sobel_kernel_size.errors = ['Edge detection kernel size is required for Contour effect']
+                return False
+            if self.contour_sobel_kernel_size.data % 2 == 0:
+                self.contour_sobel_kernel_size.errors = ['Edge detection kernel size must be an odd number']
+                return False
+
+        # Block Shuffle
+        elif effect == 'block_shuffle':
+            if not self.block_shuffle_block_width.data:
+                self.block_shuffle_block_width.errors = ['Block width is required for Block Shuffle']
+                return False
+            if not self.block_shuffle_block_height.data:
+                self.block_shuffle_block_height.errors = ['Block height is required for Block Shuffle']
+                return False
+            # Seed is optional, no validation needed
 
         # If we get here, validation passed
         logger.debug("Validation passed")

@@ -848,4 +848,50 @@ def slice_reduction(image, slice_count, reduction_value, orientation):
     else:  # columns
         result_np = np.hstack(reordered_slices)
     
-    return Image.fromarray(result_np) 
+    return Image.fromarray(result_np)
+
+def block_shuffle(image, block_width, block_height, seed=None):
+    """
+    Divide the image into blocks of the given size, shuffle them randomly, and reassemble.
+    Handles non-square and partial edge blocks. Optionally uses a seed for reproducibility.
+    Args:
+        image (PIL.Image): Input image.
+        block_width (int): Width of each block.
+        block_height (int): Height of each block.
+        seed (int, optional): Random seed for reproducibility.
+    Returns:
+        PIL.Image: Image with shuffled blocks.
+    """
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+    img_w, img_h = image.size
+    image_np = np.array(image)
+    blocks = []
+    positions = []
+
+    # Collect all blocks and their positions
+    for y in range(0, img_h, block_height):
+        for x in range(0, img_w, block_width):
+            block = image_np[y:y+block_height, x:x+block_width]
+            blocks.append(block)
+            positions.append((y, x))
+
+    # Shuffle the blocks
+    indices = list(range(len(blocks)))
+    random.shuffle(indices)
+
+    # Create a new array for the output
+    output = np.zeros_like(image_np)
+
+    # Place shuffled blocks
+    for idx, (y, x) in zip(indices, positions):
+        block = blocks[idx]
+        h, w = block.shape[:2]
+        # Compute the available space in the output array
+        out_h = min(h, output.shape[0] - y)
+        out_w = min(w, output.shape[1] - x)
+        output[y:y+out_h, x:x+out_w] = block[:out_h, :out_w]
+
+    return Image.fromarray(output) 

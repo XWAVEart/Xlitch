@@ -59,6 +59,10 @@ from .blend import (
     double_expose
 )
 
+from .contour import (
+    contour_effect
+)
+
 # Export all imported functions
 __all__ = [
     # Color effects
@@ -111,5 +115,8 @@ __all__ = [
     'pixelate_by_attribute',
     
     # Blend effects
-    'double_expose'
+    'double_expose',
+    
+    # Contour effects
+    'contour_effect'
 ]

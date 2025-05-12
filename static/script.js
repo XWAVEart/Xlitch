@@ -383,10 +383,25 @@ $(document).ready(function() {
         }
         
         if ($('#masked_merge_fields').is(':visible')) {
-            if (!$('[name="mask_width"]').val()) {
+            // Get the current mask type
+            var maskType = $('#mask_type').val();
+            
+            // Only set default mask_width if it's not concentric_circles or if the field is empty
+            if (maskType !== 'concentric_circles' && !$('[name="mask_width"]').val()) {
                 $('[name="mask_width"]').val('32');
                 addDebugInfo("Set default mask_width to 32");
+            } else if (maskType === 'concentric_circles') {
+                // For concentric_circles, preserve the user's value and log it
+                var userWidth = $('[name="mask_width"]').val();
+                if (userWidth) {
+                    addDebugInfo("Using concentric circles band thickness: " + userWidth);
+                } else {
+                    // Only set default if empty
+                    $('[name="mask_width"]').val('32');
+                    addDebugInfo("Set default concentric circles band thickness to 32");
+                }
             }
+            
             if (!$('[name="mask_height"]').val()) {
                 $('[name="mask_height"]').val('32');
                 addDebugInfo("Set default mask_height to 32");
@@ -406,6 +421,15 @@ $(document).ready(function() {
             if (!$('[name="perlin_threshold"]').val()) {
                 $('[name="perlin_threshold"]').val('0.5');
                 addDebugInfo("Set default perlin_threshold to 0.5");
+            }
+            
+            // Special handling for concentric_circles - preserve user input and don't override
+            var maskType = $('#mask_type').val();
+            if (maskType === 'concentric_circles') {
+                var userWidth = $('[name="mask_width"]').val();
+                if (userWidth) {
+                    addDebugInfo("Preserving user-set concentric circles band thickness: " + userWidth);
+                }
             }
         }
         
@@ -897,7 +921,7 @@ $(document).ready(function() {
         addDebugInfo("Mask type changed to: " + type);
         
         // Hide all mask-specific fields first
-        $('#checkerboard_fields, #mask_random_seed_field, #striped_fields, #gradient_description, #perlin_fields, #voronoi_fields, #concentric_rectangles_fields').hide();
+        $('#checkerboard_fields, #mask_random_seed_field, #striped_fields, #gradient_description, #perlin_fields, #voronoi_fields, #concentric_rectangles_fields, #concentric_circles_fields, #gradient_direction_field, #random_triangles_fields').hide();
         
         // Show appropriate fields based on mask type
         if (type === 'checkerboard') {
@@ -910,6 +934,9 @@ $(document).ready(function() {
         } else if (type === 'gradient_striped') {
             $('#striped_fields').show();
             $('#gradient_description').show();
+        } else if (type === 'linear_gradient_striped') {
+            $('#striped_fields').show();
+            $('#gradient_direction_field').show();
         } else if (type === 'perlin') {
             $('#perlin_fields').show();
             $('#mask_random_seed_field').show();
@@ -917,6 +944,11 @@ $(document).ready(function() {
             $('#voronoi_fields').show();
         } else if (type === 'concentric_rectangles') {
             $('#concentric_rectangles_fields').show();
+        } else if (type === 'concentric_circles') {
+            $('#concentric_circles_fields').show();
+        } else if (type === 'random_triangles') {
+            $('#random_triangles_fields').show();
+            $('#mask_random_seed_field').show();
         }
     });
     
