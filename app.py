@@ -43,6 +43,20 @@ try:
     from glitch_art.effects.distortion import block_shuffle
     
     logger.info("Successfully imported all glitch_art modules")
+
+    # Import all specific form classes
+    from forms import (
+        PixelSortChunkForm, ColorChannelForm, BitManipulationForm, DoubleExposeForm,
+        FullFrameSortForm, PixelDriftForm, DatabendingForm, PolarSortForm,
+        SpiralSort2Form, JpegArtifactsForm, PerlinFullFrameForm, VoronoiSortForm,
+        PerlinNoiseSortForm, PixelScatterForm, PerlinDisplacementForm, RippleEffectForm,
+        RGBChannelShiftForm, HistogramGlitchForm, ColorShiftExpansionForm,
+        PixelateForm, ConcentricShapesForm, PosterizeForm, CurvedHueShiftForm,
+        MaskedMergeForm, OffsetEffectForm, SliceShuffleForm, SliceOffsetForm,
+        SliceReductionForm, ContourForm, BlockShuffleForm, DataMoshBlocksForm
+    )
+    logger.info("Successfully imported all specific effect form classes")
+
 except ImportError as e:
     logger.error(f"Error importing modules: {e}")
     logger.error(traceback.format_exc())
@@ -64,6 +78,44 @@ from flask_wtf.csrf import CSRFProtect
 import random
 import secrets
 from PIL import Image
+
+# --- Effect Form Mapping ---
+EFFECT_FORM_MAP = {
+    'pixel_sort_chunk': PixelSortChunkForm,
+    'color_channel': ColorChannelForm,
+    'bit_manipulation': BitManipulationForm,
+    'double_expose': DoubleExposeForm,
+    'full_frame_sort': FullFrameSortForm,
+    'pixel_drift': PixelDriftForm,
+    'databend': DatabendingForm,
+    'polar_sort': PolarSortForm,
+    'spiral_sort_2': SpiralSort2Form,
+    'jpeg_artifacts': JpegArtifactsForm,
+    'perlin_full_frame': PerlinFullFrameForm,
+    'voronoi_sort': VoronoiSortForm,
+    'perlin_noise_sort': PerlinNoiseSortForm,
+    'pixel_scatter': PixelScatterForm,
+    'perlin_displacement': PerlinDisplacementForm,
+    'ripple': RippleEffectForm, # Key is 'ripple' from main form
+    'channel_shift': RGBChannelShiftForm, # Key is 'channel_shift' from main form
+    'histogram_glitch': HistogramGlitchForm,
+    'color_shift_expansion': ColorShiftExpansionForm,
+    'pixelate': PixelateForm,
+    'concentric_shapes': ConcentricShapesForm,
+    'posterize': PosterizeForm,
+    'curved_hue_shift': CurvedHueShiftForm,
+    'masked_merge': MaskedMergeForm,
+    'offset': OffsetEffectForm, # Key is 'offset' from main form
+    'slice_shuffle': SliceShuffleForm,
+    'slice_offset': SliceOffsetForm,
+    'slice_reduction': SliceReductionForm,
+    'contour': ContourForm,
+    'block_shuffle': BlockShuffleForm,
+    'data_mosh_blocks': DataMoshBlocksForm,
+    # Add a mapping for the old 'spiral_sort' if it needs to be handled gracefully
+    # or ensure it's removed from the main form's choices if it's fully replaced by spiral_sort_2
+}
+logger.info("EFFECT_FORM_MAP created.")
 
 app = Flask(__name__)
 # Generate a secure random key for development, use environment variable in production
@@ -113,694 +165,642 @@ def csrf_exempt(view):
 def index():
     """Handle the main page with image upload and effect selection."""
     form = ImageProcessForm()
-    
-    # Check if this is an AJAX request
+    effect_specific_form = None
+    selected_effect_key = form.effect.data  # Get initial effect key if form is populated (e.g. from POST)
+
+    if request.method == 'GET':
+        # If a specific effect is pre-selected via query param (for dynamic loading on frontend)
+        # Or if the form was submitted with GET for some reason, keep the selection
+        query_effect_key = request.args.get('effect')
+        if query_effect_key:
+            selected_effect_key = query_effect_key
+        
+        if selected_effect_key and selected_effect_key in EFFECT_FORM_MAP:
+            EffectFormClass = EFFECT_FORM_MAP[selected_effect_key]
+            effect_specific_form = EffectFormClass(request.args) # Instantiate for GET request display, can fill from query args
+            form.effect.data = selected_effect_key # Ensure main form selector reflects this
+        elif selected_effect_key: # Effect key provided but not in map
+            logger.warning(f"GET request with unknown effect key: {selected_effect_key}")
+            # Optionally, clear it or set a default, or let the template handle it
+            selected_effect_key = None # Reset to avoid issues
+
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-    logger.debug(f"Request method: {request.method}, AJAX: {is_ajax}")
-    logger.debug(f"Request headers: {request.headers}")
+    logger.debug(f"Request method: {request.method}, AJAX: {is_ajax}, Selected Effect Key: {selected_effect_key}")
     
     if request.method == 'POST':
-        logger.debug(f"Form data: {request.form}")
-        logger.debug(f"Files: {request.files}")
+        logger.debug(f"POST Form data: {request.form}")
+        logger.debug(f"POST Files: {request.files}")
         
-        # Process the form submission
-        if form.validate_on_submit():
-            logger.debug("Form validated successfully")
-            try:
-                # Handle primary image upload
-                primary_image = form.primary_image.data
-                filename = secure_filename(primary_image.filename)
-                primary_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                primary_image.save(primary_path)
-                logger.debug(f"Primary image saved to {primary_path}")
-                
-                # Log all form data for debugging
-                logger.debug(f"Raw form data: {request.form}")
-                logger.debug(f"mask_width raw value: {request.form.getlist('mask_width')}")
-                logger.debug(f"Form mask_width.data: {form.mask_width.data}")
-                
-                # Load the image and check if it was resized
-                original_image = Image.open(primary_path)
-                original_size = original_image.size
-                image = load_image(primary_path)
-                
-                if image is None:
-                    logger.error(f"Failed to load image from {primary_path}")
-                    error_msg = "Error loading image"
-                    return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                
-                # Check if the image was resized
-                was_resized = original_size != image.size
-                if was_resized:
-                    logger.info(f"Image resized from {original_size} to {image.size} for better performance (longest dimension limited to 1920px)")
-                
-                # Determine the selected effect and process accordingly
-                effect = form.effect.data
-                logger.debug(f"Selected effect: {effect}")
-                
-                if effect == 'pixel_sort_chunk':
-                    # Get common parameters
-                    chunk_width = form.chunk_width.data
-                    chunk_height = form.chunk_height.data
-                    chunk_size = f"{chunk_width}x{chunk_height}"
-                    sort_by = form.sort_by.data
-                    sort_mode = form.sort_mode.data
-                    sort_order = form.sort_order.data
-                    
-                    # Process based on sort mode
-                    if sort_mode == 'diagonal':
-                        # Diagonal pixel sorting
-                        starting_corner = form.starting_corner.data
-                        logger.debug(f"Diagonal pixel sort params: chunk_size={chunk_size}, sort_by={sort_by}, starting_corner={starting_corner}, sort_order={sort_order}")
-                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by, starting_corner=starting_corner, sort_order=sort_order)
-                        settings = f"chunk_diagonal_{chunk_size}_{sort_by}_{starting_corner}_{sort_order}"
-                    else:
-                        # Regular pixel sorting (horizontal or vertical)
-                        logger.debug(f"Regular pixel sort params: mode={sort_mode}, chunk_size={chunk_size}, sort_by={sort_by}, sort_order={sort_order}")
-                        processed_image = pixel_sorting(image, sort_mode, chunk_size, sort_by, sort_order=sort_order)
-                        settings = f"chunk_{sort_mode}_{chunk_size}_{sort_by}_{sort_order}"
-                elif effect == 'color_channel':
-                    manipulation_type = form.manipulation_type.data
-                    logger.debug(f"Color channel manipulation type: {manipulation_type}")
-                    if manipulation_type == 'swap':
-                        choice = form.swap_choice.data
-                        logger.debug(f"Swap choice: {choice}")
-                        processed_image = color_channel_manipulation(image, manipulation_type, choice)
-                        settings = f"swap_{choice}"
-                    elif manipulation_type == 'invert':
-                        choice = form.invert_choice.data
-                        logger.debug(f"Invert choice: {choice}")
-                        processed_image = color_channel_manipulation(image, manipulation_type, choice)
-                        settings = f"invert_{choice}"
-                    elif manipulation_type == 'negative':
-                        logger.debug("Creating negative image")
-                        processed_image = color_channel_manipulation(image, manipulation_type, None)
-                        settings = "negative"
-                    else:  # adjust
-                        choice = form.adjust_choice.data
-                        factor = form.intensity_factor.data
-                        logger.debug(f"Adjust params: choice={choice}, factor={factor}")
-                        processed_image = color_channel_manipulation(image, manipulation_type, choice, factor)
-                        settings = f"adjust_{choice}_{factor}"
-                elif effect == 'double_expose':
-                    secondary_image = form.secondary_image.data
-                    blend_mode = form.blend_mode.data
-                    opacity = form.opacity.data
-                    if not secondary_image:
-                        logger.error("Secondary image required for Double Expose but not provided")
-                        error_msg = "Secondary image required for Double Expose"
-                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                    secondary_filename = secure_filename(secondary_image.filename)
-                    secondary_path = os.path.join(app.config['UPLOAD_FOLDER'], secondary_filename)
-                    secondary_image.save(secondary_path)
-                    logger.debug(f"Secondary image saved to {secondary_path}")
-                    logger.debug(f"Double expose params: blend_mode={blend_mode}, opacity={opacity}")
-                    secondary_img = load_image(secondary_path)
-                    if secondary_img is None:
-                        logger.error(f"Failed to load secondary image from {secondary_path}")
-                        error_msg = "Error loading secondary image"
-                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                    processed_image = double_expose(image, secondary_img, blend_mode, opacity)
-                    settings = f"doubleexpose_{blend_mode}_{opacity}"
-                elif effect == 'pixel_drift':
-                    direction = form.drift_direction.data
-                    drift_bands = form.drift_bands.data
-                    drift_intensity = form.drift_intensity.data
-                    logger.debug(f"Pixel drift params: direction={direction}, bands={drift_bands}, intensity={drift_intensity}")
-                    processed_image = pixel_drift(image, direction, drift_bands, drift_intensity)
-                    settings = f"drift_{direction}_{drift_bands}_{drift_intensity}"
-                elif effect == 'spiral_sort':
-                    # Redirect to spiral_sort_2 with equivalent parameters
-                    chunk_size = form.spiral_chunk_size.data
-                    order = form.spiral_order.data
-                    # Convert order to equivalent parameters for spiral_sort_2
-                    sort_by = 'brightness'  # Always brightness in original
-                    reverse = order == 'darkest-to-lightest'  # Determine reverse based on order
-                    logger.debug(f"Converting spiral sort to spiral sort 2: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
-                    processed_image = spiral_sort_2(image, chunk_size, sort_by, reverse)
-                    settings = f"spiral2_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
-                elif effect == 'bit_manipulation':
-                    logger.debug("Applying bit manipulation")
-                    chunk_size = form.bit_chunk_size.data
-                    offset = form.bit_offset.data
-                    xor_value = form.bit_xor_value.data
-                    skip_pattern = form.bit_skip_pattern.data
-                    manipulation_type = form.bit_manipulation_type.data
-                    bit_shift = form.bit_shift.data
-                    randomize = form.bit_randomize.data == 'true'
-                    random_seed = form.bit_random_seed.data
-                    
-                    logger.debug(f"Bit manipulation params: chunk_size={chunk_size}, offset={offset}, " 
-                                f"xor_value={xor_value}, skip_pattern={skip_pattern}, "
-                                f"manipulation_type={manipulation_type}, bit_shift={bit_shift}, "
-                                f"randomize={randomize}, random_seed={random_seed}")
-                    
-                    processed_image = bit_manipulation(
-                        image, 
-                        chunk_size=chunk_size,
-                        offset=offset,
-                        xor_value=xor_value,
-                        skip_pattern=skip_pattern,
-                        manipulation_type=manipulation_type,
-                        bit_shift=bit_shift,
-                        randomize=randomize,
-                        random_seed=random_seed
-                    )
-                    
-                    settings = f"bitmanip_{chunk_size}_{offset}_{xor_value}_{skip_pattern}_{manipulation_type}"
-                    if bit_shift != 1:
-                        settings += f"_{bit_shift}"
-                    if randomize:
-                        settings += "_random"
-                    if random_seed != 42:
-                        settings += f"_{random_seed}"
-                elif effect == 'data_mosh_blocks':
-                    num_operations = form.data_mosh_operations.data
-                    max_block_size = form.data_mosh_block_size.data
-                    block_movement = form.data_mosh_movement.data
-                    color_swap = form.data_mosh_color_swap.data
-                    invert = form.data_mosh_invert.data
-                    shift = form.data_mosh_shift.data
-                    flip = form.data_mosh_flip.data
-                    seed = form.data_mosh_seed.data
-                    
-                    logger.debug(f"Data mosh blocks params: operations={num_operations}, block_size={max_block_size}, "
-                                f"movement={block_movement}, color_swap={color_swap}, invert={invert}, "
-                                f"shift={shift}, flip={flip}, seed={seed}")
-                    
-                    processed_image = data_mosh_blocks(image, num_operations, max_block_size, block_movement,
-                                                    color_swap, invert, shift, flip, seed)
-                    
-                    settings = f"datamosh_{num_operations}_{max_block_size}_{block_movement}_{color_swap}_{invert}_{shift}_{flip}"
-                    if seed:
-                        settings += f"_{seed}"
-                elif effect == 'full_frame_sort':
-                    direction = form.full_frame_direction.data
-                    sort_by = form.full_frame_sort_by.data
-                    reverse = form.full_frame_reverse.data == 'true'
-                    logger.debug(f"Full frame sort params: direction={direction}, sort_by={sort_by}, reverse={reverse}")
-                    processed_image = full_frame_sort(image, direction, sort_by, reverse)
-                    settings = f"fullframe_{direction}_{sort_by}_{'desc' if reverse else 'asc'}"
-                elif effect == 'polar_sort':
-                    chunk_size = form.polar_chunk_size.data
-                    sort_by = form.polar_sort_by.data
-                    reverse = form.polar_reverse.data == 'true'
-                    logger.debug(f"Polar sort params: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
-                    processed_image = polar_sorting(image, chunk_size, sort_by, reverse)
-                    settings = f"polar_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
-                elif effect == 'perlin_noise_sort':
-                    chunk_width = form.perlin_chunk_width.data
-                    chunk_height = form.perlin_chunk_height.data
-                    chunk_size = f"{chunk_width}x{chunk_height}"
-                    noise_scale = form.perlin_noise_scale.data
-                    direction = form.perlin_direction.data
-                    reverse = form.perlin_reverse.data == 'true'
-                    seed = form.perlin_seed.data
-                    logger.debug(f"Perlin noise sort params: chunk_size={chunk_size}, noise_scale={noise_scale}, direction={direction}, reverse={reverse}, seed={seed}")
-                    processed_image = perlin_noise_sorting(image, chunk_size, noise_scale, direction, reverse, seed)
-                    settings = f"perlin_{chunk_size}_{noise_scale}_{direction}_{'desc' if reverse else 'asc'}_{seed}"
-                elif effect == 'perlin_full_frame':
-                    noise_scale = form.perlin_full_frame_noise_scale.data
-                    sort_by = form.perlin_full_frame_sort_by.data
-                    reverse = form.perlin_full_frame_reverse.data == 'true'
-                    seed = form.perlin_full_frame_seed.data
-                    pattern_width = form.perlin_full_frame_pattern_width.data
-                    logger.debug(f"Perlin full frame params: noise_scale={noise_scale}, sort_by={sort_by}, reverse={reverse}, seed={seed}, pattern_width={pattern_width}")
-                    processed_image = perlin_full_frame_sort(image, noise_scale, sort_by, reverse, seed, pattern_width)
-                    settings = f"perlinfullframe_{noise_scale}_{sort_by}_{'desc' if reverse else 'asc'}_{seed}_w{pattern_width}"
-                elif effect == 'spiral_sort_2':
-                    chunk_size = form.spiral2_chunk_size.data
-                    sort_by = form.spiral2_sort_by.data
-                    reverse = form.spiral2_reverse.data == 'true'
-                    logger.debug(f"Spiral sort 2 params: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
-                    processed_image = spiral_sort_2(image, chunk_size, sort_by, reverse)
-                    settings = f"spiral2_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
-                elif effect == 'pixelate':
-                    pixel_width = form.pixelate_width.data
-                    pixel_height = form.pixelate_height.data
-                    attribute = form.pixelate_attribute.data
-                    num_bins = form.pixelate_bins.data
-                    logger.debug(f"Pixelate params: width={pixel_width}, height={pixel_height}, attribute={attribute}, bins={num_bins}")
-                    processed_image = pixelate_by_attribute(image, pixel_width, pixel_height, attribute, num_bins)
-                    settings = f"pixelate_{pixel_width}x{pixel_height}_{attribute}_{num_bins}"
-                elif effect == 'concentric_shapes':
-                    num_points = form.concentric_num_points.data
-                    shape_type = form.shape_type.data
-                    thickness = form.concentric_thickness.data
-                    spacing = form.spacing.data
-                    rotation_angle = form.rotation_angle.data
-                    darken_step = form.darken_step.data
-                    color_shift = form.color_shift.data
-                    logger.debug(f"Concentric shapes params: points={num_points}, shape_type={shape_type}, thickness={thickness}, spacing={spacing}, rotation={rotation_angle}, darken={darken_step}, color_shift={color_shift}")
-                    processed_image = concentric_shapes(image, num_points, shape_type, thickness, spacing, rotation_angle, darken_step, color_shift)
-                    settings = f"concentric_{shape_type}_{num_points}_{thickness}_{spacing}_{rotation_angle}_{darken_step}_{color_shift}"
-                elif effect == 'color_shift_expansion':
-                    num_points = form.color_shift_num_points.data
-                    shift_amount = form.color_shift_amount.data
-                    expansion_type = form.expansion_type.data
-                    pattern_type = form.pattern_type.data
-                    color_theme = form.color_theme.data
-                    saturation_boost = form.saturation_boost.data
-                    value_boost = form.value_boost.data
-                    decay_factor = form.decay_factor.data
-                    
-                    logger.debug(f"Color shift expansion params: num_points={num_points}, shift_amount={shift_amount}, "
-                                f"expansion_type={expansion_type}, pattern_type={pattern_type}, color_theme={color_theme}, "
-                                f"saturation_boost={saturation_boost}, value_boost={value_boost}, decay_factor={decay_factor}")
-                    
-                    # Use a fixed 'xtreme' mode since we no longer have a mode selector in the form
-                    mode = 'xtreme'
-                    processed_image = color_shift_expansion(
-                        image=image, 
-                        num_points=num_points, 
-                        shift_amount=shift_amount, 
-                        expansion_type=expansion_type,
-                        mode=mode,  # Use the hardcoded mode
-                        saturation_boost=saturation_boost, 
-                        value_boost=value_boost, 
-                        pattern_type=pattern_type, 
-                        color_theme=color_theme, 
-                        decay_factor=decay_factor
-                    )
-                    
-                    settings = f"colorshift_{num_points}_{shift_amount}_{expansion_type}_{pattern_type}_{color_theme}"
-                elif effect == 'perlin_displacement':
-                    scale = form.perlin_displacement_scale.data
-                    intensity = form.perlin_displacement_intensity.data
-                    octaves = form.perlin_displacement_octaves.data
-                    persistence = form.perlin_displacement_persistence.data
-                    lacunarity = form.perlin_displacement_lacunarity.data
-                    logger.debug(f"Perlin displacement params: scale={scale}, intensity={intensity}, octaves={octaves}, persistence={persistence}, lacunarity={lacunarity}")
-                    processed_image = perlin_noise_displacement(image, scale, intensity, octaves, persistence, lacunarity)
-                    settings = f"perlindisplacement_{scale}_{intensity}_{octaves}_{persistence}_{lacunarity}"
-                elif effect == 'voronoi_sort':
-                    num_cells = form.voronoi_num_cells.data
-                    size_variation = form.voronoi_size_variation.data
-                    sort_by = form.voronoi_sort_by.data
-                    sort_order = form.voronoi_sort_order.data
-                    orientation = form.voronoi_orientation.data
-                    start_position = form.voronoi_start_position.data
-                    seed = form.voronoi_seed.data
-                    
-                    logger.debug(f"Voronoi sort params: num_cells={num_cells}, size_variation={size_variation}, "
-                               f"sort_by={sort_by}, sort_order={sort_order}, orientation={orientation}, "
-                               f"start_position={start_position}, seed={seed}")
-                    
-                    processed_image = voronoi_pixel_sort(image, num_cells, size_variation, sort_by, sort_order, seed, 
-                                                       orientation, start_position)
-                    
-                    settings = f"voronoi_{num_cells}_{size_variation}_{sort_by}_{sort_order}_{orientation}_{start_position}"
-                    if seed:
-                        settings += f"_{seed}"
-                elif effect == 'channel_shift':
-                    shift_amount = form.channel_shift_amount.data
-                    direction = form.channel_shift_direction.data
-                    centered_channel = form.channel_shift_center.data
-                    mode = form.channel_mode.data
-                    
-                    if mode == 'mirror':
-                        logger.debug(f"Channel shift params (mirror mode): centered_channel={centered_channel}, mode={mode}")
-                        # Direction is ignored in mirror mode, shift_amount is also ignored
-                        processed_image = split_and_shift_channels(image, 0, 'horizontal', centered_channel, mode)
-                        settings = f"channelshift_{mode}_{centered_channel}"
-                    else:  # shift mode
-                        logger.debug(f"Channel shift params (shift mode): amount={shift_amount}, direction={direction}, centered_channel={centered_channel}")
-                        processed_image = split_and_shift_channels(image, shift_amount, direction, centered_channel, mode)
-                        settings = f"channelshift_{shift_amount}_{direction}_{centered_channel}_{mode}"
-                elif effect == 'jpeg_artifacts':
-                    intensity = form.jpeg_intensity.data
-                    logger.debug(f"JPEG artifacts params: intensity={intensity}")
-                    
-                    processed_image = simulate_jpeg_artifacts(image, intensity)
-                    settings = f"jpeg_artifacts_{intensity}"
-                elif effect == 'pixel_scatter':
-                    direction = form.scatter_direction.data
-                    select_by = form.scatter_select_by.data
-                    min_val = form.scatter_min_value.data
-                    max_val = form.scatter_max_value.data
-                    logger.debug(f"Pixel scatter params: direction={direction}, select_by={select_by}, min_val={min_val}, max_val={max_val}")
-                    processed_image = pixel_scatter(image, direction, select_by, min_val, max_val)
-                    settings = f"scatter_{direction}_{select_by}_{min_val}_{max_val}"
-                elif effect == 'databend':
-                    try:
-                        # Apply databending effect
-                        logger.info("Applying databending effect with pixel manipulation")
-                        intensity = form.databend_intensity.data
-                        preserve_header = form.databend_preserve_header.data == 'true'
-                        seed = form.databend_seed.data
-                        logger.debug(f"Databending params: intensity={intensity}, preserve_header={preserve_header}, seed={seed}")
-                        processed_image = databend_image(image, intensity, preserve_header, seed)
-                        settings = f"databend_{intensity}_{preserve_header}_{seed}"
-                    except Exception as e:
-                        logger.error(f"Error during databending process: {e}")
-                        error_msg = "Error applying databending effect. Try a different intensity or seed value."
-                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                elif effect == 'histogram_glitch':
-                    # Extract parameters
-                    r_mode = form.hist_r_mode.data
-                    g_mode = form.hist_g_mode.data
-                    b_mode = form.hist_b_mode.data
-                    r_freq = form.hist_r_freq.data
-                    r_phase = form.hist_r_phase.data
-                    g_freq = form.hist_g_freq.data
-                    g_phase = form.hist_g_phase.data
-                    b_freq = form.hist_b_freq.data
-                    b_phase = form.hist_b_phase.data
-                    gamma_val = form.hist_gamma.data
-                    
-                    logger.debug(f"Histogram glitch params: r_mode={r_mode}, g_mode={g_mode}, b_mode={b_mode}, "
-                               f"frequencies=({r_freq}, {g_freq}, {b_freq}), phases=({r_phase}, {g_phase}, {b_phase}), "
-                               f"gamma={gamma_val}")
-                    
-                    processed_image = histogram_glitch(
-                        image, r_mode, g_mode, b_mode, r_freq, r_phase, g_freq, g_phase, b_freq, b_phase, gamma_val
-                    )
-                    
-                    settings = f"histogram_{r_mode}_{g_mode}_{b_mode}"
-                elif effect == 'ripple':
-                    # Extract parameters
-                    num_droplets = form.ripple_num_droplets.data
-                    amplitude = form.ripple_amplitude.data
-                    frequency = form.ripple_frequency.data
-                    decay = form.ripple_decay.data
-                    distortion_type = form.ripple_distortion_type.data
-                    
-                    # Create distortion parameters based on the selected distortion type
-                    distortion_params = {}
-                    if distortion_type == 'color_shift':
-                        distortion_params = {
-                            'factor_r': form.ripple_color_r.data,
-                            'factor_g': form.ripple_color_g.data,
-                            'factor_b': form.ripple_color_b.data
-                        }
-                    elif distortion_type == 'pixelation':
-                        distortion_params = {
-                            'scale': form.ripple_pixelation_scale.data,
-                            'max_mag': form.ripple_pixelation_max_mag.data
-                        }
-                    
-                    logger.debug(f"Ripple effect params: num_droplets={num_droplets}, amplitude={amplitude}, "
-                               f"frequency={frequency}, decay={decay}, distortion_type={distortion_type}, "
-                               f"distortion_params={distortion_params}")
-                    
-                    processed_image = ripple_effect(
-                        image, num_droplets, amplitude, frequency, decay, distortion_type, distortion_params
-                    )
-                    
-                    settings = f"ripple_{num_droplets}_{amplitude}_{frequency}_{decay}_{distortion_type}"
-                elif effect == 'masked_merge':
-                    # Extract parameters
-                    secondary_image = form.masked_merge_secondary.data
-                    mask_type = form.mask_type.data
-                    
-                    # Initialize all parameters with defaults
-                    current_mask_width = form.mask_width.data or 32
-                    mask_height = form.mask_height.data or 32
-                    stripe_width = 16
-                    stripe_angle = 45
-                    perlin_noise_scale = 0.1
-                    perlin_threshold = 0.5
-                    perlin_octaves = 1
-                    voronoi_cells = 50
-                    circle_origin = 'center'
-                    gradient_direction = 'up'
-                    triangle_size = 32
-                    random_seed = None
+        if form.validate_on_submit(): # Validates primary_image and effect selection
+            logger.debug("Main ImageProcessForm validated successfully")
+            selected_effect_key = form.effect.data # Confirmed selected effect
+            EffectFormClass = EFFECT_FORM_MAP.get(selected_effect_key)
 
-                    # Handle the case where mask_width might have multiple values - use the last one
-                    # This fixes an issue where the form submits both default and user-specified values
-                    if isinstance(form.mask_width.data, list):
-                        logger.debug(f"Multiple mask_width values detected: {form.mask_width.data}")
-                        if len(form.mask_width.data) > 0:
-                            current_mask_width = form.mask_width.data[-1] or 32
-                        logger.debug(f"Using last mask_width value: {current_mask_width}")
-
-                    # Fetch specific parameters based on mask_type, overwriting defaults
-                    if mask_type == 'concentric_rectangles':
-                        current_mask_width = form.concentric_rectangle_width.data or 16
-                    elif mask_type == 'concentric_circles':
-                        # Use dedicated field for concentric circle width
-                        current_mask_width = form.concentric_circle_width.data or 32
-                        circle_origin = form.concentric_origin.data or 'center'
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, band_thickness={current_mask_width}, "
-                                    f"circle_origin={circle_origin}")
-                    elif mask_type in ['striped', 'gradient_striped', 'linear_gradient_striped']:
-                        stripe_width = form.stripe_width.data or 16
-                        stripe_angle = form.stripe_angle.data or 45
-                        if mask_type == 'linear_gradient_striped':
-                            gradient_direction = form.gradient_direction.data or 'up'
-                    elif mask_type == 'perlin':
-                        perlin_noise_scale = form.perlin_noise_scale.data or 0.01
-                        perlin_threshold = form.perlin_threshold.data or 0.5
-                        perlin_octaves = form.perlin_octaves.data or 1
-                        random_seed = form.mask_random_seed.data # Optional, no default needed
-                    elif mask_type == 'voronoi':
-                        voronoi_cells = form.voronoi_cells.data or 50
-                        random_seed = form.mask_random_seed.data # Optional
-                    elif mask_type == 'random_triangles':
-                        triangle_size = form.triangle_size.data or 32
-                        random_seed = form.mask_random_seed.data # Optional
-                    elif mask_type == 'random_checkerboard':
-                        current_mask_width = form.mask_width.data or 32
-                        mask_height = form.mask_height.data or 32
-                        random_seed = form.mask_random_seed.data # Optional
-                    
-                    # Ensure the correct width is used if not concentric rectangles/circles
-                    if mask_type not in ['concentric_rectangles', 'concentric_circles']:
-                        current_mask_width = form.mask_width.data or 32 # Use general width
-
-                    if not secondary_image:
-                        logger.error("Secondary image required for Masked Merge but not provided")
-                        error_msg = "Secondary image required for Masked Merge"
-                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                    
-                    secondary_filename = secure_filename(secondary_image.filename)
-                    secondary_path = os.path.join(app.config['UPLOAD_FOLDER'], secondary_filename)
-                    secondary_image.save(secondary_path)
-                    logger.debug(f"Secondary image saved to {secondary_path}")
-                    
-                    # Log parameters based on mask type
-                    if mask_type in ['checkerboard', 'random_checkerboard']:
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, mask_width={current_mask_width}, "
-                                    f"mask_height={mask_height}, random_seed={random_seed}")
-                    elif mask_type in ['striped', 'gradient_striped']:
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, stripe_width={stripe_width}, "
-                                    f"stripe_angle={stripe_angle}")
-                    elif mask_type == 'linear_gradient_striped':
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, stripe_width={stripe_width}, "
-                                    f"stripe_angle={stripe_angle}, direction={gradient_direction}")
-                    elif mask_type == 'perlin':
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, noise_scale={perlin_noise_scale}, "
-                                    f"threshold={perlin_threshold}, random_seed={random_seed}, octaves={perlin_octaves}")
-                    elif mask_type == 'voronoi':
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, voronoi_cells={voronoi_cells}, "
-                                    f"random_seed={random_seed}")
-                    elif mask_type == 'concentric_rectangles':
-                        # Use the specific width variable for settings
-                        settings = f"maskedmerge_{mask_type}_{current_mask_width}px"
-                    elif mask_type == 'concentric_circles':
-                        # Use the general width parameter (already stored in current_mask_width) 
-                        # for band thickness and add origin
-                        settings = f"maskedmerge_{mask_type}_band_thickness={current_mask_width}px_{circle_origin}"
-                    elif mask_type == 'random_triangles':
-                        logger.debug(f"Masked merge params: mask_type={mask_type}, triangle_size={triangle_size}, random_seed={random_seed}")
-                    
-                    secondary_img = load_image(secondary_path)
-                    if secondary_img is None:
-                        logger.error(f"Failed to load secondary image from {secondary_path}")
-                        error_msg = "Error loading secondary image"
-                        return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 400
-                    
-                    # Call the function with appropriate parameters
-                    # Pass the determined width (current_mask_width) as the 'width' parameter
-                    logger.debug(f"Calling masked_merge with width={current_mask_width} for mask_type={mask_type}")
-                    processed_image = masked_merge(
-                        image,
-                        secondary_img,
-                        mask_type,
-                        width=current_mask_width, # Use the determined width
-                        height=mask_height, # Still needed for other modes
-                        random_seed=random_seed,
-                        stripe_width=stripe_width,
-                        stripe_angle=stripe_angle,
-                        perlin_noise_scale=perlin_noise_scale,
-                        threshold=perlin_threshold,
-                        voronoi_cells=voronoi_cells,
-                        perlin_octaves=perlin_octaves,
-                        circle_origin=circle_origin, # Pass the new parameter
-                        gradient_direction=gradient_direction, # Pass the new parameter
-                        triangle_size=triangle_size # Pass the new parameter
-                    )
-                    
-                    # Create settings string based on mask type
-                    if mask_type in ['checkerboard', 'random_checkerboard']:
-                        settings = f"maskedmerge_{mask_type}_{current_mask_width}x{mask_height}"
-                        if mask_type == 'random_checkerboard' and random_seed:
-                            settings += f"_{random_seed}"
-                    elif mask_type in ['striped', 'gradient_striped']:
-                        settings = f"maskedmerge_{mask_type}_{stripe_width}px_{stripe_angle}deg"
-                    elif mask_type == 'linear_gradient_striped':
-                        settings = f"maskedmerge_{mask_type}_{stripe_width}px_{stripe_angle}deg_{gradient_direction}"
-                    elif mask_type == 'perlin':
-                        settings = f"maskedmerge_{mask_type}_{perlin_noise_scale}_{perlin_threshold}"
-                        if random_seed:
-                            settings += f"_{random_seed}"
-                    elif mask_type == 'voronoi':
-                        settings = f"maskedmerge_{mask_type}_{voronoi_cells}"
-                        if random_seed:
-                            settings += f"_{random_seed}"
-                    elif mask_type == 'random_triangles':
-                        settings = f"maskedmerge_{mask_type}_{triangle_size}px"
-                        if random_seed:
-                            settings += f"_{random_seed}"
-                    elif mask_type == 'concentric_rectangles':
-                        # Use the specific width variable for settings
-                        settings = f"maskedmerge_{mask_type}_{current_mask_width}px"
-                    elif mask_type == 'concentric_circles':
-                        # Use the general width parameter (already stored in current_mask_width) 
-                        # for band thickness and add origin
-                        settings = f"maskedmerge_{mask_type}_band_thickness={current_mask_width}px_{circle_origin}"
-                elif effect == 'offset':
-                    # process offset effect
-                    processed_image = offset_effect(image, 
-                               offset_x=form.offset_x_value.data, 
-                               offset_y=form.offset_y_value.data, 
-                               unit_x=form.offset_x_unit.data, 
-                               unit_y=form.offset_y_unit.data)
-                    settings = f"offset_{form.offset_x_value.data}_{form.offset_x_unit.data}_{form.offset_y_value.data}_{form.offset_y_unit.data}"
-                elif effect == 'slice_shuffle':
-                    # process slice shuffle effect
-                    slice_count = form.slice_count.data
-                    orientation = form.slice_orientation.data
-                    seed = form.slice_seed.data
-                    processed_image = slice_shuffle(image, slice_count, orientation, seed if seed is not None and seed != 0 else None)
-                    settings = f"slice_{slice_count}_{orientation}" + (f"_{seed}" if seed else "")
-                elif effect == 'slice_offset':
-                    # process slice offset effect
-                    slice_count = form.slice_offset_count.data
-                    max_offset = form.slice_offset_max.data
-                    orientation = form.slice_offset_orientation.data
-                    offset_mode = form.slice_offset_mode.data
-                    sine_frequency = form.slice_offset_frequency.data if offset_mode == 'sine' else None
-                    seed = form.slice_offset_seed.data if offset_mode == 'random' else None
-                    
-                    processed_image = slice_offset(
-                        image, 
-                        slice_count, 
-                        max_offset, 
-                        orientation, 
-                        offset_mode=offset_mode,
-                        sine_frequency=sine_frequency,
-                        seed=seed if seed is not None and seed != 0 else None
-                    )
-                    
-                    settings = f"sliceoffset_{slice_count}_{max_offset}_{orientation}_{offset_mode}"
-                    if offset_mode == 'sine' and sine_frequency:
-                        settings += f"_freq{sine_frequency}"
-                    elif offset_mode == 'random' and seed:
-                        settings += f"_seed{seed}"
-                elif effect == 'slice_reduction':
-                    # process slice reduction effect
-                    slice_count = form.slice_reduction_count.data
-                    reduction_value = form.slice_reduction_value.data
-                    orientation = form.slice_reduction_orientation.data
-                    processed_image = slice_reduction(image, slice_count, reduction_value, orientation)
-                    settings = f"slicereduction_{slice_count}_{reduction_value}_{orientation}"
-                elif effect == 'posterize':
-                    # process posterize effect
-                    processed_image = posterize(image, form.posterize_levels.data)
-                    settings = f"posterize_{form.posterize_levels.data}"
-                elif effect == 'curved_hue_shift':
-                    # process curved hue shift effect
-                    processed_image = curved_hue_shift(image, form.hue_curve.data, form.hue_shift_amount.data)
-                    settings = f"hue_skrift_C{form.hue_curve.data}_A{form.hue_shift_amount.data}"
-                elif effect == 'contour':
-                    # Process contour effect
-                    num_levels = form.contour_num_levels.data
-                    noise_std = form.contour_noise_std.data
-                    smooth_sigma = form.contour_smooth_sigma.data
-                    line_thickness = form.contour_line_thickness.data
-                    grad_threshold = form.contour_grad_threshold.data
-                    min_distance = form.contour_min_distance.data
-                    max_line_length = form.contour_max_line_length.data
-                    blur_kernel_size = form.contour_blur_kernel_size.data
-                    sobel_kernel_size = form.contour_sobel_kernel_size.data
-                    
-                    logger.debug(f"Contour effect params: num_levels={num_levels}, noise_std={noise_std}, "
-                               f"smooth_sigma={smooth_sigma}, line_thickness={line_thickness}, "
-                               f"grad_threshold={grad_threshold}, min_distance={min_distance}, "
-                               f"max_line_length={max_line_length}, blur_kernel_size={blur_kernel_size}, "
-                               f"sobel_kernel_size={sobel_kernel_size}")
-                    
-                    processed_image = contour_effect(
-                        image,
-                        num_levels=num_levels,
-                        noise_std=noise_std,
-                        smooth_sigma=smooth_sigma,
-                        line_thickness=line_thickness,
-                        grad_threshold=grad_threshold,
-                        min_distance=min_distance,
-                        max_line_length=max_line_length,
-                        blur_kernel_size=blur_kernel_size,
-                        sobel_kernel_size=sobel_kernel_size
-                    )
-                    
-                    settings = f"contour_{num_levels}_{noise_std}_{smooth_sigma}_{line_thickness}_{grad_threshold}_{min_distance}_{max_line_length}_{blur_kernel_size}_{sobel_kernel_size}"
-                elif effect == 'block_shuffle':
-                    block_width = form.block_shuffle_block_width.data
-                    block_height = form.block_shuffle_block_height.data
-                    seed = form.block_shuffle_seed.data
-                    logger.debug(f"Block Shuffle params: block_width={block_width}, block_height={block_height}, seed={seed}")
-                    processed_image = block_shuffle(image, block_width, block_height, seed)
-                    settings = f"blockshuffle_{block_width}x{block_height}"
-                    if seed:
-                        settings += f"_seed{seed}"
-                else:
-                    logger.error(f"Unknown effect: {effect}")
-                    error_msg = f"Unknown effect: {effect}"
-                    return jsonify({"success": False, "error": error_msg}) if is_ajax else render_template('index.html', form=form, error=error_msg)
-                
-                # Save the processed image
-                output_filename = generate_output_filename(filename, effect, settings)
-                output_path = os.path.join(app.config['PROCESSED_FOLDER'], output_filename)
-                processed_image.save(output_path)
-                logger.debug(f"Processed image saved to {output_path}")
-                
-                # Prepare the response
-                processed_url = url_for('processed_file', filename=output_filename)
-                
-                # Return a success response
+            if not EffectFormClass:
+                logger.error(f"Unknown effect key selected: {selected_effect_key}")
+                error_msg = f"Unknown effect: {selected_effect_key}"
                 if is_ajax:
-                    response_data = {
-                        "success": True,
-                        "processed_url": processed_url
-                    }
-                    # Add information about resizing if it happened
-                    if was_resized:
-                        response_data["was_resized"] = True
-                        response_data["original_size"] = f"{original_size[0]}x{original_size[1]}"
-                        response_data["new_size"] = f"{image.size[0]}x{image.size[1]}"
-                    
-                    return jsonify(response_data)
+                    return jsonify({"success": False, "error": error_msg}), 400
                 else:
-                    # For non-AJAX requests, redirect to the processed image
-                    return redirect(processed_url)
-            except Exception as e:
-                logger.error(f"Error processing image: {str(e)}")
-                logger.error(traceback.format_exc())
-                error_msg = f"Error: {str(e)}"
-                return jsonify({"success": False, "error": error_msg}) if is_ajax else error_msg, 500
-        else:
-            # Form validation failed
-            logger.error(f"Form validation failed: {form.errors}")
+                    # Re-render with main form, no specific form, and error
+                    return render_template('index.html', form=form, effect_specific_form=None, selected_effect_key=selected_effect_key, error=error_msg)
+
+            # Instantiate the specific form. Flask-WTF will populate from request.form and request.files.
+            effect_specific_form = EffectFormClass()
+            logger.debug(f"Instantiated specific form {EffectFormClass.__name__} for effect '{selected_effect_key}'")
+
+            if effect_specific_form.validate():
+                logger.debug(f"Specific form {EffectFormClass.__name__} validated successfully.")
+                try:
+                    primary_image_file = form.primary_image.data # From main form
+                    filename = secure_filename(primary_image_file.filename)
+                    primary_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    primary_image_file.save(primary_path)
+                    logger.debug(f"Primary image saved to {primary_path}")
+                    
+                    original_image_pil = Image.open(primary_path)
+                    original_size = original_image_pil.size
+                    image = load_image(
+                        primary_path,
+                        max_width_config=app.config.get('MAX_IMAGE_WIDTH'),
+                        max_height_config=app.config.get('MAX_IMAGE_HEIGHT')
+                    )
+                    
+                    if image is None:
+                        logger.error(f"Failed to load image from {primary_path}")
+                        error_msg = "Error loading image"
+                        # Pass back main form and the specific form that failed (or was attempted)
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key, error=error_msg), 400
+                    
+                    was_resized = original_size != image.size
+                    if was_resized:
+                        logger.info(f"Image resized from {original_size} to {image.size}")
+                    
+                    # Use selected_effect_key for dispatch
+                    effect = selected_effect_key 
+                    processed_image = None
+                    settings = ""
+                    
+                    # --- EFFECT DISPATCH LOGIC ---
+                    if effect == 'pixel_sort_chunk':
+                        chunk_width = effect_specific_form.width.data
+                        chunk_height = effect_specific_form.height.data
+                        chunk_size_str = f"{chunk_width}x{chunk_height}"
+                        sort_by = effect_specific_form.sort_by.data
+                        sort_mode = effect_specific_form.sort_mode.data
+                        reverse_sort = effect_specific_form.reverse_sort.data
+                        sort_order_str = 'desc' if reverse_sort else 'asc'
+                        
+                        if sort_mode == 'diagonal':
+                            starting_corner = effect_specific_form.starting_corner.data
+                            logger.debug(f"Pixel Sort Chunk (Diagonal) params: chunk_size={chunk_size_str}, sort_by={sort_by}, starting_corner={starting_corner}, sort_order={sort_order_str}")
+                            processed_image = pixel_sorting(image, sort_mode, chunk_size_str, sort_by, starting_corner=starting_corner, sort_order=sort_order_str)
+                            settings = f"chunk_diag_{chunk_width}x{chunk_height}_{sort_by}_{starting_corner}_{sort_order_str}"
+                        else:
+                            logger.debug(f"Pixel Sort Chunk (Horiz/Vert) params: mode={sort_mode}, chunk_size={chunk_size_str}, sort_by={sort_by}, sort_order={sort_order_str}")
+                            processed_image = pixel_sorting(image, sort_mode, chunk_size_str, sort_by, sort_order=sort_order_str)
+                            settings = f"chunk_{sort_mode}_{chunk_width}x{chunk_height}_{sort_by}_{sort_order_str}"
+                    
+                    elif effect == 'color_channel':
+                        manipulation_type = effect_specific_form.manipulation_type.data
+                        logger.debug(f"Color channel manipulation type: {manipulation_type}")
+                        params = [image, manipulation_type]
+                        setting_suffix = ""
+                        if manipulation_type == 'swap':
+                            choice = effect_specific_form.swap_choice.data
+                            params.append(choice)
+                            setting_suffix = f"swap_{choice}"
+                        elif manipulation_type == 'invert':
+                            choice = effect_specific_form.invert_choice.data
+                            params.append(choice)
+                            setting_suffix = f"invert_{choice}"
+                        elif manipulation_type == 'negative':
+                            params.append(None) # No choice needed
+                            setting_suffix = "negative"
+                        else:  # adjust
+                            choice = effect_specific_form.adjust_choice.data
+                            factor = effect_specific_form.intensity_factor.data
+                            params.extend([choice, factor])
+                            setting_suffix = f"adjust_{choice}_{factor}"
+                        processed_image = color_channel_manipulation(*params)
+                        settings = setting_suffix
+
+                    elif effect == 'double_expose':
+                        secondary_image_file = effect_specific_form.secondary_image.data # From specific form
+                        blend_mode = effect_specific_form.blend_mode.data
+                        opacity = effect_specific_form.opacity.data
+                        
+                        if not secondary_image_file: # Should be caught by form validation if FileRequired
+                            logger.error("Secondary image required but not provided (post-validation check)")
+                            error_msg = "Secondary image is required for Double Expose."
+                            return jsonify({"success": False, "error": error_msg}) if is_ajax else render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key, error=error_msg), 400
+
+                        secondary_filename = secure_filename(secondary_image_file.filename)
+                        secondary_path = os.path.join(app.config['UPLOAD_FOLDER'], f"secondary_{secondary_filename}")
+                        secondary_image_file.save(secondary_path)
+                        secondary_img_pil = load_image(
+                            secondary_path,
+                            max_width_config=app.config.get('MAX_IMAGE_WIDTH'),
+                            max_height_config=app.config.get('MAX_IMAGE_HEIGHT')
+                        )
+                        
+                        if secondary_img_pil is None:
+                            logger.error(f"Failed to load secondary image from {secondary_path}")
+                            error_msg = "Error loading secondary image for Double Expose."
+                            return jsonify({"success": False, "error": error_msg}) if is_ajax else render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key, error=error_msg), 400
+                            
+                        logger.debug(f"Double expose params: blend_mode={blend_mode}, opacity={opacity}")
+                        processed_image = double_expose(image, secondary_img_pil, blend_mode, opacity)
+                        settings = f"doubleexpose_{blend_mode}_{opacity}"
+
+                    elif effect == 'pixel_drift':
+                        direction = effect_specific_form.direction.data
+                        bands = effect_specific_form.bands.data
+                        intensity = effect_specific_form.intensity.data
+                        logger.debug(f"Pixel drift params: direction={direction}, bands={bands}, intensity={intensity}")
+                        processed_image = pixel_drift(image, direction, bands, intensity)
+                        settings = f"drift_{direction}_{bands}_{intensity}"
+
+                    elif effect == 'bit_manipulation':
+                        logger.debug("Applying bit manipulation")
+                        chunk_size = effect_specific_form.chunk_size.data
+                        offset_val = effect_specific_form.offset.data # Renamed from 'offset' to 'offset_val' to avoid conflict
+                        xor_value = effect_specific_form.xor_value.data
+                        skip_pattern = effect_specific_form.skip_pattern.data
+                        manipulation_type = effect_specific_form.manipulation_type.data
+                        shift_amount = effect_specific_form.shift_amount.data
+                        randomize = effect_specific_form.randomize_effect.data
+                        seed_val = effect_specific_form.seed.data # Renamed from 'seed'
+                        
+                        logger.debug(f"Bit manipulation params: chunk_size={chunk_size}, offset={offset_val}, " 
+                                    f"xor_value={xor_value}, skip_pattern={skip_pattern}, "
+                                    f"manipulation_type={manipulation_type}, bit_shift={shift_amount}, "
+                                    f"randomize={randomize}, random_seed={seed_val}")
+                        
+                        processed_image = bit_manipulation(
+                            image, chunk_size=chunk_size, offset=offset_val, xor_value=xor_value,
+                            skip_pattern=skip_pattern, manipulation_type=manipulation_type,
+                            bit_shift=shift_amount, randomize=randomize, random_seed=seed_val
+                        )
+                        settings = f"bitmanip_{chunk_size}_{offset_val}_{xor_value}_{skip_pattern}_{manipulation_type}"
+                        if shift_amount != 1: settings += f"_{shift_amount}"
+                        if randomize: settings += "_random"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'data_mosh_blocks':
+                        operations = effect_specific_form.operations.data
+                        block_size = effect_specific_form.block_size.data
+                        movement = effect_specific_form.movement.data
+                        color_swap = effect_specific_form.color_swap.data
+                        invert_colors = effect_specific_form.invert_colors.data
+                        shift_values = effect_specific_form.shift_values.data
+                        flip_blocks = effect_specific_form.flip_blocks.data
+                        seed_val = effect_specific_form.seed.data # Renamed from 'seed'
+                        
+                        logger.debug(f"Data mosh blocks params: operations={operations}, block_size={block_size}, "
+                                    f"movement={movement}, color_swap={color_swap}, invert={invert_colors}, "
+                                    f"shift={shift_values}, flip={flip_blocks}, seed={seed_val}")
+                        processed_image = data_mosh_blocks(
+                            image, operations, block_size, movement, color_swap, 
+                            invert_colors, shift_values, flip_blocks, seed_val
+                        )
+                        settings = f"datamosh_{operations}_{block_size}_{movement}_{color_swap}_{invert_colors}_{shift_values}_{flip_blocks}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'full_frame_sort':
+                        direction = effect_specific_form.direction.data
+                        sort_by = effect_specific_form.sort_by.data
+                        reverse = effect_specific_form.reverse_sort.data
+                        logger.debug(f"Full frame sort params: direction={direction}, sort_by={sort_by}, reverse={reverse}")
+                        processed_image = full_frame_sort(image, direction, sort_by, reverse)
+                        settings = f"fullframe_{direction}_{sort_by}_{'desc' if reverse else 'asc'}"
+
+                    elif effect == 'polar_sort':
+                        chunk_size = effect_specific_form.chunk_size.data
+                        sort_by = effect_specific_form.sort_by.data
+                        reverse = effect_specific_form.reverse_sort.data
+                        logger.debug(f"Polar sort params: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
+                        processed_image = polar_sorting(image, chunk_size, sort_by, reverse)
+                        settings = f"polar_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
+
+                    elif effect == 'perlin_noise_sort':
+                        chunk_width = effect_specific_form.chunk_width.data
+                        chunk_height = effect_specific_form.chunk_height.data
+                        chunk_size_str = f"{chunk_width}x{chunk_height}"
+                        noise_scale = effect_specific_form.noise_scale.data
+                        direction = effect_specific_form.direction.data
+                        reverse = effect_specific_form.reverse_sort.data
+                        seed_val = effect_specific_form.seed.data # Renamed from 'seed'
+                        logger.debug(f"Perlin noise sort params: chunk_size={chunk_size_str}, noise_scale={noise_scale}, direction={direction}, reverse={reverse}, seed={seed_val}")
+                        processed_image = perlin_noise_sorting(image, chunk_size_str, noise_scale, direction, reverse, seed_val)
+                        settings = f"perlin_{chunk_width}x{chunk_height}_{noise_scale}_{direction}_{'desc' if reverse else 'asc'}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+                        
+                    elif effect == 'perlin_full_frame':
+                        noise_scale = effect_specific_form.noise_scale.data
+                        sort_by = effect_specific_form.sort_by.data
+                        reverse = effect_specific_form.reverse_sort.data
+                        seed_val = effect_specific_form.seed.data # Renamed from 'seed'
+                        pattern_width = effect_specific_form.pattern_width.data
+                        logger.debug(f"Perlin full frame params: noise_scale={noise_scale}, sort_by={sort_by}, reverse={reverse}, seed={seed_val}, pattern_width={pattern_width}")
+                        processed_image = perlin_full_frame_sort(image, noise_scale, sort_by, reverse, seed_val, pattern_width)
+                        settings = f"perlinff_{noise_scale}_{sort_by}_{'desc' if reverse else 'asc'}_w{pattern_width}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'spiral_sort_2':
+                        chunk_size = effect_specific_form.chunk_size.data
+                        sort_by = effect_specific_form.sort_by.data
+                        reverse = effect_specific_form.reverse_sort.data
+                        logger.debug(f"Spiral sort 2 params: chunk_size={chunk_size}, sort_by={sort_by}, reverse={reverse}")
+                        processed_image = spiral_sort_2(image, chunk_size, sort_by, reverse)
+                        settings = f"spiral2_{chunk_size}_{sort_by}_{'desc' if reverse else 'asc'}"
+
+                    elif effect == 'pixelate':
+                        pixel_width = effect_specific_form.width.data
+                        pixel_height = effect_specific_form.height.data
+                        attribute = effect_specific_form.attribute.data
+                        num_bins = effect_specific_form.bins.data
+                        logger.debug(f"Pixelate params: width={pixel_width}, height={pixel_height}, attribute={attribute}, bins={num_bins}")
+                        processed_image = pixelate_by_attribute(image, pixel_width, pixel_height, attribute, num_bins)
+                        settings = f"pixelate_{pixel_width}x{pixel_height}_{attribute}_{num_bins}"
+
+                    elif effect == 'concentric_shapes':
+                        num_points = effect_specific_form.num_points.data
+                        shape_type = effect_specific_form.shape_type.data
+                        thickness = effect_specific_form.thickness.data
+                        spacing_val = effect_specific_form.spacing.data # Renamed
+                        rotation_angle = effect_specific_form.rotation_angle.data
+                        darken_step = effect_specific_form.darken_step.data
+                        color_shift_amount = effect_specific_form.color_shift_amount.data
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        logger.debug(f"Concentric shapes params: points={num_points}, shape_type={shape_type}, thickness={thickness}, spacing={spacing_val}, rotation={rotation_angle}, darken={darken_step}, color_shift={color_shift_amount}, seed={seed_val}")
+                        # Assuming concentric_shapes function is updated to accept seed
+                        processed_image = concentric_shapes(image, num_points, shape_type, thickness, spacing_val, rotation_angle, darken_step, color_shift=color_shift_amount, seed=seed_val)
+                        settings = f"concentric_{shape_type}_{num_points}_{thickness}_{spacing_val}_{rotation_angle}_{darken_step}_{color_shift_amount}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'color_shift_expansion':
+                        num_points = effect_specific_form.num_points.data
+                        shift_amount = effect_specific_form.shift_amount.data
+                        expansion_type = effect_specific_form.expansion_type.data
+                        pattern_type = effect_specific_form.pattern_type.data
+                        color_theme = effect_specific_form.color_theme.data
+                        saturation_boost = effect_specific_form.saturation_boost.data
+                        value_boost = effect_specific_form.value_boost.data
+                        decay_factor = effect_specific_form.decay_factor.data
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        
+                        logger.debug(f"Color shift expansion params: num_points={num_points}, shift_amount={shift_amount}, expansion_type={expansion_type}, pattern_type={pattern_type}, color_theme={color_theme}, saturation_boost={saturation_boost}, value_boost={value_boost}, decay_factor={decay_factor}, seed={seed_val}")
+                        mode = 'xtreme' # Mode is hardcoded as per previous logic
+                        processed_image = color_shift_expansion(
+                            image=image, num_points=num_points, shift_amount=shift_amount, expansion_type=expansion_type,
+                            mode=mode, saturation_boost=saturation_boost, value_boost=value_boost, pattern_type=pattern_type,
+                            color_theme=color_theme, decay_factor=decay_factor, seed=seed_val
+                        )
+                        settings = f"colorshiftexp_{num_points}_{shift_amount}_{expansion_type}_{pattern_type}_{color_theme}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'perlin_displacement':
+                        scale = effect_specific_form.scale.data
+                        intensity = effect_specific_form.intensity.data
+                        octaves = effect_specific_form.octaves.data
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        logger.debug(f"Perlin displacement params: scale={scale}, intensity={intensity}, octaves={octaves}, seed={seed_val}")
+                        processed_image = perlin_noise_displacement(image, scale, intensity, octaves, seed=seed_val)
+                        settings = f"perlindisp_{scale}_{intensity}_{octaves}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'voronoi_sort':
+                        num_cells = effect_specific_form.num_cells.data
+                        size_variation = effect_specific_form.size_variation.data
+                        sort_by = effect_specific_form.sort_by.data
+                        sort_order = effect_specific_form.sort_order.data
+                        orientation_val = effect_specific_form.orientation.data # Renamed
+                        start_position = effect_specific_form.start_position.data
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        
+                        logger.debug(f"Voronoi sort params: num_cells={num_cells}, size_variation={size_variation}, sort_by={sort_by}, sort_order={sort_order}, orientation={orientation_val}, start_position={start_position}, seed={seed_val}")
+                        processed_image = voronoi_pixel_sort(
+                            image, num_cells, size_variation, sort_by, sort_order, seed_val, 
+                            orientation_val, start_position
+                        )
+                        settings = f"voronoi_{num_cells}_{size_variation}_{sort_by}_{sort_order}_{orientation_val}_{start_position}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'channel_shift': # Uses split_and_shift_channels
+                        shift_amount = effect_specific_form.shift_amount.data
+                        direction = effect_specific_form.direction.data
+                        centered_channel = effect_specific_form.center_channel.data
+                        mode = effect_specific_form.mode.data
+                        
+                        if mode == 'mirror':
+                            logger.debug(f"Channel shift (mirror): centered_channel={centered_channel}")
+                            processed_image = split_and_shift_channels(image, 0, 'horizontal', centered_channel, mode) # amount/direction ignored
+                            settings = f"channelshift_{mode}_{centered_channel}"
+                        else: # shift mode
+                            logger.debug(f"Channel shift (shift): amount={shift_amount}, direction={direction}, centered_channel={centered_channel}")
+                            processed_image = split_and_shift_channels(image, shift_amount, direction, centered_channel, mode)
+                            settings = f"channelshift_{mode}_{shift_amount}_{direction}_{centered_channel}"
+                            
+                    elif effect == 'jpeg_artifacts':
+                        intensity = effect_specific_form.intensity.data
+                        logger.debug(f"JPEG artifacts params: intensity={intensity}")
+                        processed_image = simulate_jpeg_artifacts(image, intensity)
+                        settings = f"jpegart_{intensity}"
+
+                    elif effect == 'pixel_scatter':
+                        direction = effect_specific_form.direction.data
+                        select_by = effect_specific_form.select_by.data
+                        min_val = effect_specific_form.min_value.data
+                        max_val = effect_specific_form.max_value.data
+                        logger.debug(f"Pixel scatter params: direction={direction}, select_by={select_by}, min_val={min_val}, max_val={max_val}")
+                        processed_image = pixel_scatter(image, direction, select_by, min_val, max_val)
+                        settings = f"scatter_{direction}_{select_by}_{min_val}_{max_val}"
+
+                    elif effect == 'databend':
+                        intensity = effect_specific_form.intensity.data
+                        preserve_header = effect_specific_form.preserve_header.data # Boolean now
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        logger.debug(f"Databending params: intensity={intensity}, preserve_header={preserve_header}, seed={seed_val}")
+                        processed_image = databend_image(image, intensity, preserve_header, seed_val)
+                        settings = f"databend_{intensity}_{preserve_header}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+                        
+                    elif effect == 'histogram_glitch':
+                        r_mode = effect_specific_form.r_mode.data
+                        g_mode = effect_specific_form.g_mode.data
+                        b_mode = effect_specific_form.b_mode.data
+                        r_freq = effect_specific_form.r_freq.data
+                        r_phase = effect_specific_form.r_phase.data
+                        g_freq = effect_specific_form.g_freq.data
+                        g_phase = effect_specific_form.g_phase.data
+                        b_freq = effect_specific_form.b_freq.data
+                        b_phase = effect_specific_form.b_phase.data
+                        gamma_val = effect_specific_form.gamma_value.data
+                        
+                        logger.debug(f"Hist. glitch params: modes=({r_mode},{g_mode},{b_mode}), freqs=({r_freq},{g_freq},{b_freq}), phases=({r_phase},{g_phase},{b_phase}), gamma={gamma_val}")
+                        processed_image = histogram_glitch(
+                            image, r_mode, g_mode, b_mode, r_freq, r_phase, g_freq, g_phase, b_freq, b_phase, gamma_val
+                        )
+                        settings = f"histglitch_{r_mode}_{g_mode}_{b_mode}" # Simplified settings string
+
+                    elif effect == 'ripple':
+                        num_droplets = effect_specific_form.num_droplets.data
+                        amplitude = effect_specific_form.amplitude.data
+                        frequency_val = effect_specific_form.frequency.data # Renamed
+                        decay = effect_specific_form.decay.data
+                        distortion_type = effect_specific_form.distortion_type.data
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        
+                        distortion_params = {}
+                        if distortion_type == 'color_shift':
+                            distortion_params = {
+                                'factor_r': effect_specific_form.color_r_factor.data,
+                                'factor_g': effect_specific_form.color_g_factor.data,
+                                'factor_b': effect_specific_form.color_b_factor.data
+                            }
+                        elif distortion_type == 'pixelation':
+                            distortion_params = {
+                                'scale': effect_specific_form.pixelation_scale.data,
+                                'max_mag': effect_specific_form.pixelation_magnitude.data
+                            }
+                        
+                        logger.debug(f"Ripple params: droplets={num_droplets}, amp={amplitude}, freq={frequency_val}, decay={decay}, dist_type={distortion_type}, dist_params={distortion_params}, seed={seed_val}")
+                        processed_image = ripple_effect(
+                            image, num_droplets, amplitude, frequency_val, decay, distortion_type, distortion_params, seed=seed_val
+                        )
+                        settings = f"ripple_{num_droplets}_{amplitude}_{frequency_val}_{decay}_{distortion_type}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'masked_merge':
+                        secondary_image_file = effect_specific_form.secondary_image.data # From mixin
+                        mask_type = effect_specific_form.mask_type.data
+                        seed_val = effect_specific_form.seed.data # From mixin, Renamed
+                        
+                        if not secondary_image_file: # Should be caught by FileRequired
+                            # Handle error
+                            pass 
+
+                        secondary_filename = secure_filename(secondary_image_file.filename)
+                        secondary_path = os.path.join(app.config['UPLOAD_FOLDER'], f"secondary_mm_{secondary_filename}")
+                        secondary_image_file.save(secondary_path)
+                        secondary_img_pil = load_image(
+                            secondary_path,
+                            max_width_config=app.config.get('MAX_IMAGE_WIDTH'),
+                            max_height_config=app.config.get('MAX_IMAGE_HEIGHT')
+                        )
+
+                        if secondary_img_pil is None:
+                            # Handle error
+                            pass
+
+                        # Determine active width based on mask_type
+                        active_width = effect_specific_form.mask_width.data
+                        if mask_type == 'concentric_rectangles':
+                            active_width = effect_specific_form.rectangle_band_width.data
+                        elif mask_type == 'concentric_circles':
+                            active_width = effect_specific_form.circle_band_width.data
+                        
+                        logger.debug(f"Masked Merge: type={mask_type}, active_width={active_width}, seed={seed_val}")
+                        
+                        processed_image = masked_merge(
+                            image, secondary_img_pil, mask_type,
+                            width=active_width, # Use determined width
+                            height=effect_specific_form.mask_height.data,
+                            random_seed=seed_val,
+                            stripe_width=effect_specific_form.stripe_width.data,
+                            stripe_angle=effect_specific_form.stripe_angle.data,
+                            gradient_direction=effect_specific_form.gradient_direction.data,
+                            perlin_noise_scale=effect_specific_form.perlin_noise_scale.data,
+                            threshold=effect_specific_form.perlin_threshold.data,
+                            perlin_octaves=effect_specific_form.perlin_octaves.data,
+                            voronoi_cells=effect_specific_form.voronoi_num_cells.data,
+                            circle_origin=effect_specific_form.circle_origin.data,
+                            triangle_size=effect_specific_form.triangle_size.data
+                        )
+                        # Simplified settings string, can be expanded
+                        settings = f"maskedmerge_{mask_type}_w{active_width}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'offset':
+                        raw_offset_x = effect_specific_form.x_value.data
+                        unit_x = effect_specific_form.x_unit.data
+                        raw_offset_y = effect_specific_form.y_value.data
+                        unit_y = effect_specific_form.y_unit.data
+                        
+                        offset_x = raw_offset_x if raw_offset_x is not None else 0.0
+                        offset_y = raw_offset_y if raw_offset_y is not None else 0.0
+                        
+                        logger.debug(f"Offset params: x={offset_x}{unit_x}, y={offset_y}{unit_y}")
+                        processed_image = offset_effect(image, offset_x=offset_x, offset_y=offset_y, unit_x=unit_x, unit_y=unit_y)
+                        settings = f"offset_{offset_x}{unit_x}_{offset_y}{unit_y}"
+
+                    elif effect == 'slice_shuffle':
+                        count = effect_specific_form.count.data
+                        orientation_val = effect_specific_form.orientation.data # Renamed
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        logger.debug(f"Slice Shuffle: count={count}, orientation={orientation_val}, seed={seed_val}")
+                        processed_image = slice_shuffle(image, count, orientation_val, seed_val)
+                        settings = f"sliceshuffle_{count}_{orientation_val}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'slice_offset':
+                        count = effect_specific_form.count.data
+                        max_offset_val = effect_specific_form.max_offset.data # Renamed
+                        orientation_val = effect_specific_form.orientation.data # Renamed
+                        offset_mode = effect_specific_form.offset_mode.data
+                        sine_frequency = effect_specific_form.frequency.data if offset_mode == 'sine' else None
+                        seed_val = effect_specific_form.seed.data if offset_mode == 'random' else None # Renamed
+                        
+                        logger.debug(f"Slice Offset: count={count}, max_offset={max_offset_val}, orientation={orientation_val}, mode={offset_mode}, freq={sine_frequency}, seed={seed_val}")
+                        processed_image = slice_offset(
+                            image, count, max_offset_val, orientation_val, 
+                            offset_mode=offset_mode, sine_frequency=sine_frequency, seed=seed_val
+                        )
+                        settings = f"sliceoffset_{count}_{max_offset_val}_{orientation_val}_{offset_mode}"
+                        if offset_mode == 'sine' and sine_frequency: settings += f"_freq{sine_frequency}"
+                        elif offset_mode == 'random' and seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'slice_reduction':
+                        count = effect_specific_form.count.data
+                        reduction_value = effect_specific_form.reduction_value.data
+                        orientation_val = effect_specific_form.orientation.data # Renamed
+                        logger.debug(f"Slice Reduction: count={count}, reduction={reduction_value}, orientation={orientation_val}")
+                        processed_image = slice_reduction(image, count, reduction_value, orientation_val)
+                        settings = f"slicereduct_{count}_{reduction_value}_{orientation_val}"
+
+                    elif effect == 'posterize':
+                        levels = effect_specific_form.levels.data
+                        logger.debug(f"Posterize: levels={levels}")
+                        processed_image = posterize(image, levels)
+                        settings = f"posterize_{levels}"
+
+                    elif effect == 'curved_hue_shift':
+                        curve_value = effect_specific_form.curve_value.data
+                        shift_amount = effect_specific_form.shift_amount.data
+                        logger.debug(f"Curved Hue Shift: curve={curve_value}, amount={shift_amount}")
+                        processed_image = curved_hue_shift(image, curve_value, shift_amount)
+                        settings = f"hueskift_C{curve_value}_A{shift_amount}"
+                        
+                    elif effect == 'contour':
+                        num_levels = effect_specific_form.num_levels.data
+                        noise_std = effect_specific_form.noise_std.data
+                        smooth_sigma = effect_specific_form.smooth_sigma.data
+                        line_thickness = effect_specific_form.line_thickness.data
+                        grad_threshold = effect_specific_form.grad_threshold.data
+                        min_distance = effect_specific_form.min_distance.data
+                        max_line_length = effect_specific_form.max_line_length.data
+                        blur_kernel_size = effect_specific_form.blur_kernel_size.data
+                        sobel_kernel_size = effect_specific_form.sobel_kernel_size.data
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        
+                        logger.debug(f"Contour params: levels={num_levels}, noise={noise_std}, smooth={smooth_sigma}, thickness={line_thickness}, grad_thresh={grad_threshold}, min_dist={min_distance}, max_line={max_line_length}, blur_kernel={blur_kernel_size}, sobel_kernel={sobel_kernel_size}, seed={seed_val}")
+                        processed_image = contour_effect(
+                            image, num_levels=num_levels, noise_std=noise_std, smooth_sigma=smooth_sigma,
+                            line_thickness=line_thickness, grad_threshold=grad_threshold,
+                            min_distance=min_distance, max_line_length=max_line_length,
+                            blur_kernel_size=blur_kernel_size, sobel_kernel_size=sobel_kernel_size, seed=seed_val
+                        )
+                        settings = f"contour_{num_levels}_{noise_std}_{smooth_sigma}_{line_thickness}_{grad_threshold}_{min_distance}_{max_line_length}_{blur_kernel_size}_{sobel_kernel_size}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'block_shuffle':
+                        block_width = effect_specific_form.block_width.data
+                        block_height = effect_specific_form.block_height.data
+                        seed_val = effect_specific_form.seed.data # Renamed
+                        logger.debug(f"Block Shuffle params: width={block_width}, height={block_height}, seed={seed_val}")
+                        processed_image = block_shuffle(image, block_width, block_height, seed_val)
+                        settings = f"blockshuffle_{block_width}x{block_height}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+                        
+                    else: # Should not be reached if EffectFormClass was found
+                        logger.error(f"Effect '{effect}' has a form but no dispatch logic.")
+                        error_msg = f"Processing logic for effect '{effect}' not implemented."
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key, error=error_msg), 500
+
+                    # --- END OF EFFECT DISPATCH LOGIC ---
+
+                    if processed_image is None:
+                        logger.error(f"Effect function for '{effect}' did not return an image.")
+                        error_msg = f"Error applying effect '{effect}'. Result was empty."
+                        return jsonify({"success": False, "error": error_msg}) if is_ajax else render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key, error=error_msg), 500
+
+                    output_filename = generate_output_filename(filename, effect, settings)
+                    output_path = os.path.join(app.config['PROCESSED_FOLDER'], output_filename)
+                    processed_image.save(output_path)
+                    logger.debug(f"Processed image saved to {output_path}")
+                    
+                    processed_url = url_for('processed_file', filename=output_filename)
+                    
+                    if is_ajax:
+                        response_data = {"success": True, "processed_url": processed_url}
+                        if was_resized:
+                            response_data["was_resized"] = True
+                            response_data["original_size"] = f"{original_size[0]}x{original_size[1]}"
+                            response_data["new_size"] = f"{image.size[0]}x{image.size[1]}"
+                        return jsonify(response_data)
+                    else:
+                        return redirect(processed_url)
+
+                except Exception as e:
+                    tb_str = traceback.format_exc()
+                    logger.error(f"Error processing image for effect '{selected_effect_key}': {str(e)}")
+                    logger.error(tb_str) # Log it as before
+                    error_msg_user = f"An unexpected error occurred: {str(e)}"
+                    
+                    if is_ajax:
+                        # For debugging, include traceback in AJAX response
+                        return jsonify({"success": False, "error": error_msg_user, "traceback": tb_str}), 500
+                    else:
+                        # For non-AJAX, pass a simplified error
+                        return render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key, error=error_msg_user)
+            else: # Specific form validation failed
+                logger.error(f"Specific form validation failed for '{selected_effect_key}': {effect_specific_form.errors}")
+                if is_ajax:
+                    # Consolidate errors from specific form
+                    form_errors = {f: effect_specific_form.errors.get(f) for f in effect_specific_form.errors}
+                    return jsonify({"success": False, "error": "Form validation failed", "form_errors": form_errors}), 400
+                else:
+                    # Re-render with main form, specific form (with errors), and selected effect
+                    return render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key)
+        else: # Main form validation failed
+            logger.error(f"Main form validation failed: {form.errors}")
             if is_ajax:
-                errors = {}
-                for field_name, field_errors in form.errors.items():
-                    errors[field_name] = field_errors
-                return jsonify({"success": False, "error": "Form validation failed", "form_errors": errors}), 400
-            # For non-AJAX requests, the form will be re-rendered with errors
+                # Consolidate errors from main form
+                form_errors = {f: form.errors.get(f) for f in form.errors}
+                return jsonify({"success": False, "error": "Main form validation failed", "form_errors": form_errors}), 400
+            else:
+                # Re-render with main form (with errors), no specific form unless pre-selected from GET
+                # If there was a selected_effect_key from GET, try to instantiate its form for display
+                if selected_effect_key and selected_effect_key in EFFECT_FORM_MAP and not effect_specific_form:
+                     EffectFormClass = EFFECT_FORM_MAP[selected_effect_key]
+                     effect_specific_form = EffectFormClass() # For display
+                return render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key)
     
-    return render_template('index.html', form=form)
+    # For GET requests, or if POST failed and re-rendering
+    return render_template('index.html', form=form, effect_specific_form=effect_specific_form, selected_effect_key=selected_effect_key)
+
+@app.route('/get-effect-form/<string:effect_key>', methods=['GET'])
+@csrf_exempt # Exempt CSRF for this GET request if needed, or handle appropriately
+def get_effect_form_html(effect_key):
+    """Return HTML for the fields of a specific effect form."""
+    logger.debug(f"Request to get form HTML for effect: {effect_key}")
+    EffectFormClass = EFFECT_FORM_MAP.get(effect_key)
+    effect_specific_form = None
+    form = ImageProcessForm() # Needed for the label in the partial
+    form.effect.data = effect_key # Set the main form's effect to get the correct label
+
+    if EffectFormClass:
+        effect_specific_form = EffectFormClass() # Instantiate the specific form
+        # Render a partial template containing only the fields for this form
+        html = render_template('_effect_form_fields.html', 
+                               effect_specific_form=effect_specific_form, 
+                               selected_effect_key=effect_key,
+                               form=form) # Pass main form for label context
+        return jsonify({"success": True, "html": html})
+    else:
+        logger.warning(f"No form class found for effect key: {effect_key} in /get-effect-form")
+        return jsonify({"success": False, "error": "Invalid effect selected"}), 404
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):

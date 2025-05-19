@@ -16,401 +16,278 @@ def databend_image(image, intensity=0.1, preserve_header=True, seed=None):
     Returns:
         PIL.Image: The glitched image.
     """
-    # Set random seed if provided
     if seed is not None:
         random.seed(seed)
     
-    # Make a copy of the original image to work with
-    img = image.copy().convert('RGB')
-    width, height = img.size
+    if image.mode != 'RGB':
+        img_rgb = image.convert('RGB')
+    else:
+        img_rgb = image.copy() # Work on a copy
+
+    img_array = np.array(img_rgb)
+    height, width, _ = img_array.shape
     
-    # Create a pixelated version for more stable glitching
-    pixels = img.load()
-    
-    # Determine how much of the image to protect (if preserve_header is True)
     protected_height = int(height * 0.1) if preserve_header else 0
     
-    # Apply different glitch effects based on intensity
-    # Scale the number of operations based on intensity - new range is 0.1 to 1.0
-    # At 0.1 intensity: ~5-10 operations
-    # At 1.0 intensity: ~100-150 operations
     num_operations = int(intensity * 150)
-    num_operations = max(5, min(150, num_operations))  # Ensure a reasonable range
-    
-    # Different databending-like effects
+    num_operations = max(5, min(150, num_operations))
+
     operations = [
-        'shift_rows',
-        'shift_columns',
-        'swap_channels',
-        'xor_block',
-        'repeat_block',
-        'color_shift',
-        'invert_block',
-        'shift_channels',
-        'block_offset',
+        'shift_rows', 'shift_columns', 'swap_channels', 'xor_block',
+        'repeat_block', 'color_shift', 'invert_block', 'shift_channels_op', # Renamed to avoid conflict
+        'block_offset_op' # Renamed to avoid conflict
     ]
     
-    # Ensure minimal dimensions for operations
     if width < 10 or height < 10:
-        # For very small images, just apply simple color effects
-        for y in range(height):
-            for x in range(width):
-                r, g, b = pixels[x, y]
+        # Fallback for very small images - operate on array
+        for y_idx in range(height):
+            for x_idx in range(width):
                 if random.random() < intensity:
-                    # Apply random color effect
+                    r, g, b = img_array[y_idx, x_idx]
                     effect = random.choice(['invert', 'xor', 'shift'])
                     if effect == 'invert':
-                        pixels[x, y] = (255 - r, 255 - g, 255 - b)
+                        img_array[y_idx, x_idx] = [255 - r, 255 - g, 255 - b]
                     elif effect == 'xor':
                         xor_val = random.randint(1, 255)
-                        pixels[x, y] = (r ^ xor_val, g ^ xor_val, b ^ xor_val)
+                        img_array[y_idx, x_idx] = [r ^ xor_val, g ^ xor_val, b ^ xor_val]
                     elif effect == 'shift':
-                        shift = random.randint(-50, 50)
-                        pixels[x, y] = (
-                            max(0, min(255, r + shift)),
-                            max(0, min(255, g + shift)),
-                            max(0, min(255, b + shift))
-                        )
-        return img
-    
+                        s = random.randint(-50, 50)
+                        img_array[y_idx, x_idx] = [
+                            np.clip(r + s, 0, 255),
+                            np.clip(g + s, 0, 255),
+                            np.clip(b + s, 0, 255)
+                        ]
+        return Image.fromarray(img_array)
+
     for _ in range(num_operations):
-        # Select a random operation
         operation = random.choice(operations)
         
-        if operation == 'shift_rows':
-            # Shift a chunk of rows horizontally
-            # Ensure valid y range
-            max_start_y = max(protected_height, height - 10)
-            if protected_height >= max_start_y:
-                continue  # Skip this operation if there's not enough height
-            
-            start_y = random.randint(protected_height, max_start_y)
-            y_size = random.randint(1, max(1, min(20, height - start_y)))
-            shift_amount = random.randint(-width // 2, width // 2)
-            
-            for y in range(start_y, min(start_y + y_size, height)):
-                row = [pixels[x, y] for x in range(width)]
-                # Shift the row
-                shifted_row = row[-shift_amount:] + row[:-shift_amount] if shift_amount > 0 else row[abs(shift_amount):] + row[:abs(shift_amount)]
-                # Write back
-                for x in range(width):
-                    pixels[x, y] = shifted_row[x]
-                    
-        elif operation == 'shift_columns':
-            # Shift a chunk of columns vertically
-            # Ensure valid x range
-            max_start_x = max(0, width - 10)
-            if max_start_x <= 0:
-                continue  # Skip this operation if there's not enough width
-                
-            start_x = random.randint(0, max_start_x)
-            x_size = random.randint(1, max(1, min(20, width - start_x)))
-            shift_amount = random.randint(-height // 3, height // 3)
-            
-            for x in range(start_x, min(start_x + x_size, width)):
-                col = [pixels[x, y] for y in range(protected_height, height)]
-                # Shift the column
-                if not col:  # Skip if column is empty
-                    continue
-                shifted_col = col[-shift_amount:] + col[:-shift_amount] if shift_amount > 0 else col[abs(shift_amount):] + col[:abs(shift_amount)]
-                # Write back
-                for i, y in enumerate(range(protected_height, height)):
-                    if i < len(shifted_col):
-                        pixels[x, y] = shifted_col[i]
-                        
-        elif operation == 'swap_channels':
-            # Swap color channels in a random block
-            max_start_x = max(0, width - 10)
-            max_start_y = max(protected_height, height - 10)
-            
-            if max_start_x <= 0 or max_start_y <= protected_height:
-                continue  # Skip if we don't have enough space
-                
-            start_x = random.randint(0, max_start_x)
-            start_y = random.randint(protected_height, max_start_y)
-            block_width = random.randint(1, max(1, min(100, width - start_x)))
-            block_height = random.randint(1, max(1, min(100, height - start_y)))
-            swap_type = random.choice(['rb', 'rg', 'gb'])
-            
-            for y in range(start_y, min(start_y + block_height, height)):
-                for x in range(start_x, min(start_x + block_width, width)):
-                    r, g, b = pixels[x, y]
-                    if swap_type == 'rb':
-                        pixels[x, y] = (b, g, r)
-                    elif swap_type == 'rg':
-                        pixels[x, y] = (g, r, b)
-                    elif swap_type == 'gb':
-                        pixels[x, y] = (r, b, g)
-                        
-        elif operation == 'xor_block':
-            # Apply XOR to a block
-            max_start_x = max(0, width - 10)
-            max_start_y = max(protected_height, height - 10)
-            
-            if max_start_x <= 0 or max_start_y <= protected_height:
-                continue  # Skip if we don't have enough space
-                
-            start_x = random.randint(0, max_start_x)
-            start_y = random.randint(protected_height, max_start_y)
-            block_width = random.randint(1, max(1, min(100, width - start_x)))
-            block_height = random.randint(1, max(1, min(100, height - start_y)))
-            xor_value = random.randint(1, 255)
-            
-            for y in range(start_y, min(start_y + block_height, height)):
-                for x in range(start_x, min(start_x + block_width, width)):
-                    r, g, b = pixels[x, y]
-                    pixels[x, y] = ((r ^ xor_value) & 0xFF, (g ^ xor_value) & 0xFF, (b ^ xor_value) & 0xFF)
-                    
-        elif operation == 'repeat_block':
-            # Repeat a block somewhere else
-            max_src_x = max(0, width - 20)
-            max_src_y = max(protected_height, height - 20)
-            
-            if max_src_x <= 0 or max_src_y <= protected_height:
-                continue  # Skip if we don't have enough space
-                
-            src_x = random.randint(0, max_src_x)
-            src_y = random.randint(protected_height, max_src_y)
-            block_width = random.randint(1, max(1, min(50, width - src_x)))
-            block_height = random.randint(1, max(1, min(50, height - src_y)))
-            
-            # Ensure destination has valid space
-            max_dst_x = max(0, width - block_width)
-            max_dst_y = max(protected_height, height - block_height)
-            
-            if max_dst_x < 0 or max_dst_y < protected_height:
-                continue  # Skip if destination doesn't have enough space
-                
-            # Destination
-            dst_x = random.randint(0, max_dst_x)
-            dst_y = random.randint(protected_height, max_dst_y)
-            
-            # Copy block
-            for y_offset in range(block_height):
-                for x_offset in range(block_width):
-                    if (src_y + y_offset < height and src_x + x_offset < width and 
-                        dst_y + y_offset < height and dst_x + x_offset < width):
-                        pixels[dst_x + x_offset, dst_y + y_offset] = pixels[src_x + x_offset, src_y + y_offset]
-                        
-        elif operation == 'color_shift':
-            # Shift color values in a region
-            max_start_x = max(0, width - 10)
-            max_start_y = max(protected_height, height - 10)
-            
-            if max_start_x <= 0 or max_start_y <= protected_height:
-                continue  # Skip if we don't have enough space
-                
-            start_x = random.randint(0, max_start_x)
-            start_y = random.randint(protected_height, max_start_y)
-            block_width = random.randint(1, max(1, min(200, width - start_x)))
-            block_height = random.randint(1, max(1, min(200, height - start_y)))
-            
-            shift_r = random.randint(-50, 50)
-            shift_g = random.randint(-50, 50)
-            shift_b = random.randint(-50, 50)
-            
-            for y in range(start_y, min(start_y + block_height, height)):
-                for x in range(start_x, min(start_x + block_width, width)):
-                    r, g, b = pixels[x, y]
-                    pixels[x, y] = (
-                        max(0, min(255, r + shift_r)),
-                        max(0, min(255, g + shift_g)),
-                        max(0, min(255, b + shift_b))
-                    )
-                    
-        elif operation == 'invert_block':
-            # Invert colors in a block
-            max_start_x = max(0, width - 10)
-            max_start_y = max(protected_height, height - 10)
-            
-            if max_start_x <= 0 or max_start_y <= protected_height:
-                continue  # Skip if we don't have enough space
-                
-            start_x = random.randint(0, max_start_x)
-            start_y = random.randint(protected_height, max_start_y)
-            block_width = random.randint(1, max(1, min(100, width - start_x)))
-            block_height = random.randint(1, max(1, min(100, height - start_y)))
-            
-            for y in range(start_y, min(start_y + block_height, height)):
-                for x in range(start_x, min(start_x + block_width, width)):
-                    r, g, b = pixels[x, y]
-                    pixels[x, y] = (255 - r, 255 - g, 255 - b)
-                    
-        elif operation == 'shift_channels':
-            # Shift RGB channels independently
-            max_start_x = max(0, width - 10)
-            max_start_y = max(protected_height, height - 10)
-            
-            if max_start_x <= 0 or max_start_y <= protected_height:
-                continue  # Skip if we don't have enough space
-                
-            start_x = random.randint(0, max_start_x)
-            start_y = random.randint(protected_height, max_start_y)
-            block_width = random.randint(1, max(1, min(300, width - start_x)))
-            block_height = random.randint(1, max(1, min(100, height - start_y)))
-            
-            # Skip if block is too small
-            if block_width < 4 or block_height < 2:
-                continue
-                
-            # Extract the block for each channel
-            r_channel = []
-            g_channel = []
-            b_channel = []
-            
-            for y in range(start_y, min(start_y + block_height, height)):
-                r_row = []
-                g_row = []
-                b_row = []
-                for x in range(start_x, min(start_x + block_width, width)):
-                    r, g, b = pixels[x, y]
-                    r_row.append(r)
-                    g_row.append(g)
-                    b_row.append(b)
-                r_channel.append(r_row)
-                g_channel.append(g_row)
-                b_channel.append(b_row)
-            
-            # Ensure we have data in the channels
-            if not r_channel or not r_channel[0]:
-                continue
-                
-            # Get channel lengths for safe shifting
-            row_length = len(r_channel[0])
-            
-            # Determine safe shift amounts to avoid empty ranges
-            max_shift = max(1, row_length // 4)
-            
-            # Shift each channel differently
-            r_shift = random.randint(-max_shift, max_shift)
-            g_shift = random.randint(-max_shift, max_shift)
-            b_shift = random.randint(-max_shift, max_shift)
-            
-            # Apply shifts
-            for y_idx in range(len(r_channel)):
-                r_row = r_channel[y_idx]
-                g_row = g_channel[y_idx]
-                b_row = b_channel[y_idx]
-                
-                # Only shift if rows have data
-                if not r_row or not g_row or not b_row:
-                    continue
-                    
-                # Apply shifts safely
-                if abs(r_shift) >= len(r_row):
-                    r_shift = r_shift % len(r_row)
-                if abs(g_shift) >= len(g_row):
-                    g_shift = g_shift % len(g_row)
-                if abs(b_shift) >= len(b_row):
-                    b_shift = b_shift % len(b_row)
-                
-                r_row_shifted = r_row[-r_shift:] + r_row[:-r_shift] if r_shift > 0 else r_row[abs(r_shift):] + r_row[:abs(r_shift)]
-                g_row_shifted = g_row[-g_shift:] + g_row[:-g_shift] if g_shift > 0 else g_row[abs(g_shift):] + g_row[:abs(g_shift)]
-                b_row_shifted = b_row[-b_shift:] + b_row[:-b_shift] if b_shift > 0 else b_row[abs(b_shift):] + b_row[:abs(b_shift)]
-                
-                for x_idx in range(len(r_row)):
-                    x = start_x + x_idx
-                    y = start_y + y_idx
-                    if y < height and x < width and x_idx < len(r_row_shifted) and x_idx < len(g_row_shifted) and x_idx < len(b_row_shifted):
-                        pixels[x, y] = (r_row_shifted[x_idx], g_row_shifted[x_idx], b_row_shifted[x_idx])
-                        
-        elif operation == 'block_offset':
-            # Create offset block effect
-            if random.random() < 0.7:  # Horizontal offset
-                # Ensure valid y range for protected height
-                if height <= protected_height + 20:
-                    continue  # Skip if not enough vertical space
-                    
-                max_y_start = max(protected_height, height - 20)
-                if protected_height >= max_y_start:
-                    continue  # Skip if not enough space
-                    
-                y_start = random.randint(protected_height, max_y_start)
-                height_offset = random.randint(1, max(1, min(50, height - y_start)))
-                x_offset = random.randint(-width // 3, width // 3) if width > 3 else 1
-                
-                for y in range(y_start, min(y_start + height_offset, height)):
-                    for x in range(width):
-                        src_x = (x - x_offset) % width
-                        pixels[x, y] = pixels[src_x, y]
-            else:  # Vertical offset
-                # Ensure valid x range
-                max_x_start = max(0, width - 20)
-                if max_x_start <= 0:
-                    continue  # Skip if not enough horizontal space
-                    
-                x_start = random.randint(0, max_x_start)
-                width_offset = random.randint(1, max(1, min(50, width - x_start)))
-                
-                # Ensure vertical space considering protected height
-                if height <= protected_height:
-                    continue  # Skip if all vertical space is protected
-                    
-                y_offset = random.randint(-max(1, (height - protected_height) // 3), max(1, (height - protected_height) // 3))
-                
-                for x in range(x_start, min(x_start + width_offset, width)):
-                    for y in range(protected_height, height):
-                        # Make sure we stay within bounds
-                        if height <= protected_height:
-                            continue
-                        src_y = protected_height + ((y - protected_height - y_offset) % max(1, (height - protected_height)))
-                        pixels[x, y] = pixels[x, src_y]
-    
-    # Add scan lines for more glitch aesthetic
-    if random.random() < 0.3 and height > protected_height + 5:
-        scan_line_spacing = random.randint(4, min(20, max(4, height // 10)))
-        scan_line_offset = random.randint(0, scan_line_spacing - 1) if scan_line_spacing > 1 else 0
+        # Define boundaries for operations to avoid IndexError
+        # For block operations, ensure block_width/height >= 1
+        min_block_dim = 1
         
-        for y in range(protected_height, height):
-            if scan_line_spacing > 0 and (y + scan_line_offset) % scan_line_spacing == 0:
-                for x in range(width):
-                    r, g, b = pixels[x, y]
-                    pixels[x, y] = (min(255, int(r * 1.2)), min(255, int(g * 1.2)), min(255, int(b * 1.2)))
-    
-    # Add some noisy lines
-    if random.random() < 0.4 and height > protected_height and width > 0:
-        num_lines = random.randint(1, max(3, min(20, height // 20)))
-        for _ in range(num_lines):
-            if height <= protected_height:
-                continue  # Skip if protected height is the whole image
-                
-            y = random.randint(protected_height, height - 1)
-            length = random.randint(max(1, width // 5), width) if width > 5 else width
-            start_x = random.randint(0, max(0, width - length))
-            color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        # Max start coordinates ensuring a minimal block can be formed
+        # Allow operations up to the last possible start of a 1-pixel block
+        max_op_start_y = max(protected_height, height - min_block_dim)
+        max_op_start_x = max(0, width - min_block_dim)
+
+        if max_op_start_y < protected_height : max_op_start_y = protected_height # ensure start_y respects protected_height
+        if max_op_start_x < 0 : max_op_start_x = 0
+
+
+        if operation == 'shift_rows':
+            if protected_height >= height: continue # Not enough unprotected height
+            start_y = random.randint(protected_height, max(protected_height, height - 1)) # Can be a single row
+            y_size = random.randint(1, max(1, height - start_y)) # At least 1 row
+            actual_end_y = min(start_y + y_size, height)
             
-            for x in range(start_x, min(start_x + length, width)):
-                if x < width:
-                    pixels[x, y] = color
-    
-    # Add noise in some blocks
-    if random.random() < 0.5 and width > 10 and height > protected_height + 10:
-        noise_blocks = random.randint(1, max(1, min(5, (width * height) // 10000)))
-        for _ in range(noise_blocks):
-            max_start_x = max(0, width - 50)
-            max_start_y = max(protected_height, height - 50)
+            if actual_end_y <= start_y: continue
+
+            shift_amount = random.randint(-width // 2, width // 2)
+            if shift_amount == 0: continue
+
+            rows_to_shift = img_array[start_y:actual_end_y, :, :]
+            img_array[start_y:actual_end_y, :, :] = np.roll(rows_to_shift, shift_amount, axis=1)
+
+        elif operation == 'shift_columns':
+            if width <=0 : continue
+            start_x = random.randint(0, max(0, width - 1)) # Can be a single col
+            x_size = random.randint(1, max(1, width - start_x))
+            actual_end_x = min(start_x + x_size, width)
+
+            if actual_end_x <= start_x : continue
             
-            if max_start_x < 0 or max_start_y <= protected_height:
-                continue  # Skip if not enough space
-                
-            start_x = random.randint(0, max_start_x)
-            start_y = random.randint(protected_height, max_start_y)
-            block_width = random.randint(1, max(1, min(100, width - start_x)))
-            block_height = random.randint(1, max(1, min(30, height - start_y)))
-            noise_intensity = random.uniform(0.2, 0.8)
+            # Define effective height for column shift (respecting protected_header)
+            eff_col_height_start = protected_height
+            eff_col_height_end = height
+            if eff_col_height_start >= eff_col_height_end: continue
+
+
+            shift_amount = random.randint(-(eff_col_height_end - eff_col_height_start) // 3, (eff_col_height_end - eff_col_height_start) // 3)
+            if shift_amount == 0: continue
             
-            for y in range(start_y, min(start_y + block_height, height)):
-                for x in range(start_x, min(start_x + block_width, width)):
-                    if random.random() < noise_intensity:
-                        r, g, b = pixels[x, y]
-                        noise = random.randint(-50, 50)
-                        pixels[x, y] = (
-                            max(0, min(255, r + noise)),
-                            max(0, min(255, g + noise)),
-                            max(0, min(255, b + noise))
-                        )
-    
-    return img
+            cols_to_shift = img_array[eff_col_height_start:eff_col_height_end, start_x:actual_end_x, :]
+            img_array[eff_col_height_start:eff_col_height_end, start_x:actual_end_x, :] = np.roll(cols_to_shift, shift_amount, axis=0)
+
+        elif operation == 'swap_channels':
+            if max_op_start_y < protected_height or max_op_start_x < 0 : continue
+            if height <= protected_height or width <=0 : continue
+
+            start_y = random.randint(protected_height, max_op_start_y)
+            start_x = random.randint(0, max_op_start_x)
+            
+            block_height = random.randint(min_block_dim, max(min_block_dim, height - start_y))
+            block_width = random.randint(min_block_dim, max(min_block_dim, width - start_x))
+            end_y, end_x = min(start_y + block_height, height), min(start_x + block_width, width)
+
+            if end_y <= start_y or end_x <= start_x : continue
+
+            block = img_array[start_y:end_y, start_x:end_x, :]
+            swap_type = random.choice(['rb', 'rg', 'gb', 'brg', 'gbr', 'bgr']) # More swaps
+            if swap_type == 'rb':   block[:] = block[:, :, [2, 1, 0]] # R <-> B
+            elif swap_type == 'rg': block[:] = block[:, :, [1, 0, 2]] # R <-> G
+            elif swap_type == 'gb': block[:] = block[:, :, [0, 2, 1]] # G <-> B
+            elif swap_type == 'brg': block[:] = block[:, :, [1,2,0]] # R->G, G->B, B->R
+            elif swap_type == 'gbr': block[:] = block[:, :, [2,0,1]] # R->B, B->G, G->R
+            # 'bgr' is original if RGB, no change needed. For completeness:
+            # elif swap_type == 'bgr': block[:] = block[:, :, [0,1,2]] 
+            img_array[start_y:end_y, start_x:end_x, :] = block
+
+
+        elif operation == 'xor_block':
+            if max_op_start_y < protected_height or max_op_start_x < 0 : continue
+            if height <= protected_height or width <=0 : continue
+
+            start_y = random.randint(protected_height, max_op_start_y)
+            start_x = random.randint(0, max_op_start_x)
+            block_height = random.randint(min_block_dim, max(min_block_dim, height - start_y))
+            block_width = random.randint(min_block_dim, max(min_block_dim, width - start_x))
+            end_y, end_x = min(start_y + block_height, height), min(start_x + block_width, width)
+
+            if end_y <= start_y or end_x <= start_x : continue
+            
+            xor_value = random.randint(1, 255)
+            block = img_array[start_y:end_y, start_x:end_x, :]
+            # XOR operation on uint8 will wrap around, which is fine for glitch effects
+            img_array[start_y:end_y, start_x:end_x, :] = block ^ xor_value
+
+        elif operation == 'repeat_block':
+            # Define source block
+            if height <= protected_height or width <=0 : continue
+            max_src_start_y = max(protected_height, height - min_block_dim)
+            max_src_start_x = max(0, width - min_block_dim)
+            if max_src_start_y < protected_height or max_src_start_x < 0 : continue
+
+
+            src_y = random.randint(protected_height, max_src_start_y)
+            src_x = random.randint(0, max_src_start_x)
+            block_h = random.randint(min_block_dim, max(min_block_dim, height - src_y))
+            block_w = random.randint(min_block_dim, max(min_block_dim, width - src_x))
+            src_end_y, src_end_x = min(src_y + block_h, height), min(src_x + block_w, width)
+
+            if src_end_y <= src_y or src_end_x <= src_x : continue
+            src_block = img_array[src_y:src_end_y, src_x:src_end_x, :]
+
+            # Define destination (can overlap, can be anywhere not protected)
+            if height <= protected_height or width <=0 : continue # Redundant but safe
+            
+            # Max dst_start ensures block fits
+            max_dst_start_y = max(protected_height, height - block_h) 
+            max_dst_start_x = max(0, width - block_w)
+
+            if max_dst_start_y < protected_height or max_dst_start_x < 0: continue
+
+
+            dst_y = random.randint(protected_height, max_dst_start_y)
+            dst_x = random.randint(0, max_dst_start_x)
+            dst_end_y, dst_end_x = min(dst_y + block_h, height), min(dst_x + block_w, width)
+            
+            # Ensure destination block has same dimensions as source after clipping
+            # This can happen if block_h/block_w were large
+            actual_block_h = src_end_y - src_y
+            actual_block_w = src_end_x - src_x
+
+            if dst_y + actual_block_h > height or dst_x + actual_block_w > width: continue
+
+
+            img_array[dst_y : dst_y + actual_block_h, dst_x : dst_x + actual_block_w, :] = src_block[:actual_block_h, :actual_block_w, :]
+
+
+        elif operation == 'color_shift':
+            if max_op_start_y < protected_height or max_op_start_x < 0 : continue
+            if height <= protected_height or width <=0 : continue
+
+            start_y = random.randint(protected_height, max_op_start_y)
+            start_x = random.randint(0, max_op_start_x)
+            block_height = random.randint(min_block_dim, max(min_block_dim, height - start_y))
+            block_width = random.randint(min_block_dim, max(min_block_dim, width - start_x))
+            end_y, end_x = min(start_y + block_height, height), min(start_x + block_width, width)
+
+            if end_y <= start_y or end_x <= start_x : continue
+
+            # Use float for intermediate to prevent overflow before clip
+            block = img_array[start_y:end_y, start_x:end_x, :].astype(np.int16)
+            shifts = np.random.randint(-50, 51, size=3) # Random shift for R, G, B
+            block[:, :, 0] += shifts[0]
+            block[:, :, 1] += shifts[1]
+            block[:, :, 2] += shifts[2]
+            img_array[start_y:end_y, start_x:end_x, :] = np.clip(block, 0, 255).astype(np.uint8)
+
+        elif operation == 'invert_block':
+            if max_op_start_y < protected_height or max_op_start_x < 0 : continue
+            if height <= protected_height or width <=0 : continue
+
+            start_y = random.randint(protected_height, max_op_start_y)
+            start_x = random.randint(0, max_op_start_x)
+            block_height = random.randint(min_block_dim, max(min_block_dim, height - start_y))
+            block_width = random.randint(min_block_dim, max(min_block_dim, width - start_x))
+            end_y, end_x = min(start_y + block_height, height), min(start_x + block_width, width)
+            
+            if end_y <= start_y or end_x <= start_x : continue
+
+            block = img_array[start_y:end_y, start_x:end_x, :]
+            img_array[start_y:end_y, start_x:end_x, :] = 255 - block
+            
+        elif operation == 'shift_channels_op': # Renamed
+            if max_op_start_y < protected_height or max_op_start_x < 0 : continue
+            if height <= protected_height or width <=0 : continue
+
+            start_y = random.randint(protected_height, max_op_start_y)
+            start_x = random.randint(0, max_op_start_x)
+            block_height = random.randint(min_block_dim, max(min_block_dim, height - start_y))
+            block_width = random.randint(min_block_dim, max(min_block_dim, width - start_x))
+            end_y, end_x = min(start_y + block_height, height), min(start_x + block_width, width)
+
+            if end_y <= start_y or end_x <= start_x : continue
+
+            block = img_array[start_y:end_y, start_x:end_x, :].copy() # Operate on a copy
+            
+            for i in range(3): # R, G, B
+                shift_x = random.randint(-block_width // 4, block_width // 4)
+                shift_y = random.randint(-block_height // 4, block_height // 4)
+                # Apply roll to the specific channel of the original block slice
+                # and assign it back to the same channel in img_array for that block
+                rolled_channel = np.roll(block[:, :, i], shift=(shift_y, shift_x), axis=(0, 1))
+                img_array[start_y:end_y, start_x:end_x, i] = rolled_channel
+
+
+        elif operation == 'block_offset_op': # Renamed
+            # Similar to repeat_block but shifts a block by a small random offset
+            if height <= protected_height or width <=0 : continue
+            max_src_start_y = max(protected_height, height - min_block_dim)
+            max_src_start_x = max(0, width - min_block_dim)
+            if max_src_start_y < protected_height or max_src_start_x < 0 : continue
+
+            src_y = random.randint(protected_height, max_src_start_y)
+            src_x = random.randint(0, max_src_start_x)
+            block_h = random.randint(min_block_dim, max(min_block_dim, min(50, height - src_y))) # Smaller blocks
+            block_w = random.randint(min_block_dim, max(min_block_dim, min(50, width - src_x)))
+            src_end_y, src_end_x = min(src_y + block_h, height), min(src_x + block_w, width)
+
+            if src_end_y <= src_y or src_end_x <= src_x : continue
+            
+            src_block_data = img_array[src_y:src_end_y, src_x:src_end_x, :].copy() # Copy the data
+
+            offset_x = random.randint(-block_w // 2, block_w // 2)
+            offset_y = random.randint(-block_h // 2, block_h // 2)
+
+            dst_y_start = np.clip(src_y + offset_y, protected_height, height - block_h)
+            dst_x_start = np.clip(src_x + offset_x, 0, width - block_w)
+            
+            # Ensure destination is valid and doesn't go out of bounds for the block size
+            dst_y_end = min(dst_y_start + block_h, height)
+            dst_x_end = min(dst_x_start + block_w, width)
+
+            # Adjust block_h/w if dst is clipped smaller than src
+            actual_bh = min(block_h, dst_y_end - dst_y_start)
+            actual_bw = min(block_w, dst_x_end - dst_x_start)
+
+            if actual_bh <=0 or actual_bw <=0 : continue
+
+            img_array[dst_y_start : dst_y_start + actual_bh, dst_x_start : dst_x_start + actual_bw, :] = src_block_data[:actual_bh, :actual_bw, :]
+
+
+    return Image.fromarray(img_array)
 
 def bit_manipulation(image, chunk_size=1, offset=0, xor_value=0xFF, skip_pattern='alternate', 
                     manipulation_type='xor', bit_shift=1, randomize=False, random_seed=None):

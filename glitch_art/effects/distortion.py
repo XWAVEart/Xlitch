@@ -4,8 +4,9 @@ import random
 import cv2
 import colorsys
 import math
-import noise
 from PIL import ImageChops
+from ..core.pixel_attributes import PixelAttributes
+from ..utils.helpers import generate_noise_map
 
 def pixel_drift(image, direction='down', num_bands=10, intensity=1.0):
     """
@@ -21,99 +22,65 @@ def pixel_drift(image, direction='down', num_bands=10, intensity=1.0):
     Returns:
         Image: Processed image with drifted pixels.
     """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
-    pixels = list(image.getdata())
-    width, height = image.size
-    drifted_pixels = []
+    img_array = np.array(image)
+    height, width = img_array.shape[:2]
+    result_array = np.zeros_like(img_array)
     
-    # Create a more interesting effect with variable drift amounts
-    
-    # Base drift amount with intensity multiplier
     base_drift = int(20 * intensity)
     
-    # Create bands of different drift amounts
-    band_height = height // num_bands
-    band_width = width // num_bands
-    
     if direction == 'down' or direction == 'up':
-        # Create a more interesting vertical drift effect
+        band_height = height // num_bands if num_bands > 0 else height
         for y in range(height):
-            # Calculate drift amount based on position
-            # Every few rows, change the drift amount to create bands
-            band_index = y // band_height
-            # Alternate between different drift amounts
+            band_index = y // band_height if band_height > 0 else 0
+            current_base_drift = base_drift
             if band_index % 3 == 0:
-                drift_amount = base_drift
+                current_base_drift = base_drift
             elif band_index % 3 == 1:
-                drift_amount = base_drift * 2
+                current_base_drift = base_drift * 2
             else:
-                drift_amount = base_drift // 2
+                current_base_drift = base_drift // 2
+            
+            drift_amount = current_base_drift
+            if random.random() < 0.1:
+                drift_amount = random.randint(5, int(max(5, 50 * intensity))) # ensure max is at least 5
                 
-            # Add some randomness to the drift
-            if random.random() < 0.1:  # 10% chance of a random shift
-                drift_amount = random.randint(5, int(50 * intensity))
-                
-            for x in range(width):
-                if direction == 'down':
-                    source_y = (y - drift_amount) % height
-                else:  # up
-                    source_y = (y + drift_amount) % height
-                drifted_pixels.append(pixels[source_y * width + x])
+            if direction == 'down':
+                source_y = (y - drift_amount + height) % height # Ensure positive before modulo
+            else:  # up
+                source_y = (y + drift_amount) % height
+            result_array[y, :] = img_array[source_y, :] # Assign entire row
     
     elif direction == 'left' or direction == 'right':
-        # Create a more interesting horizontal drift effect
-        
-        for y in range(height):
-            for x in range(width):
-                # Calculate drift amount based on position
-                band_index = x // band_width
-                # Alternate between different drift amounts
-                if band_index % 3 == 0:
-                    drift_amount = base_drift
-                elif band_index % 3 == 1:
-                    drift_amount = base_drift * 2
-                else:
-                    drift_amount = base_drift // 2
-                    
-                # Add some randomness to the drift
-                if random.random() < 0.1:  # 10% chance of a random shift
-                    drift_amount = random.randint(5, int(50 * intensity))
-                    
-                if direction == 'right':
-                    source_x = (x - drift_amount) % width
-                else:  # left
-                    source_x = (x + drift_amount) % width
-                drifted_pixels.append(pixels[y * width + source_x])
-    
-    # Create a new image and put all the drifted pixels at once
-    drifted_image = Image.new(image.mode, image.size)
-    drifted_image.putdata(drifted_pixels)
-    return drifted_image
-
-def generate_noise_map(shape, scale, octaves, base):
-    """
-    Generate a Perlin noise map for displacement.
-    
-    Args:
-        shape (tuple): Height and width of the map (height, width).
-        scale (float): Noise frequency (smaller values = more detailed noise).
-        octaves (int): Number of noise layers for detail.
-        base (int): Seed for noise pattern variation.
-    
-    Returns:
-        np.ndarray: Noise map with values in [-1, 1].
-    """
-    height, width = shape
-    noise_map = np.zeros((height, width), dtype=np.float32)
-    for y in range(height):
+        band_width = width // num_bands if num_bands > 0 else width
         for x in range(width):
-            noise_map[y, x] = noise.pnoise2(x / scale, y / scale, octaves=octaves, base=base)
-    return noise_map
+            band_index = x // band_width if band_width > 0 else 0
+            current_base_drift = base_drift
+            if band_index % 3 == 0:
+                current_base_drift = base_drift
+            elif band_index % 3 == 1:
+                current_base_drift = base_drift * 2
+            else:
+                current_base_drift = base_drift // 2
 
-def perlin_noise_displacement(image, scale=100, intensity=30, octaves=6, persistence=0.5, lacunarity=2.0):
+            drift_amount = current_base_drift
+            if random.random() < 0.1:
+                drift_amount = random.randint(5, int(max(5, 50 * intensity))) # ensure max is at least 5
+
+            if direction == 'right':
+                source_x = (x - drift_amount + width) % width # Ensure positive before modulo
+            else:  # left
+                source_x = (x + drift_amount) % width
+            result_array[:, x] = img_array[:, source_x] # Assign entire column
+    else:
+        # Should not happen if form validation is correct, but as a fallback:
+        result_array = img_array # Return original if direction is unknown
+        
+    return Image.fromarray(result_array)
+
+def perlin_noise_displacement(image, scale=44.0, intensity=25, octaves=3, seed=None, mode='color_shift', displacement_type='vector_field'):
     """
     Applies a Perlin noise-based displacement to the image.
 
@@ -124,6 +91,7 @@ def perlin_noise_displacement(image, scale=100, intensity=30, octaves=6, persist
         octaves (int): Number of layers of noise.
         persistence (float): Amplitude of each octave.
         lacunarity (float): Frequency of each octave.
+        seed (int, optional): Seed for the Perlin noise generator. Defaults to None.
     
     Returns:
         PIL.Image: Displaced PIL Image.
@@ -132,53 +100,67 @@ def perlin_noise_displacement(image, scale=100, intensity=30, octaves=6, persist
     image_np = np.array(image)
     displaced_image = np.zeros_like(image_np)
 
-    # Generate Perlin noise for both x and y displacements
-    perlin_x = np.zeros((height, width))
-    perlin_y = np.zeros((height, width))
+    # Generate noise fields
+    if seed is not None:
+        base_seed = seed
+    else:
+        # If no seed, use different fixed bases for some variation, or could use random.randint
+        base_seed = random.randint(0, 10000) # Ensure this random is seeded if global seed is None but determinism is desired from no-seed state
 
-    for y in range(height):
-        for x in range(width):
-            perlin_x[y][x] = noise.pnoise2(
-                x / scale,
-                y / scale,
-                octaves=octaves,
-                persistence=persistence,
-                lacunarity=lacunarity,
-                repeatx=width,
-                repeaty=height,
-                base=0
-            )
-            perlin_y[y][x] = noise.pnoise2(
-                (x + 100) / scale,  # Offset to generate different noise
-                (y + 100) / scale,
-                octaves=octaves,
-                persistence=persistence,
-                lacunarity=lacunarity,
-                repeatx=width,
-                repeaty=height,
-                base=0
-            )
+    if displacement_type == 'vector_field':
+        # Use the imported generate_noise_map
+        nx = generate_noise_map((height, width), scale, octaves, base=base_seed + 0)
+        ny = generate_noise_map((height, width), scale, octaves, base=base_seed + 1)
+        # For color shift, an optional third noise map for value/channel manipulation
+        nz = generate_noise_map((height, width), scale, octaves, base=base_seed + 2) if mode == 'color_shift' else None
+    elif displacement_type == 'multi_layered':
+        nx = generate_noise_map((height, width), scale, octaves, base=base_seed + 0)
+        ny = generate_noise_map((height, width), scale, octaves, base=base_seed + 1)
+        nx2 = generate_noise_map((height, width), scale * 0.5, octaves + 1, base=base_seed + 3) # Finer detail
+        ny2 = generate_noise_map((height, width), scale * 0.5, octaves + 1, base=base_seed + 4)
+        nx3 = generate_noise_map((height, width), scale * 0.25, octaves + 2, base=base_seed + 5) # Even finer
+        ny3 = generate_noise_map((height, width), scale * 0.25, octaves + 2, base=base_seed + 6)
+        nz = None # Not typically used in multi_layered in the same way, but could be added
+    else: # Default to 'simple' or handle as error
+        nx = generate_noise_map((height, width), scale, octaves, base=base_seed + 0)
+        ny = np.zeros_like(nx) # Simple horizontal displacement only
+        nz = None
 
-    # Normalize noise to range [-1, 1]
-    perlin_x = perlin_x / np.max(np.abs(perlin_x))
-    perlin_y = perlin_y / np.max(np.abs(perlin_y))
+    # Normalize noise to range [-1, 1] (already done by helper)
+    # nx = (nx - np.min(nx)) / (np.max(nx) - np.min(nx)) * 2 - 1
+    # ny = (ny - np.min(ny)) / (np.max(ny) - np.min(ny)) * 2 - 1
+    # if nz is not None:
+    #     nz = (nz - np.min(nz)) / (np.max(nz) - np.min(nz)) * 2 - 1
+    # if displacement_type == 'multi_layered':
+    #     nx2 = (nx2 - np.min(nx2)) / (np.max(nx2) - np.min(nx2)) * 2 - 1
+    #     ny2 = (ny2 - np.min(ny2)) / (np.max(ny2) - np.min(ny2)) * 2 - 1
+    #     nx3 = (nx3 - np.min(nx3)) / (np.max(nx3) - np.min(nx3)) * 2 - 1
+    #     ny3 = (ny3 - np.min(ny3)) / (np.max(ny3) - np.min(ny3)) * 2 - 1
 
-    # Apply displacement
-    # Vectorized approach for better performance
-    displacement_x = (perlin_x * intensity).astype(int)
-    displacement_y = (perlin_y * intensity).astype(int)
-
-    # Create coordinate grids
+    # Create coordinate grid
     x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height))
 
     # Calculate source coordinates with displacement
-    src_x = np.clip(x_coords + displacement_x, 0, width - 1)
-    src_y = np.clip(y_coords + displacement_y, 0, height - 1)
+    src_x_float = x_coords + nx * intensity
+    src_y_float = y_coords + ny * intensity
+
+    # Clip to image boundaries
+    src_x_clipped = np.clip(src_x_float, 0, width - 1)
+    src_y_clipped = np.clip(src_y_float, 0, height - 1)
+
+    # Convert to integer for indexing
+    src_x = src_x_clipped.astype(np.int32)
+    src_y = src_y_clipped.astype(np.int32)
 
     # Apply displacement
-    displaced_image = image_np[src_y, src_x]
+    # Create an empty array for the displaced image
+    displaced_image_data = np.zeros_like(image_np)
+    # Map pixels from source to destination
+    # This loop is a basic way to handle it; more advanced mapping like cv2.remap could be used
+    # but direct indexing after int conversion should work.
+    displaced_image_data[y_coords, x_coords] = image_np[src_y, src_x]
 
-    return Image.fromarray(displaced_image)
+    return Image.fromarray(displaced_image_data)
 
 def geometric_distortion(image, scale=50.0, octaves=4, distortion_amount=20.0, distortion_type='opposite'):
     """
@@ -391,7 +373,7 @@ def voronoi_distortion(image, num_seeds=100, distortion_amount=20.0):
     warped_image = cv2.cvtColor(warped_image, cv2.COLOR_BGR2RGB)
     return Image.fromarray(warped_image)
 
-def ripple_effect(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01, distortion_type="color_shift", distortion_params={}):
+def ripple_effect(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01, distortion_type="color_shift", distortion_params={}, seed=None):
     """
     Apply a ripple effect to the image, simulating water droplets.
     
@@ -401,8 +383,9 @@ def ripple_effect(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01
         amplitude (float): Maximum pixel displacement.
         frequency (float): Ripple frequency.
         decay (float): How quickly ripples fade with distance.
-        distortion_type (str): Type of distortion to apply ('color_shift', 'displacement').
+        distortion_type (str): Type of distortion to apply ('color_shift', 'displacement', 'pixelation', 'none').
         distortion_params (dict): Additional parameters for the distortion.
+        seed (int, optional): Seed for random number generation. Defaults to None.
     
     Returns:
         Image: Processed image with ripple effect.
@@ -415,6 +398,11 @@ def ripple_effect(image, num_droplets=5, amplitude=10, frequency=0.1, decay=0.01
     
     # Get image dimensions
     height, width = cv_image.shape[:2]
+
+    # Set seed for reproducibility if provided
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed) # Ensure both numpy and python random are seeded if used
     
     # Create coordinate grids for x and y
     x_coords, y_coords = np.meshgrid(np.arange(width), np.arange(height), indexing='xy')
@@ -509,44 +497,20 @@ def pixel_scatter(image, direction, select_by, min_val, max_val):
     Returns:
         Image: Processed image with pixel scattering effect.
     """
-    # Convert to RGB mode if the image is not already in RGB mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
-    width, height = image.size
+    img_array = np.array(image)
+    height, width, channels = img_array.shape
+    result_array = np.copy(img_array) # Start with a copy
     
-    # Get all the pixels
-    pixels = list(image.getdata())
-    result_image = Image.new('RGB', (width, height))
-    modified_pixels = []
-    
-    # Define attribute functions 
-    # For different pixel properties
-    def rgb_to_hue(pixel):
-        r, g, b = [c / 255.0 for c in pixel[:3]]
-        h, _, _ = colorsys.rgb_to_hsv(r, g, b)
-        return h * 360  # Convert to 0-360 range
-    
-    def rgb_to_saturation(pixel):
-        r, g, b = [c / 255.0 for c in pixel[:3]]
-        _, s, _ = colorsys.rgb_to_hsv(r, g, b)
-        return s * 100  # Convert to 0-100 range
-    
-    def rgb_to_luminance(pixel):
-        r, g, b = [c / 255.0 for c in pixel[:3]]
-        _, _, v = colorsys.rgb_to_hsv(r, g, b)
-        return v * 100  # Convert to 0-100 range
-    
-    def calculate_contrast(pixel):
-        return max(pixel[:3]) - min(pixel[:3])
-    
-    # Choose the selection function based on the select_by parameter
+    # Selection function setup (as previously refactored)
     if select_by == 'hue':
-        selection_func = rgb_to_hue
+        selection_func = PixelAttributes.hue
     elif select_by == 'saturation':
-        selection_func = rgb_to_saturation
+        selection_func = lambda p: PixelAttributes.saturation(p) * 100.0
     elif select_by == 'luminance':
-        selection_func = rgb_to_luminance
+        selection_func = lambda p: PixelAttributes.luminance(p) * 100.0
     elif select_by == 'red':
         selection_func = lambda p: p[0]
     elif select_by == 'green':
@@ -554,93 +518,86 @@ def pixel_scatter(image, direction, select_by, min_val, max_val):
     elif select_by == 'blue':
         selection_func = lambda p: p[2]
     elif select_by == 'contrast':
-        selection_func = calculate_contrast
-    else:
-        # Default to luminance
-        selection_func = rgb_to_luminance
-    
+        selection_func = PixelAttributes.contrast
+    else: 
+        selection_func = lambda p: PixelAttributes.luminance(p) * 100.0
+
     if direction == 'horizontal':
-        # First pass: Identify pixels to scatter
         for y in range(height):
-            row = []
-            selected_pixels = []
-            for x in range(width):
-                idx = y * width + x
-                pixel = pixels[idx]
-                value = selection_func(pixel)
+            row_data_np = img_array[y, :, :]
+            row_pixel_tuples = [tuple(p) for p in row_data_np]
+            
+            selected_pixels_in_row = []
+            original_values_in_row = [None] * width # Store original pixel or placeholder
+            selection_mask_for_row = [False] * width
+
+            for x, pixel_tuple in enumerate(row_pixel_tuples):
+                value = selection_func(pixel_tuple)
                 if min_val <= value <= max_val:
-                    # Save selected pixels
-                    selected_pixels.append(pixel)
-                    # Add placeholder
-                    row.append(None)
+                    selected_pixels_in_row.append(pixel_tuple) # Store as tuple
+                    selection_mask_for_row[x] = True
+                    # original_values_in_row[x] remains None (placeholder)
                 else:
-                    # Keep unselected pixels in place
-                    row.append(pixel)
+                    original_values_in_row[x] = pixel_tuple # Store original if not selected
             
-            # Randomize the selected pixels
-            random.shuffle(selected_pixels)
+            if not selected_pixels_in_row: # No pixels selected in this row
+                result_array[y, :, :] = row_data_np # Original row remains
+                continue
+
+            random.shuffle(selected_pixels_in_row)
             
-            # Second pass: Replace placeholders with shuffled pixels
-            pixel_index = 0
+            new_row_list = []
+            shuffled_idx = 0
             for x in range(width):
-                if row[x] is None:
-                    if pixel_index < len(selected_pixels):
-                        row[x] = selected_pixels[pixel_index]
-                        pixel_index += 1
-                    else:
-                        # If we run out of selected pixels (shouldn't happen)
-                        row[x] = (0, 0, 0)  # Black as a fallback
+                if selection_mask_for_row[x]: # This was a selected pixel
+                    if shuffled_idx < len(selected_pixels_in_row):
+                        new_row_list.append(selected_pixels_in_row[shuffled_idx])
+                        shuffled_idx += 1
+                    else: # Should not happen if logic is correct
+                        new_row_list.append(original_values_in_row[x] if original_values_in_row[x] is not None else (0,0,0)) 
+                else: # Not selected, use original value stored
+                    new_row_list.append(original_values_in_row[x])
             
-            # Add the row to the modified pixels
-            modified_pixels.extend(row)
-    
+            result_array[y, :, :] = np.array(new_row_list, dtype=img_array.dtype).reshape(width, channels)
+
     elif direction == 'vertical':
-        # Initialize columns for vertical scattering
-        columns = [[] for _ in range(width)]
-        selected_columns = [[] for _ in range(width)]
-        selected_masks = [[] for _ in range(width)]
-        
-        # First pass: Identify pixels to scatter, organize by columns
-        for y in range(height):
-            for x in range(width):
-                idx = y * width + x
-                pixel = pixels[idx]
-                value = selection_func(pixel)
-                
+        for x in range(width):
+            col_data_np = img_array[:, x, :]
+            col_pixel_tuples = [tuple(p) for p in col_data_np]
+            
+            selected_pixels_in_col = []
+            original_values_in_col = [None] * height
+            selection_mask_for_col = [False] * height
+
+            for y, pixel_tuple in enumerate(col_pixel_tuples):
+                value = selection_func(pixel_tuple)
                 if min_val <= value <= max_val:
-                    # Mark for scatter
-                    selected_columns[x].append(pixel)
-                    selected_masks[x].append(True)
-                    columns[x].append(None)  # Placeholder
+                    selected_pixels_in_col.append(pixel_tuple)
+                    selection_mask_for_col[y] = True
                 else:
-                    # Keep in place
-                    selected_masks[x].append(False)
-                    columns[x].append(pixel)
-        
-        # Shuffle selected pixels in each column
-        for x in range(width):
-            random.shuffle(selected_columns[x])
-        
-        # Second pass: Replace placeholders with shuffled pixels
-        for x in range(width):
-            pixel_index = 0
+                    original_values_in_col[y] = pixel_tuple
+
+            if not selected_pixels_in_col:
+                result_array[:, x, :] = col_data_np
+                continue
+
+            random.shuffle(selected_pixels_in_col)
+
+            new_col_list = []
+            shuffled_idx = 0
             for y in range(height):
-                if selected_masks[x][y]:
-                    if pixel_index < len(selected_columns[x]):
-                        columns[x][y] = selected_columns[x][pixel_index]
-                        pixel_index += 1
+                if selection_mask_for_col[y]:
+                    if shuffled_idx < len(selected_pixels_in_col):
+                        new_col_list.append(selected_pixels_in_col[shuffled_idx])
+                        shuffled_idx += 1
                     else:
-                        # Fallback (shouldn't happen)
-                        columns[x][y] = (0, 0, 0)
-        
-        # Convert columns back to row-major format
-        for y in range(height):
-            for x in range(width):
-                modified_pixels.append(columns[x][y])
+                        new_col_list.append(original_values_in_col[y] if original_values_in_col[y] is not None else (0,0,0))
+                else:
+                    new_col_list.append(original_values_in_col[y])
+            
+            result_array[:, x, :] = np.array(new_col_list, dtype=img_array.dtype).reshape(height, channels)
     
-    # Update the result image with modified pixels
-    result_image.putdata(modified_pixels)
-    return result_image
+    return Image.fromarray(result_array)
 
 # Offset Effect
 def offset_effect(image, offset_x=0, offset_y=0, unit_x='pixels', unit_y='pixels'):
@@ -675,13 +632,13 @@ def offset_effect(image, offset_x=0, offset_y=0, unit_x='pixels', unit_y='pixels
     return ImageChops.offset(image, offset_px, offset_py)
 
 # Slice Shuffle Effect
-def slice_shuffle(image, slice_count, orientation, seed=None):
+def slice_shuffle(image, count, orientation, seed=None):
     """
     Apply the Slice Shuffle effect by dividing the image into a specified number of slices and shuffling them randomly.
 
     Args:
         image (PIL.Image): Input image to process.
-        slice_count (int): Number of slices (must be between 4 and 128).
+        count (int): Number of slices (must be between 4 and 128).
         orientation (str): Either 'rows' (to shuffle horizontal slices) or 'columns' (to shuffle vertical slices).
         seed (int, optional): Optional random seed for reproducibility.
 
@@ -696,11 +653,11 @@ def slice_shuffle(image, slice_count, orientation, seed=None):
 
     # Split image into slices along the specified axis
     if orientation == 'rows':
-        slices = np.array_split(image_np, slice_count, axis=0)
+        slices = np.array_split(image_np, count, axis=0)
         random.shuffle(slices)
         shuffled_np = np.vstack(slices)
     elif orientation == 'columns':
-        slices = np.array_split(image_np, slice_count, axis=1)
+        slices = np.array_split(image_np, count, axis=1)
         random.shuffle(slices)
         shuffled_np = np.hstack(slices)
     else:
@@ -710,14 +667,14 @@ def slice_shuffle(image, slice_count, orientation, seed=None):
     return Image.fromarray(shuffled_np)
 
 # Slice Offset Effect
-def slice_offset(image, slice_count, max_offset, orientation, offset_mode='random', sine_frequency=0.1, seed=None):
+def slice_offset(image, count, max_offset, orientation, offset_mode='random', sine_frequency=0.1, seed=None):
     """
     Apply the Slice Offset effect by dividing the image into a specified number of slices 
     and offsetting each slice horizontally or vertically using either random offsets or a sine wave pattern.
 
     Args:
         image (PIL.Image): Input image to process.
-        slice_count (int): Number of slices (must be between 4 and 128).
+        count (int): Number of slices (must be between 4 and 128).
         max_offset (int): Maximum offset in pixels (positive or negative, up to 512).
         orientation (str): Either 'rows' (horizontal slices with horizontal offsets) 
                            or 'columns' (vertical slices with vertical offsets).
@@ -739,17 +696,17 @@ def slice_offset(image, slice_count, max_offset, orientation, offset_mode='rando
     # Generate offsets for each slice
     if offset_mode == 'sine':
         # Generate sine wave offsets
-        slice_indices = np.arange(slice_count)
+        slice_indices = np.arange(count)
         # Scale the sine wave to have amplitude of max_offset
         offsets = (np.sin(2 * np.pi * sine_frequency * slice_indices) * max_offset).astype(int)
     else:  # random mode (default)
         # Generate random offsets, between -max_offset and max_offset
-        offsets = np.random.randint(-max_offset, max_offset + 1, slice_count)
+        offsets = np.random.randint(-max_offset, max_offset + 1, count)
     
     # Process based on orientation
     if orientation == 'rows':
         # Split into horizontal slices, offset horizontally
-        slices = np.array_split(image_np, slice_count, axis=0)
+        slices = np.array_split(image_np, count, axis=0)
         result = np.zeros_like(image_np)
         
         # Process each slice
@@ -776,7 +733,7 @@ def slice_offset(image, slice_count, max_offset, orientation, offset_mode='rando
             
     elif orientation == 'columns':
         # Split into vertical slices, offset vertically
-        slices = np.array_split(image_np, slice_count, axis=1)
+        slices = np.array_split(image_np, count, axis=1)
         result = np.zeros_like(image_np)
         
         # Process each slice
@@ -807,14 +764,14 @@ def slice_offset(image, slice_count, max_offset, orientation, offset_mode='rando
     return Image.fromarray(result)
 
 # Slice Reduction Effect
-def slice_reduction(image, slice_count, reduction_value, orientation):
+def slice_reduction(image, count, reduction_value, orientation):
     """
     Apply the Slice Reduction effect by dividing the image into a specified number of slices
     and reordering them based on a reduction value.
 
     Args:
         image (PIL.Image): Input image to process.
-        slice_count (int): Number of slices (must be between 16 and 256).
+        count (int): Number of slices (must be between 16 and 256).
         reduction_value (int): The reduction value (must be between 2 and 8) that determines
                               how slices are reordered.
         orientation (str): Either 'rows' (to process horizontal slices) or 'columns' (to process vertical slices).
@@ -827,9 +784,9 @@ def slice_reduction(image, slice_count, reduction_value, orientation):
     
     # Split image into slices along the specified axis
     if orientation == 'rows':
-        slices = np.array_split(image_np, slice_count, axis=0)
+        slices = np.array_split(image_np, count, axis=0)
     elif orientation == 'columns':
-        slices = np.array_split(image_np, slice_count, axis=1)
+        slices = np.array_split(image_np, count, axis=1)
     else:
         # If orientation is unrecognized, return the original image
         return image
@@ -837,7 +794,7 @@ def slice_reduction(image, slice_count, reduction_value, orientation):
     # Create new order of slices based on reduction value
     new_order = []
     for offset in range(reduction_value):
-        new_order.extend(range(offset, slice_count, reduction_value))
+        new_order.extend(range(offset, count, reduction_value))
     
     # Reorder slices according to new_order
     reordered_slices = [slices[i] for i in new_order]
@@ -868,30 +825,57 @@ def block_shuffle(image, block_width, block_height, seed=None):
 
     img_w, img_h = image.size
     image_np = np.array(image)
-    blocks = []
-    positions = []
+    
+    source_blocks_for_shuffling = [] # Stores blocks, potentially padded to full block_width/height
+    positions = [] # Top-left coordinates of each block slot in the original image grid
 
-    # Collect all blocks and their positions
-    for y in range(0, img_h, block_height):
-        for x in range(0, img_w, block_width):
-            block = image_np[y:y+block_height, x:x+block_width]
-            blocks.append(block)
-            positions.append((y, x))
+    num_channels = image_np.shape[2] if image_np.ndim == 3 else 0
 
-    # Shuffle the blocks
-    indices = list(range(len(blocks)))
+    # Collect all blocks, padding them to be full size for the shuffle pool
+    for y_start in range(0, img_h, block_height):
+        for x_start in range(0, img_w, block_width):
+            # Extract the original block (could be partial if at edge)
+            original_block_data = image_np[y_start : min(y_start + block_height, img_h), 
+                                           x_start : min(x_start + block_width, img_w)]
+            orig_h, orig_w = original_block_data.shape[:2]
+
+            # Create a full-sized padded block (e.g. with zeros/black)
+            if num_channels > 0:
+                padded_block_np = np.zeros((block_height, block_width, num_channels), dtype=image_np.dtype)
+                padded_block_np[:orig_h, :orig_w, :] = original_block_data
+            else: # Grayscale
+                padded_block_np = np.zeros((block_height, block_width), dtype=image_np.dtype)
+                padded_block_np[:orig_h, :orig_w] = original_block_data
+            
+            source_blocks_for_shuffling.append(padded_block_np)
+            positions.append((y_start, x_start))
+
+    # Shuffle the source_blocks_for_shuffling (by shuffling their indices)
+    indices = list(range(len(source_blocks_for_shuffling)))
     random.shuffle(indices)
 
     # Create a new array for the output
-    output = np.zeros_like(image_np)
+    output = np.zeros_like(image_np) # Initialize with zeros, will be fully painted
 
-    # Place shuffled blocks
-    for idx, (y, x) in zip(indices, positions):
-        block = blocks[idx]
-        h, w = block.shape[:2]
-        # Compute the available space in the output array
-        out_h = min(h, output.shape[0] - y)
-        out_w = min(w, output.shape[1] - x)
-        output[y:y+out_h, x:x+out_w] = block[:out_h, :out_w]
+    # Place shuffled blocks into their target positions
+    for i in range(len(positions)):
+        y_target, x_target = positions[i]
+        
+        # Get the (full-sized, padded) block that will go into this position
+        # The actual source content for this block came from blocks[indices[i]] originally, 
+        # but source_blocks_for_shuffling[indices[i]] is its padded version.
+        block_to_place_padded = source_blocks_for_shuffling[indices[i]]
+        
+        # Determine the actual dimensions of the target slot in the output image
+        # (this slot can be partial if it's at the image edge)
+        actual_target_slot_h = min(block_height, img_h - y_target)
+        actual_target_slot_w = min(block_width, img_w - x_target)
+        
+        # Crop the (full-sized, padded) source block to fit into the actual_target_slot dimensions
+        cropped_block_for_slot = block_to_place_padded[:actual_target_slot_h, :actual_target_slot_w]
+        
+        # Place the cropped block into the output image
+        output[y_target : y_target + actual_target_slot_h, 
+               x_target : x_target + actual_target_slot_w] = cropped_block_for_slot
 
     return Image.fromarray(output) 

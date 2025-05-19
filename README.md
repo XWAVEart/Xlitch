@@ -80,7 +80,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-2. Open your web browser and navigate to `http://localhost:5000`
+2. Open your web browser and navigate to `http://localhost:8080`
 
 3. Upload an image and experiment with different glitch effects
 

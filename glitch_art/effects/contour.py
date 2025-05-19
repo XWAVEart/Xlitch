@@ -3,6 +3,7 @@ import numpy as np
 from skimage import measure
 from scipy.ndimage import gaussian_filter1d
 from collections import defaultdict
+import random
 
 def do_lines_intersect(p1, p2, p3, p4):
     """Check if two line segments intersect"""
@@ -62,7 +63,7 @@ class LineGrid:
 
 def contour_effect(image, num_levels=15, noise_std=2, smooth_sigma=8, 
                    line_thickness=1, grad_threshold=20, min_distance=5, 
-                   max_line_length=256, blur_kernel_size=5, sobel_kernel_size=15):
+                   max_line_length=256, blur_kernel_size=5, sobel_kernel_size=15, seed=None):
     """
     Create contour line art from an image.
     
@@ -77,6 +78,7 @@ def contour_effect(image, num_levels=15, noise_std=2, smooth_sigma=8,
         max_line_length (int): Maximum length of a line segment (50-500).
         blur_kernel_size (int): Size of Gaussian blur kernel (3-33, must be odd).
         sobel_kernel_size (int): Size of Sobel edge detection kernel (3-33, must be odd).
+        seed (int, optional): Seed for random number generation. Defaults to None.
     
     Returns:
         PIL.Image: Processed image with contour lines.
@@ -84,6 +86,11 @@ def contour_effect(image, num_levels=15, noise_std=2, smooth_sigma=8,
     # Convert PIL Image to OpenCV format
     import numpy as np
     from PIL import Image
+
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+
     image_np = np.array(image)
     
     # Convert to grayscale if it's a color image
@@ -120,7 +127,7 @@ def contour_effect(image, num_levels=15, noise_std=2, smooth_sigma=8,
     distance_map = np.zeros((height, width), dtype=np.uint8)
     
     # Create a grid for efficient line intersection checking
-    line_grid = LineGrid(cell_size=100)
+    line_grid = LineGrid(cell_size=25)
 
     # Determine intensity range for contour levels
     min_val, max_val = np.min(gray_blur), np.max(gray_blur)

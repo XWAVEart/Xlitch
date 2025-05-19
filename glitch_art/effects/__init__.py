@@ -45,10 +45,8 @@ from .sorting import (
     pixel_sorting,
     pixel_sorting_corner_to_corner,
     full_frame_sort,
-    spiral_sort,
     spiral_sort_2,
-    polar_sorting,
-    diagonal_pixel_sort
+    polar_sorting
 )
 
 from .pixelate import (
@@ -106,10 +104,8 @@ __all__ = [
     'pixel_sorting',
     'pixel_sorting_corner_to_corner',
     'full_frame_sort',
-    'spiral_sort',
     'spiral_sort_2',
     'polar_sorting',
-    'diagonal_pixel_sort',
     
     # Pixelate effects
     'pixelate_by_attribute',

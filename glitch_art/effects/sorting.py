@@ -2,6 +2,71 @@ from PIL import Image
 import numpy as np
 from ..core.pixel_attributes import PixelAttributes
 
+# Centralized dictionary for sort functions
+_SORT_FUNCTIONS = {
+    'color': PixelAttributes.color_sum,
+    'brightness': PixelAttributes.brightness,
+    'hue': PixelAttributes.hue,
+    'red': lambda p: p[0],
+    'green': lambda p: p[1],
+    'blue': lambda p: p[2],
+    'saturation': PixelAttributes.saturation,
+    'luminance': PixelAttributes.luminance,
+    'contrast': PixelAttributes.contrast
+}
+
+# Helper function to process and sort a single chunk using NumPy
+def _process_and_sort_chunk_np(img_array_full, start_x, start_y, chunk_width, chunk_height, 
+                               sort_mode, sort_function, reverse_sort, result_array_full):
+    """Extracts, sorts (using NumPy for data handling), and places back pixels for a single chunk."""
+    
+    # Extract chunk using NumPy slicing
+    # Ensure we don't go out of bounds, though parent function should handle chunk dimensions
+    current_chunk_np = img_array_full[start_y : start_y + chunk_height, start_x : start_x + chunk_width]
+
+    if current_chunk_np.size == 0:
+        return
+
+    # Get channels for reshaping later if needed
+    channels = current_chunk_np.shape[-1] if len(current_chunk_np.shape) == 3 else 1 # Handle grayscale potential
+    original_shape = current_chunk_np.shape
+
+    # Convert chunk pixels to a list of tuples for compatibility with sort_function
+    # This is the part that bridges NumPy to the existing Python-based sort_key functions
+    pixels_list_in_chunk = [tuple(p) for p in current_chunk_np.reshape(-1, channels)]
+
+    if sort_mode == 'horizontal':
+        sorted_pixel_tuples = sorted(pixels_list_in_chunk, key=sort_function, reverse=reverse_sort)
+        
+        # Convert sorted list of tuples back to a NumPy array
+        # Ensure dtype matches the original chunk to avoid issues (e.g., float to int)
+        sorted_pixels_np_flat = np.array(sorted_pixel_tuples, dtype=current_chunk_np.dtype)
+        
+        # Reshape to the chunk's original 2D pixel arrangement
+        sorted_chunk_final_np = sorted_pixels_np_flat.reshape(original_shape)
+        
+        result_array_full[start_y : start_y + chunk_height, start_x : start_x + chunk_width] = sorted_chunk_final_np
+
+    elif sort_mode == 'vertical':
+        # For vertical sort, we sort each column of the chunk
+        # We operate on a copy to build the sorted chunk
+        sorted_chunk_final_np = np.copy(current_chunk_np) 
+
+        for col_idx in range(original_shape[1]): # Iterate through columns of the chunk
+            column_pixel_tuples = [tuple(p) for p in current_chunk_np[:, col_idx]] # Extract column, convert to list of tuples
+            
+            if not column_pixel_tuples:
+                continue
+                
+            sorted_column_tuples = sorted(column_pixel_tuples, key=sort_function, reverse=reverse_sort)
+            
+            # Place sorted column back into the copy
+            # Need to convert list of tuples back to NumPy array for assignment
+            sorted_column_np = np.array(sorted_column_tuples, dtype=current_chunk_np.dtype)
+            sorted_chunk_final_np[:, col_idx] = sorted_column_np
+        
+        result_array_full[start_y : start_y + chunk_height, start_x : start_x + chunk_width] = sorted_chunk_final_np
+
 def pixel_sorting(image, sort_mode, chunk_size, sort_by, starting_corner=None, sort_order='ascending'):
     """
     Sort pixels in chunks based on various attributes.
@@ -17,367 +82,145 @@ def pixel_sorting(image, sort_mode, chunk_size, sort_by, starting_corner=None, s
     Returns:
         Image: Processed image with sorted pixels
     """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
-    
-    # Handle special case for diagonal sorting
+
     if sort_mode == 'diagonal':
         if not starting_corner:
             raise ValueError("starting_corner is required for diagonal sorting")
-        # Determine if horizontal is True based on starting corner
         horizontal = starting_corner in ['top-left', 'bottom-left']
-        # Pass the sort order parameter to the diagonal sorting function
-        reverse = (sort_order == 'descending')
         return pixel_sorting_corner_to_corner(image, chunk_size, sort_by, starting_corner, horizontal, sort_order)
-    
-    # Define the sort function based on the sort_by parameter
-    sort_function = {
-        'color': PixelAttributes.color_sum,
-        'brightness': PixelAttributes.brightness,
-        'hue': PixelAttributes.hue,
-        'red': lambda p: p[0],     # Sort by red channel only
-        'green': lambda p: p[1],   # Sort by green channel only
-        'blue': lambda p: p[2],     # Sort by blue channel only
-        'saturation': PixelAttributes.saturation,  # Sort by color saturation
-        'luminance': PixelAttributes.luminance,    # Sort by luminance (value in HSV)
-        'contrast': PixelAttributes.contrast       # Sort by contrast (max-min RGB)
-    }.get(sort_by, PixelAttributes.color_sum)  # Default to sum of RGB if invalid
 
-    pixels = list(image.getdata())
-    width, height = image.size
-    chunk_width, chunk_height = map(int, chunk_size.split('x'))
-    
-    # Create result image and get pixel access object for direct pixel manipulation
-    result_image = Image.new(image.mode, image.size)
-    
-    # Calculate how many full chunks we can fit and the remainder
-    num_chunks_x = width // chunk_width
-    num_chunks_y = height // chunk_height
-    remainder_x = width % chunk_width
-    remainder_y = height % chunk_height
-    
-    # Determine whether to reverse the sort based on sort_order
+    sort_function = _SORT_FUNCTIONS.get(sort_by, PixelAttributes.color_sum)
     reverse = (sort_order == 'descending')
-    
-    # Process standard chunks (full sized)
-    for chunk_row in range(num_chunks_y):
-        for chunk_col in range(num_chunks_x):
-            # Extract chunk pixels
-            chunk_pixels = []
-            start_y = chunk_row * chunk_height
-            start_x = chunk_col * chunk_width
-            
-            for y in range(start_y, start_y + chunk_height):
-                for x in range(start_x, start_x + chunk_width):
-                    chunk_pixels.append(pixels[y * width + x])
-            
-            # Sort chunk with the appropriate order
-            if sort_mode == 'horizontal':
-                sorted_chunk = sorted(chunk_pixels, key=sort_function, reverse=reverse)
-                
-                # Place sorted pixels back in horizontal order
-                for i, pixel in enumerate(sorted_chunk):
-                    x = start_x + (i % chunk_width)
-                    y = start_y + (i // chunk_width)
-                    result_image.putpixel((x, y), pixel)
-            else:  # vertical
-                # Reshape the chunk for column-wise sorting
-                chunk_2d = []
-                for i in range(0, len(chunk_pixels), chunk_width):
-                    chunk_2d.append(chunk_pixels[i:i + chunk_width])
-                
-                # For each column in the chunk
-                for x in range(chunk_width):
-                    # Extract column
-                    column = [chunk_2d[y][x] for y in range(chunk_height)]
-                    # Sort column with the appropriate order
-                    sorted_column = sorted(column, key=sort_function, reverse=reverse)
-                    
-                    # Place sorted column back
-                    for y, pixel in enumerate(sorted_column):
-                        result_image.putpixel((start_x + x, start_y + y), pixel)
 
-    # Process right edge (if there's a remainder in width)
-    if remainder_x > 0:
-        for chunk_row in range(num_chunks_y):
-            # Extract the right edge chunk
-            start_y = chunk_row * chunk_height
-            start_x = num_chunks_x * chunk_width
-            
-            edge_chunk = []
-            for y in range(start_y, start_y + chunk_height):
-                for x in range(start_x, start_x + remainder_x):
-                    edge_chunk.append(pixels[y * width + x])
-            
-            # Sort the edge chunk with the appropriate order
-            if sort_mode == 'horizontal':
-                sorted_edge = sorted(edge_chunk, key=sort_function, reverse=reverse)
-                
-                # Place sorted pixels back
-                for i, pixel in enumerate(sorted_edge):
-                    x = start_x + (i % remainder_x)
-                    y = start_y + (i // remainder_x)
-                    result_image.putpixel((x, y), pixel)
-            else:  # vertical
-                # Reshape for column-wise sorting
-                edge_2d = []
-                for i in range(0, len(edge_chunk), remainder_x):
-                    edge_2d.append(edge_chunk[i:i + remainder_x])
-                
-                # For each column in the edge chunk
-                for x in range(remainder_x):
-                    # Extract column
-                    column = [row[x] for row in edge_2d if x < len(row)]
-                    # Sort column with the appropriate order
-                    sorted_column = sorted(column, key=sort_function, reverse=reverse)
-                    
-                    # Place sorted column back
-                    for y, pixel in enumerate(sorted_column):
-                        result_image.putpixel((start_x + x, start_y + y), pixel)
+    img_array_orig = np.array(image, dtype=np.uint8) # Explicitly use uint8 for image data
+    height, width = img_array_orig.shape[:2] # Get height, width, ignore channels for now unless needed
     
-    # Process bottom edge (if there's a remainder in height)
-    if remainder_y > 0:
-        for chunk_col in range(num_chunks_x):
-            # Extract the bottom edge chunk
-            start_y = num_chunks_y * chunk_height
-            start_x = chunk_col * chunk_width
-            
-            edge_chunk = []
-            for y in range(start_y, start_y + remainder_y):
-                for x in range(start_x, start_x + chunk_width):
-                    edge_chunk.append(pixels[y * width + x])
-            
-            # Sort the edge chunk with the appropriate order
-            if sort_mode == 'horizontal':
-                sorted_edge = sorted(edge_chunk, key=sort_function, reverse=reverse)
-                
-                # Place sorted pixels back
-                for i, pixel in enumerate(sorted_edge):
-                    x = start_x + (i % chunk_width)
-                    y = start_y + (i // chunk_width)
-                    result_image.putpixel((x, y), pixel)
-            else:  # vertical
-                # Reshape for column-wise sorting
-                edge_2d = []
-                for i in range(0, len(edge_chunk), chunk_width):
-                    edge_2d.append(edge_chunk[i:i + chunk_width])
-                
-                # For each column in the edge chunk
-                for x in range(chunk_width):
-                    # Extract column
-                    column = [row[x] for row in edge_2d if x < len(row)]
-                    # Sort column with the appropriate order
-                    sorted_column = sorted(column, key=sort_function, reverse=reverse)
-                    
-                    # Place sorted column back
-                    for y, pixel in enumerate(sorted_column):
-                        result_image.putpixel((start_x + x, start_y + y), pixel)
-    
-    # Process bottom-right corner (if there's a remainder in both width and height)
-    if remainder_x > 0 and remainder_y > 0:
-        # Extract the corner chunk
-        start_y = num_chunks_y * chunk_height
-        start_x = num_chunks_x * chunk_width
-        
-        corner_chunk = []
-        for y in range(start_y, start_y + remainder_y):
-            for x in range(start_x, start_x + remainder_x):
-                corner_chunk.append(pixels[y * width + x])
-        
-        # Sort the corner chunk with the appropriate order
-        if sort_mode == 'horizontal':
-            sorted_corner = sorted(corner_chunk, key=sort_function, reverse=reverse)
-            
-            # Place sorted pixels back
-            for i, pixel in enumerate(sorted_corner):
-                x = start_x + (i % remainder_x)
-                y = start_y + (i // remainder_x)
-                result_image.putpixel((x, y), pixel)
-        else:  # vertical
-            # Reshape for column-wise sorting
-            corner_2d = []
-            for i in range(0, len(corner_chunk), remainder_x):
-                corner_2d.append(corner_chunk[i:i + remainder_x])
-            
-            # For each column in the corner chunk
-            for x in range(remainder_x):
-                # Extract column
-                column = [row[x] for row in corner_2d if x < len(row)]
-                # Sort column with the appropriate order
-                sorted_column = sorted(column, key=sort_function, reverse=reverse)
-                
-                # Place sorted column back
-                for y, pixel in enumerate(sorted_column):
-                    result_image.putpixel((start_x + x, start_y + y), pixel)
-    
-    return result_image
+    base_chunk_width, base_chunk_height = map(int, chunk_size.split('x'))
 
-def pixel_sorting_corner_to_corner(image, chunk_size, sort_by, corner, horizontal, sort_order='ascending'):
+    # Create result array, initialized as a copy or zeros, then fill
+    # Using a copy ensures un-processed areas (if any logic error) retain original pixels
+    result_array = np.copy(img_array_orig)
+
+    num_chunks_y = (height + base_chunk_height - 1) // base_chunk_height
+    num_chunks_x = (width + base_chunk_width - 1) // base_chunk_width
+
+    for chunk_row_idx in range(num_chunks_y):
+        for chunk_col_idx in range(num_chunks_x):
+            start_y = chunk_row_idx * base_chunk_height
+            start_x = chunk_col_idx * base_chunk_width
+
+            current_chunk_height = min(base_chunk_height, height - start_y)
+            current_chunk_width = min(base_chunk_width, width - start_x)
+
+            if current_chunk_width <= 0 or current_chunk_height <= 0:
+                continue
+            
+            _process_and_sort_chunk_np(img_array_orig, start_x, start_y, 
+                                       current_chunk_width, current_chunk_height, 
+                                       sort_mode, sort_function, reverse, result_array)
+    
+    return Image.fromarray(result_array)
+
+def pixel_sorting_corner_to_corner(image, chunk_size_str, sort_by, corner, horizontal, sort_order='ascending'):
     """
     Apply pixel sorting starting from a specified corner, either horizontally or vertically.
     
     Args:
         image (Image): PIL Image object to process.
-        chunk_size (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
+        chunk_size_str (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
         sort_by (str): Property to sort by ('color', 'brightness', 'hue', 'red', 'green', 'blue',
                        'saturation', 'luminance', 'contrast').
         corner (str): Starting corner ('top-left', 'top-right', 'bottom-left', 'bottom-right').
-        horizontal (bool): True for horizontal sorting, False for vertical.
+        horizontal (bool): True for horizontal sorting (pixels within chunk are laid out row-wise after sort),
+                         False for vertical (pixels within chunk are laid out column-wise after sort).
         sort_order (str): 'ascending' (low to high) or 'descending' (high to low). Default is 'ascending'.
     
     Returns:
         Image: Processed image with corner-to-corner sorting.
     """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
         
-    sort_function = {
-        'color': PixelAttributes.color_sum,
-        'brightness': PixelAttributes.brightness,
-        'hue': PixelAttributes.hue,
-        'red': lambda p: p[0],     # Sort by red channel only
-        'green': lambda p: p[1],   # Sort by green channel only
-        'blue': lambda p: p[2],     # Sort by blue channel only
-        'saturation': PixelAttributes.saturation,  # Sort by color saturation
-        'luminance': PixelAttributes.luminance,    # Sort by luminance (value in HSV)
-        'contrast': PixelAttributes.contrast       # Sort by contrast (max-min RGB)
-    }.get(sort_by, PixelAttributes.color_sum)
+    sort_function = _SORT_FUNCTIONS.get(sort_by, PixelAttributes.color_sum)
+    reverse_sort_order = (sort_order == 'descending')
 
-    # Create a result image to work with
-    result_image = Image.new(image.mode, image.size)
-    width, height = image.size
-    chunk_width, chunk_height = map(int, chunk_size.split('x'))
+    img_array_full = np.array(image, dtype=np.uint8)
+    img_height, img_width, img_channels = img_array_full.shape
+    result_array_full = np.copy(img_array_full)
     
-    # Get pixel data as a 2D array
-    pixels = list(image.getdata())
-    pixels_2d = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            row.append(pixels[y * width + x])
-        pixels_2d.append(row)
-    
-    # Initialize result_image with a copy of the original image data
-    # This ensures no black regions if any pixels are missed
-    for y in range(height):
-        for x in range(width):
-            result_image.putpixel((x, y), pixels_2d[y][x])
-    
-    # Calculate how many full chunks and the remainder
-    full_chunks_x = width // chunk_width
-    full_chunks_y = height // chunk_height
-    remainder_x = width % chunk_width
-    remainder_y = height % chunk_height
-    
-    # Create step values based on the corner
-    x_step = chunk_width
-    y_step = chunk_height
-    
-    # Determine chunk processing start points and ranges based on corner
+    base_chunk_width, base_chunk_height = map(int, chunk_size_str.split('x'))
+
+    # Determine iteration ranges and steps based on the corner
+    # These define the starting corner of chunks
     if corner == 'top-left':
-        x_start_val = 0
-        y_start_val = 0
-        x_end_val = width
-        y_end_val = height
-        x_step = chunk_width
-        y_step = chunk_height
+        y_coords_iter = range(0, img_height, base_chunk_height)
+        x_coords_iter = range(0, img_width, base_chunk_width)
     elif corner == 'top-right':
-        x_start_val = width - chunk_width
-        y_start_val = 0
-        x_end_val = -chunk_width
-        y_end_val = height
-        x_step = -chunk_width
-        y_step = chunk_height
+        y_coords_iter = range(0, img_height, base_chunk_height)
+        x_coords_iter = range(img_width - base_chunk_width, -1, -base_chunk_width) # Iterate right to left
     elif corner == 'bottom-left':
-        x_start_val = 0
-        y_start_val = height - chunk_height
-        x_end_val = width
-        y_end_val = -chunk_height
-        x_step = chunk_width
-        y_step = -chunk_height
+        y_coords_iter = range(img_height - base_chunk_height, -1, -base_chunk_height) # Iterate bottom to top
+        x_coords_iter = range(0, img_width, base_chunk_width)
     elif corner == 'bottom-right':
-        x_start_val = width - chunk_width
-        y_start_val = height - chunk_height
-        x_end_val = -chunk_width
-        y_end_val = -chunk_height
-        x_step = -chunk_width
-        y_step = -chunk_height
-    
-    # Create ranges based on the corner - ensure we include all pixels
-    x_range = list(range(x_start_val, x_end_val, x_step))
-    y_range = list(range(y_start_val, y_end_val, y_step))
-    
-    # Handle edge cases where ranges might be empty
-    if not x_range and x_step > 0:
-        x_range = [0]
-    elif not x_range and x_step < 0:
-        x_range = [width - chunk_width]
-        
-    if not y_range and y_step > 0:
-        y_range = [0]
-    elif not y_range and y_step < 0:
-        y_range = [height - chunk_height]
-    
-    # Determine whether to reverse the sort based on sort_order
-    reverse = (sort_order == 'descending')
-    
-    # Process each chunk
-    for y_start in y_range:
-        for x_start in x_range:
-            # Calculate chunk boundaries
-            y_end = min(y_start + abs(y_step), height) if y_step > 0 else max(y_start + y_step, 0)
-            x_end = min(x_start + abs(x_step), width) if x_step > 0 else max(x_start + x_step, 0)
+        y_coords_iter = range(img_height - base_chunk_height, -1, -base_chunk_height) # Bottom to top
+        x_coords_iter = range(img_width - base_chunk_width, -1, -base_chunk_width) # Right to left
+    else:
+        raise ValueError(f"Invalid corner: {corner}")
+
+    for y_start in y_coords_iter:
+        for x_start in x_coords_iter:
+            # Determine actual chunk dimensions, handling edges
+            current_chunk_height = min(base_chunk_height, img_height - y_start if y_start >= 0 else base_chunk_height + y_start)
+            current_chunk_width = min(base_chunk_width, img_width - x_start if x_start >=0 else base_chunk_width + x_start)
             
-            # Make sure we're not going out of bounds
-            if x_start < 0: x_start = 0
-            if y_start < 0: y_start = 0
-            if x_end > width: x_end = width
-            if y_end > height: y_end = height
-            if x_end <= 0: x_end = 1
-            if y_end <= 0: y_end = 1
-            
-            # Ensure chunks always process from lower to higher indices
-            x_start, x_end = min(x_start, x_end), max(x_start, x_end)
-            y_start, y_end = min(y_start, y_end), max(y_start, y_end)
-            
-            # Skip empty chunks
-            if x_start == x_end or y_start == y_end:
+            # Adjust for negative start indices if iterating backwards
+            actual_y_start = max(0, y_start)
+            actual_x_start = max(0, x_start)
+            current_chunk_height = min(base_chunk_height, img_height - actual_y_start)
+            current_chunk_width = min(base_chunk_width, img_width - actual_x_start)
+
+            if current_chunk_width <= 0 or current_chunk_height <= 0:
                 continue
+
+            current_chunk_np = img_array_full[actual_y_start : actual_y_start + current_chunk_height, 
+                                              actual_x_start : actual_x_start + current_chunk_width]
             
-            # Extract all pixels in this chunk
-            chunk_pixels = []
-            for y in range(y_start, y_end):
-                for x in range(x_start, x_end):
-                    chunk_pixels.append(pixels_2d[y][x])
+            if current_chunk_np.size == 0:
+                continue
+
+            chunk_original_shape = current_chunk_np.shape
+            pixel_tuples = [tuple(p) for p in current_chunk_np.reshape(-1, img_channels)]
             
-            # Sort the chunk pixels
-            sorted_pixels = sorted(chunk_pixels, key=sort_function, reverse=reverse)
+            sorted_pixel_tuples = sorted(pixel_tuples, key=sort_function, reverse=reverse_sort_order)
             
-            # Reverse the order if needed based on corner
+            # Conditional reversal based on corner and primary sorting direction (horizontal flag)
             if (corner in ['bottom-left', 'bottom-right'] and horizontal) or \
                (corner in ['top-right', 'bottom-right'] and not horizontal):
-                sorted_pixels = sorted_pixels[::-1]
+                # This logic might need review: it reverses the flat list of sorted pixels.
+                # The original intent was related to how pixels were put back. With reshape, this needs care.
+                sorted_pixel_tuples = sorted_pixel_tuples[::-1]
+
+            sorted_pixels_np_flat = np.array(sorted_pixel_tuples, dtype=img_array_full.dtype)
             
-            # Put the sorted pixels back
-            pixel_index = 0
-            if horizontal:
-                # Sort horizontally within chunk
-                for y in range(y_start, y_end):
-                    for x in range(x_start, x_end):
-                        if pixel_index < len(sorted_pixels):
-                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
-                            pixel_index += 1
-            else:
-                # Sort vertically within chunk
-                for x in range(x_start, x_end):
-                    for y in range(y_start, y_end):
-                        if pixel_index < len(sorted_pixels):
-                            result_image.putpixel((x, y), sorted_pixels[pixel_index])
-                            pixel_index += 1
+            # Reshape and place back
+            # The 'horizontal' flag determines how the 1D sorted list populates the 2D chunk space
+            sorted_chunk_final_np = np.zeros(chunk_original_shape, dtype=img_array_full.dtype)
+            if horizontal: # Pixels are laid out row by row (standard reshape)
+                sorted_chunk_final_np = sorted_pixels_np_flat.reshape(chunk_original_shape)
+            else: # Pixels are laid out column by column
+                # To fill column by column, we can reshape to (width, height, channels) then transpose
+                if chunk_original_shape[0] > 0 and chunk_original_shape[1] > 0: # Ensure non-empty chunk
+                    temp_reshaped = sorted_pixels_np_flat.reshape(chunk_original_shape[1], chunk_original_shape[0], img_channels) # (width, height, channels)
+                    sorted_chunk_final_np = temp_reshaped.transpose(1, 0, 2) # (height, width, channels)
+                else:
+                    sorted_chunk_final_np = sorted_pixels_np_flat.reshape(chunk_original_shape) # Fallback for empty dim
+
+            result_array_full[actual_y_start : actual_y_start + current_chunk_height, 
+                              actual_x_start : actual_x_start + current_chunk_width] = sorted_chunk_final_np
     
-    return result_image
+    return Image.fromarray(result_array_full)
 
 def full_frame_sort(image, direction='vertical', sort_by='brightness', reverse=False):
     """
@@ -393,54 +236,49 @@ def full_frame_sort(image, direction='vertical', sort_by='brightness', reverse=F
     Returns:
         Image: Processed image with full-frame sorting.
     """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
+
+    img_array = np.array(image, dtype=np.uint8)
+    height, width = img_array.shape[:2]
+
+    result_array = np.copy(img_array) # Work on a copy for the result
     
-    # Create a new image with the same size as the input image
-    width, height = image.size
-    sorted_im = Image.new(image.mode, image.size)
-    
-    # Define the sort function based on the sort_by parameter
-    sort_function = {
-        'color': PixelAttributes.color_sum,
-        'brightness': PixelAttributes.brightness,
-        'hue': PixelAttributes.hue,
-        'red': lambda p: p[0],     # Sort by red channel only
-        'green': lambda p: p[1],   # Sort by green channel only
-        'blue': lambda p: p[2],     # Sort by blue channel only
-        'saturation': PixelAttributes.saturation,  # Sort by color saturation
-        'luminance': PixelAttributes.luminance,    # Sort by luminance (value in HSV)
-        'contrast': PixelAttributes.contrast       # Sort by contrast (max-min RGB)
-    }.get(sort_by, PixelAttributes.brightness)
-    
+    sort_function = _SORT_FUNCTIONS.get(sort_by, PixelAttributes.brightness) # Default for this func
+
     if direction == 'vertical':
-        # Sort each column from top to bottom
-        for x in range(width):
-            # Get the pixels in the current column
-            column_pixels = [(image.getpixel((x, y)), y) for y in range(height)]
+        for x_col in range(width):
+            # Extract column data as a NumPy array slice
+            column_data_np = img_array[:, x_col] 
+            # Convert NumPy 2D slice (height, channels) to list of pixel tuples for sort_function
+            pixel_tuples = [tuple(p) for p in column_data_np]
             
-            # Sort the pixels by the specified criteria
-            column_pixels.sort(key=lambda item: sort_function(item[0]), reverse=reverse)
+            # Sort the list of tuples
+            sorted_pixel_tuples = sorted(pixel_tuples, key=sort_function, reverse=reverse)
             
-            # Set the pixels in the current column of the output image
-            for new_y, (pixel, _) in enumerate(column_pixels):
-                sorted_im.putpixel((x, new_y), pixel)
+            # Convert sorted list of tuples back to a NumPy array
+            sorted_column_np = np.array(sorted_pixel_tuples, dtype=img_array.dtype)
+            
+            # Place the sorted column back into the result array
+            result_array[:, x_col] = sorted_column_np
     
     elif direction == 'horizontal':
-        # Sort each row from left to right
-        for y in range(height):
-            # Get the pixels in the current row
-            row_pixels = [(image.getpixel((x, y)), x) for x in range(width)]
+        for y_row in range(height):
+            # Extract row data as a NumPy array slice
+            row_data_np = img_array[y_row, :] 
+            # Convert NumPy 2D slice (width, channels) to list of pixel tuples for sort_function
+            pixel_tuples = [tuple(p) for p in row_data_np]
             
-            # Sort the pixels by the specified criteria
-            row_pixels.sort(key=lambda item: sort_function(item[0]), reverse=reverse)
+            # Sort the list of tuples
+            sorted_pixel_tuples = sorted(pixel_tuples, key=sort_function, reverse=reverse)
             
-            # Set the pixels in the current row of the output image
-            for new_x, (pixel, _) in enumerate(row_pixels):
-                sorted_im.putpixel((new_x, y), pixel)
+            # Convert sorted list of tuples back to a NumPy array
+            sorted_row_np = np.array(sorted_pixel_tuples, dtype=img_array.dtype)
+            
+            # Place the sorted row back into the result array
+            result_array[y_row, :] = sorted_row_np
     
-    return sorted_im
+    return Image.fromarray(result_array)
 
 def spiral_coords(size):
     """
@@ -467,78 +305,6 @@ def spiral_coords(size):
                     yield (x, y)
             dir_idx += 1
         steps += 1
-
-def spiral_sort(image, chunk_size=32, order='lightest-to-darkest'):
-    """
-    Apply a spiral sort effect, arranging pixels in a spiral pattern based on brightness.
-    
-    Args:
-        image (Image): PIL Image object to process.
-        chunk_size (int): Size of square chunks to process.
-        order (str): 'lightest-to-darkest' or 'darkest-to-lightest'.
-    
-    Returns:
-        Image: Processed image with spiral-sorted pixels.
-    """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    
-    # Convert PIL image to numpy array
-    np_image = np.array(image)
-    
-    # Get image dimensions
-    height, width, _ = np_image.shape
-    
-    # Adjust chunk_size if needed to ensure it divides evenly into the image
-    if height % chunk_size != 0 or width % chunk_size != 0:
-        # Find the largest chunk size that divides evenly
-        for i in range(chunk_size, 0, -1):
-            if height % i == 0 and width % i == 0:
-                chunk_size = i
-                break
-    
-    # Split the image into chunks
-    chunks = []
-    for y in range(0, height, chunk_size):
-        for x in range(0, width, chunk_size):
-            if y + chunk_size <= height and x + chunk_size <= width:
-                chunks.append(np_image[y:y+chunk_size, x:x+chunk_size])
-    
-    # Sort each chunk
-    sorted_chunks = []
-    for chunk in chunks:
-        # Flatten the chunk and calculate luminance
-        flattened_chunk = chunk.reshape(-1, chunk.shape[-1])
-        luminance = np.apply_along_axis(PixelAttributes.brightness, 1, flattened_chunk)
-        sorted_indices = np.argsort(luminance)
-        
-        # Reverse order if needed
-        if order == 'darkest-to-lightest':
-            sorted_indices = sorted_indices[::-1]
-        
-        # Create a new chunk with pixels arranged in a spiral
-        sorted_chunk = np.zeros_like(chunk)
-        spiral_order = list(spiral_coords(chunk_size))
-        
-        # Place pixels in spiral order
-        for idx, coord in zip(sorted_indices, spiral_order):
-            pixel_y, pixel_x = divmod(idx, chunk_size)
-            sorted_chunk[coord[0], coord[1]] = chunk[pixel_y, pixel_x]
-        
-        sorted_chunks.append(sorted_chunk)
-    
-    # Recombine chunks into the final image
-    result = np.zeros_like(np_image)
-    chunk_idx = 0
-    for y in range(0, height, chunk_size):
-        for x in range(0, width, chunk_size):
-            if y + chunk_size <= height and x + chunk_size <= width:
-                result[y:y+chunk_size, x:x+chunk_size] = sorted_chunks[chunk_idx]
-                chunk_idx += 1
-    
-    # Convert back to PIL image
-    return Image.fromarray(result)
 
 def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
     """
@@ -575,19 +341,9 @@ def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
     else:
         padded_height, padded_width = height, width
     
-    # Map sort_by parameter to the appropriate function
-    sort_function = {
-        'color': PixelAttributes.color_sum,
-        'brightness': PixelAttributes.brightness,
-        'hue': PixelAttributes.hue,
-        'red': lambda p: p[0],
-        'green': lambda p: p[1],
-        'blue': lambda p: p[2],
-        'saturation': PixelAttributes.saturation,
-        'luminance': PixelAttributes.luminance,
-        'contrast': PixelAttributes.contrast
-    }.get(sort_by, PixelAttributes.brightness)  # Default to brightness if invalid choice
-    
+    # Get the sort function from the centralized dictionary
+    sort_function = _SORT_FUNCTIONS.get(sort_by, PixelAttributes.color_sum)
+
     # Calculate number of chunks
     num_chunks_y = padded_height // chunk_size
     num_chunks_x = padded_width // chunk_size
@@ -598,14 +354,18 @@ def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
     
     # Sort each chunk
     sorted_chunks = []
-    for y in range(num_chunks_y):
-        for x in range(num_chunks_x):
+    for y_idx_chunk in range(num_chunks_y):
+        for x_idx_chunk in range(num_chunks_x):
             # Extract chunk
-            chunk = img_array[y*chunk_size:(y+1)*chunk_size, x*chunk_size:(x+1)*chunk_size]
+            chunk = img_array[y_idx_chunk*chunk_size:(y_idx_chunk+1)*chunk_size, x_idx_chunk*chunk_size:(x_idx_chunk+1)*chunk_size]
             
-            # Flatten the chunk and calculate sort values
-            flattened_chunk = chunk.reshape(-1, channels)
-            sort_values = np.array([sort_function(p) for p in flattened_chunk])
+            # Flatten the chunk 
+            flattened_chunk_np = chunk.reshape(-1, channels)
+            
+            # Convert to list of tuples for sort_function compatibility
+            pixel_tuples = [tuple(p) for p in flattened_chunk_np]
+            # Calculate sort values using the list of tuples
+            sort_values = np.array([sort_function(t) for t in pixel_tuples])
             
             # Sort pixels based on the sort values
             sorted_indices = np.argsort(sort_values)
@@ -617,16 +377,16 @@ def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
             
             # Place sorted pixels in spiral order
             for idx, (row, col) in zip(sorted_indices[:total_pixels], spiral_coords_list):
-                sorted_chunk[row, col] = flattened_chunk[idx]
+                sorted_chunk[row, col] = flattened_chunk_np[idx]
             
             sorted_chunks.append(sorted_chunk)
     
     # Recombine chunks into the final image
     result = np.zeros((padded_height, padded_width, channels), dtype=img_array.dtype)
     chunk_idx = 0
-    for y in range(num_chunks_y):
-        for x in range(num_chunks_x):
-            result[y*chunk_size:(y+1)*chunk_size, x*chunk_size:(x+1)*chunk_size] = sorted_chunks[chunk_idx]
+    for y_idx_chunk in range(num_chunks_y):
+        for x_idx_chunk in range(num_chunks_x):
+            result[y_idx_chunk*chunk_size:(y_idx_chunk+1)*chunk_size, x_idx_chunk*chunk_size:(x_idx_chunk+1)*chunk_size] = sorted_chunks[chunk_idx]
             chunk_idx += 1
     
     # Crop to original size if padded
@@ -649,257 +409,51 @@ def polar_sorting(image, chunk_size, sort_by='angle', reverse=False):
     Returns:
         Image: Processed image with polar-sorted pixels.
     """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
         
-    width, height = image.size
-    # Split image into chunks
-    chunks = []
-    for y in range(0, height, chunk_size):
-        for x in range(0, width, chunk_size):
-            # Calculate actual chunk dimensions (handle edge cases)
-            actual_width = min(chunk_size, width - x)
-            actual_height = min(chunk_size, height - y)
-            if actual_width > 0 and actual_height > 0:
-                chunks.append((image.crop((x, y, x + actual_width, y + actual_height)), (x, y)))
+    img_array_full = np.array(image, dtype=np.uint8)
+    height, width, channels = img_array_full.shape
+    result_array_full = np.copy(img_array_full)
 
-    sorted_image = Image.new('RGB', image.size)
-    
-    for chunk, (x_offset, y_offset) in chunks:
-        chunk_width, chunk_height = chunk.size
-        chunk_array = np.array(chunk)
-        
-        # Calculate polar coordinates relative to chunk center
-        cx, cy = chunk_width // 2, chunk_height // 2
-        y_coords, x_coords = np.mgrid[:chunk_height, :chunk_width]
-        angles = np.arctan2(y_coords - cy, x_coords - cx)  # Angle from center
-        radii = np.sqrt((x_coords - cx)**2 + (y_coords - cy)**2)  # Distance from center
-        
-        # Create a mapping of original positions to sorted positions
-        positions = []
-        for y in range(chunk_height):
-            for x in range(chunk_width):
-                pixel = chunk_array[y, x]
-                angle = angles[y, x]
-                radius = radii[y, x]
-                sort_value = angle if sort_by == 'angle' else radius
-                positions.append(((y, x), sort_value, pixel))
-        
-        # Sort by the chosen coordinate
-        positions.sort(key=lambda p: p[1], reverse=reverse)
-        
-        # Create sorted chunk
-        sorted_chunk = np.zeros_like(chunk_array)
-        for i, ((orig_y, orig_x), _, pixel) in enumerate(positions):
-            new_y = i // chunk_width
-            new_x = i % chunk_width
-            if new_y < chunk_height and new_x < chunk_width:
-                sorted_chunk[new_y, new_x] = pixel
-        
-        # Convert back to PIL Image and paste into the result
-        sorted_chunk_img = Image.fromarray(sorted_chunk)
-        sorted_image.paste(sorted_chunk_img, (x_offset, y_offset))
-    
-    return sorted_image
+    for y_start in range(0, height, chunk_size):
+        for x_start in range(0, width, chunk_size):
+            actual_height = min(chunk_size, height - y_start)
+            actual_width = min(chunk_size, width - x_start)
 
-def diagonal_pixel_sort(image, chunk_size, sort_by, corner, sort_order='ascending'):
-    """
-    Apply pixel sorting diagonally within each chunk, starting from a specified corner.
-    
-    Args:
-        image (Image): PIL Image object to process.
-        chunk_size (str): Chunk dimensions as 'widthxheight' (e.g., '32x32').
-        sort_by (str): Property to sort by ('color', 'brightness', 'hue', etc.).
-        corner (str): Starting corner ('top-left', 'top-right', 'bottom-left', 'bottom-right').
-        sort_order (str): 'ascending' (low to high) or 'descending' (high to low). Default is 'ascending'.
-    
-    Returns:
-        Image: Processed image with diagonally sorted pixels.
-    """
-    # Convert to RGB mode if needed
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    
-    # Define sort function based on sort_by parameter
-    sort_function = {
-        'color': PixelAttributes.color_sum,
-        'brightness': PixelAttributes.brightness,
-        'hue': PixelAttributes.hue,
-        'red': lambda p: p[0],
-        'green': lambda p: p[1],
-        'blue': lambda p: p[2],
-        'saturation': PixelAttributes.saturation,
-        'luminance': PixelAttributes.luminance,
-        'contrast': PixelAttributes.contrast
-    }.get(sort_by, PixelAttributes.color_sum)
-    
-    # Create a new image for the result
-    result_image = Image.new(image.mode, image.size)
-    width, height = image.size
-    chunk_width, chunk_height = map(int, chunk_size.split('x'))
-    
-    # Get pixel data
-    pixels = list(image.getdata())
-    pixels_2d = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            row.append(pixels[y * width + x])
-        pixels_2d.append(row)
-    
-    # Calculate chunks
-    num_chunks_x = width // chunk_width
-    num_chunks_y = height // chunk_height
-    remainder_x = width % chunk_width
-    remainder_y = height % chunk_height
-    
-    # Determine whether to reverse the sort based on sort_order
-    reverse = (sort_order == 'descending')
-    
-    # Process each chunk
-    for chunk_y in range(num_chunks_y):
-        for chunk_x in range(num_chunks_x):
-            start_x = chunk_x * chunk_width
-            start_y = chunk_y * chunk_height
+            if actual_width <= 0 or actual_height <= 0:
+                continue
+
+            current_chunk_np = img_array_full[y_start : y_start + actual_height, x_start : x_start + actual_width]
             
-            # Process diagonals
-            if corner == 'top-left':
-                # Top-left to bottom-right diagonals
-                for diag in range(chunk_width + chunk_height - 1):
-                    diagonal_pixels = []
-                    
-                    # Collect pixels along this diagonal
-                    for i in range(diag + 1):
-                        x = start_x + i
-                        y = start_y + diag - i
-                        
-                        if (x < start_x + chunk_width and 
-                            y < start_y + chunk_height and 
-                            y >= start_y and x >= start_x):
-                            diagonal_pixels.append(pixels_2d[y][x])
-                    
-                    # Sort diagonal pixels
-                    sorted_pixels = sorted(diagonal_pixels, key=sort_function, reverse=reverse)
-                    
-                    # Place sorted pixels back on the diagonal
-                    pixel_index = 0
-                    for i in range(diag + 1):
-                        x = start_x + i
-                        y = start_y + diag - i
-                        
-                        if (x < start_x + chunk_width and 
-                            y < start_y + chunk_height and 
-                            y >= start_y and x >= start_x):
-                            if pixel_index < len(sorted_pixels):
-                                result_image.putpixel((x, y), sorted_pixels[pixel_index])
-                                pixel_index += 1
+            ch_height, ch_width = current_chunk_np.shape[:2]
             
-            elif corner == 'top-right':
-                # Top-right to bottom-left diagonals
-                for diag in range(chunk_width + chunk_height - 1):
-                    diagonal_pixels = []
-                    
-                    # Collect pixels along this diagonal
-                    for i in range(diag + 1):
-                        x = start_x + chunk_width - 1 - i
-                        y = start_y + diag - i
-                        
-                        if (x >= start_x and 
-                            y < start_y + chunk_height and 
-                            y >= start_y and x < start_x + chunk_width):
-                            diagonal_pixels.append(pixels_2d[y][x])
-                    
-                    # Sort diagonal pixels
-                    sorted_pixels = sorted(diagonal_pixels, key=sort_function, reverse=reverse)
-                    
-                    # Place sorted pixels back on the diagonal
-                    pixel_index = 0
-                    for i in range(diag + 1):
-                        x = start_x + chunk_width - 1 - i
-                        y = start_y + diag - i
-                        
-                        if (x >= start_x and 
-                            y < start_y + chunk_height and 
-                            y >= start_y and x < start_x + chunk_width):
-                            if pixel_index < len(sorted_pixels):
-                                result_image.putpixel((x, y), sorted_pixels[pixel_index])
-                                pixel_index += 1
+            # Calculate polar coordinates relative to chunk center
+            cy, cx = ch_height // 2, ch_width // 2
+            y_coords, x_coords = np.mgrid[:ch_height, :ch_width]
             
-            elif corner == 'bottom-left':
-                # Bottom-left to top-right diagonals
-                for diag in range(chunk_width + chunk_height - 1):
-                    diagonal_pixels = []
-                    
-                    # Collect pixels along this diagonal
-                    for i in range(diag + 1):
-                        x = start_x + i
-                        y = start_y + chunk_height - 1 - (diag - i)
-                        
-                        if (x < start_x + chunk_width and 
-                            y >= start_y and 
-                            y < start_y + chunk_height and x >= start_x):
-                            diagonal_pixels.append(pixels_2d[y][x])
-                    
-                    # Sort diagonal pixels
-                    sorted_pixels = sorted(diagonal_pixels, key=sort_function, reverse=reverse)
-                    
-                    # Place sorted pixels back on the diagonal
-                    pixel_index = 0
-                    for i in range(diag + 1):
-                        x = start_x + i
-                        y = start_y + chunk_height - 1 - (diag - i)
-                        
-                        if (x < start_x + chunk_width and 
-                            y >= start_y and 
-                            y < start_y + chunk_height and x >= start_x):
-                            if pixel_index < len(sorted_pixels):
-                                result_image.putpixel((x, y), sorted_pixels[pixel_index])
-                                pixel_index += 1
+            angles = np.arctan2(y_coords - cy, x_coords - cx)
+            radii = np.sqrt((x_coords - cx)**2 + (y_coords - cy)**2)
             
-            else:  # bottom-right
-                # Bottom-right to top-left diagonals
-                for diag in range(chunk_width + chunk_height - 1):
-                    diagonal_pixels = []
-                    
-                    # Collect pixels along this diagonal
-                    for i in range(diag + 1):
-                        x = start_x + chunk_width - 1 - i
-                        y = start_y + chunk_height - 1 - (diag - i)
-                        
-                        if (x >= start_x and 
-                            y >= start_y and 
-                            y < start_y + chunk_height and x < start_x + chunk_width):
-                            diagonal_pixels.append(pixels_2d[y][x])
-                    
-                    # Sort diagonal pixels
-                    sorted_pixels = sorted(diagonal_pixels, key=sort_function, reverse=reverse)
-                    
-                    # Place sorted pixels back on the diagonal
-                    pixel_index = 0
-                    for i in range(diag + 1):
-                        x = start_x + chunk_width - 1 - i
-                        y = start_y + chunk_height - 1 - (diag - i)
-                        
-                        if (x >= start_x and 
-                            y >= start_y and 
-                            y < start_y + chunk_height and x < start_x + chunk_width):
-                            if pixel_index < len(sorted_pixels):
-                                result_image.putpixel((x, y), sorted_pixels[pixel_index])
-                                pixel_index += 1
+            # Flatten data for sorting
+            flat_pixels = current_chunk_np.reshape(-1, channels)
+            flat_angles = angles.flatten()
+            flat_radii = radii.flatten()
+            
+            sort_keys = flat_angles if sort_by == 'angle' else flat_radii
+            
+            # Get indices that would sort the keys
+            sorted_indices = np.argsort(sort_keys)
+            if reverse:
+                sorted_indices = sorted_indices[::-1]
+            
+            # Sort the flat pixels based on these indices
+            sorted_flat_pixels = flat_pixels[sorted_indices]
+            
+            # Reshape sorted pixels back to the chunk's original shape
+            sorted_chunk_np = sorted_flat_pixels.reshape(current_chunk_np.shape)
+            
+            # Place the sorted chunk back into the result array
+            result_array_full[y_start : y_start + actual_height, x_start : x_start + actual_width] = sorted_chunk_np
     
-    # Handle remainder chunks
-    # For simplicity, we'll just copy them as-is for now
-    # Handle right edge
-    if remainder_x > 0:
-        for y in range(height):
-            for x in range(width - remainder_x, width):
-                result_image.putpixel((x, y), pixels_2d[y][x])
-                
-    # Handle bottom edge
-    if remainder_y > 0:
-        for y in range(height - remainder_y, height):
-            for x in range(width - remainder_x):
-                result_image.putpixel((x, y), pixels_2d[y][x])
-    
-    return result_image 
+    return Image.fromarray(result_array_full) 

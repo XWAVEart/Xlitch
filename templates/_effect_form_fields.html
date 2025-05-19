@@ -1,0 +1,59 @@
+{% if effect_specific_form and selected_effect_key %}
+    {# Try to get the human-readable name from the main form's choices #}
+    {% set effect_label = form.effect.choices | selectattr('0', 'equalto', selected_effect_key) | map(attribute='1') | first %}
+    <h3>Parameters for {{ effect_label if effect_label else selected_effect_key.replace('_', ' ')|title }}</h3>
+
+    {# Render CSRF token if it's part of the specific form, though usually it's in the main form #}
+    {% if effect_specific_form.csrf_token %}
+        {{ effect_specific_form.csrf_token }}
+    {% endif %}
+
+    <div class="effect-fields-grid"> {# Use a class for potential grid styling #}
+        {% for field in effect_specific_form %}
+            {% if field.widget.input_type != 'hidden' and field.id != 'csrf_token' %}
+                <div class="form-group {% if field.errors %}has-error{% endif %}" id="form-group-{{ selected_effect_key }}-{{ field.id }}">
+                    {{ field.label(class_="required-field" if field.flags.required else "") }}
+                    
+                    {# Add specific classes or structure based on field type if needed #}
+                    {% if field.type == 'FileField' %}
+                        {{ field(class_="form-control-file") }}
+                    {% elif field.type == 'BooleanField' %}
+                        <div class="checkbox-container">
+                           {{ field() }} {# field() for BooleanField usually renders input+label #}
+                        </div>
+                    {% else %}
+                        {{ field(class_="form-control") }}
+                    {% endif %}
+
+                    {% if field.description %}
+                        <span class="help-text">{{ field.description }}</span>
+                    {% endif %}
+                    {% if field.errors %}
+                        <ul class="error-message specific-field-error">
+                            {% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+                        </ul>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+{% else %}
+    <p id="no-effect-selected-text">Select an effect to see its parameters.</p>
+{% endif %}
+
+{# Minimal styling for checkbox, can be moved to main CSS #}
+<style>
+    .checkbox-container {
+        display: flex;
+        align-items: center;
+    }
+    .checkbox-container input[type="checkbox"] {
+        width: auto;
+        margin-right: 8px;
+    }
+    .effect-fields-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+    }
+</style> 

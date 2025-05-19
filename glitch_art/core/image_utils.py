@@ -1,21 +1,26 @@
 from PIL import Image
+import logging
 
-def load_image(file_path):
+logger = logging.getLogger(__name__)
+
+def load_image(file_path, max_width_config=None, max_height_config=None):
     """
     Load an image from the specified file path.
     
     Args:
         file_path (str): Path to the image file.
+        max_width_config (int, optional): Max width from app config.
+        max_height_config (int, optional): Max height from app config.
     
     Returns:
         Image or None: The loaded PIL Image object, or None if loading fails.
     """
     try:
         img = Image.open(file_path)
-        # Automatically resize large images for better performance
-        return resize_image_if_needed(img)
+        # Pass config values; resize_image_if_needed will use its defaults if None
+        return resize_image_if_needed(img, max_width=max_width_config, max_height=max_height_config)
     except Exception as e:
-        print(f"Error loading image {file_path}: {e}")
+        logger.error(f"Error loading image {file_path}: {e}")
         return None
 
 def resize_image_if_needed(image, max_width=1920, max_height=1920):
@@ -25,30 +30,27 @@ def resize_image_if_needed(image, max_width=1920, max_height=1920):
     
     Args:
         image (Image): PIL Image object to check and possibly resize
-        max_width (int): Maximum allowed width in pixels (default 1920)
-        max_height (int): Maximum allowed height in pixels (default 1920)
+        max_width (int, optional): Maximum allowed width in pixels. Defaults to 1920.
+                                 If None, 1920 is used.
+        max_height (int, optional): Maximum allowed height in pixels. Defaults to 1920.
+                                  If None, 1920 is used.
         
     Returns:
         Image: Original image or resized version if dimensions exceeded limits
     """
-    # Try to get max dimensions from Flask app config if available
-    try:
-        from flask import current_app
-        if current_app and current_app.config:
-            max_width = current_app.config.get('MAX_IMAGE_WIDTH', max_width)
-            max_height = current_app.config.get('MAX_IMAGE_HEIGHT', max_height)
-    except (ImportError, RuntimeError):
-        pass  # Not in a Flask context or app not available
+    # Use provided max_width/max_height or fall back to internal defaults if they are None
+    effective_max_width = max_width if max_width is not None else 1920
+    effective_max_height = max_height if max_height is not None else 1920
     
     # Get current image dimensions
     width, height = image.size
     
     # Check if resizing is needed (if either dimension exceeds max)
-    if width <= max_width and height <= max_height:
+    if width <= effective_max_width and height <= effective_max_height:
         return image
     
     # Calculate ratio based on the longest dimension
-    ratio = min(max_width / width, max_height / height)
+    ratio = min(effective_max_width / width, effective_max_height / height)
     new_width = int(width * ratio)
     new_height = int(height * ratio)
     

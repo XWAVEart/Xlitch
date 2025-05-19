@@ -354,1336 +354,351 @@
     </style>
 </head>
 <body>
-    <h1>XWAVE XLITCH ART</h1>
-    <div class="form-container">
-        <form method="POST" action="/" enctype="multipart/form-data" id="image-form">
-            {{ form.hidden_tag() }}
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="required-field">{{ form.primary_image.label }}</label>
-                    {{ form.primary_image(id="primary-image-input", required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.effect.label }}</label>
-                    {{ form.effect(id='effect') }}
-                </div>
-            </div>
-            
-            <div id="offset-options" style="display: none;">
-                <div class="form-group">
-                    {{ form.offset_x_value.label }} {{ form.offset_x_value(size=10, id='offset_x_value') }}
-                    {{ form.offset_x_unit(id='offset_x_unit') }}
-                </div>
-                <div class="form-group">
-                    {{ form.offset_y_value.label }} {{ form.offset_y_value(size=10, id='offset_y_value') }}
-                    {{ form.offset_y_unit(id='offset_y_unit') }}
-                </div>
-            </div>
-            
-            <div id="slice-shuffle-options" style="display: none;">
-                <div class="form-group">
-                    {{ form.slice_count.label }} {{ form.slice_count(size=10, id='slice_count') }}
-                    <small class="form-text text-muted">Enter a value between 4 and 128</small>
-                </div>
-                <div class="form-group">
-                    {{ form.slice_orientation.label }} {{ form.slice_orientation(id='slice_orientation') }}
-                </div>
-                <div class="form-group">
-                    {{ form.slice_seed.label }} {{ form.slice_seed(size=10, id='slice_seed') }}
-                    <small class="form-text text-muted">Optional - leave empty for random results each time</small>
-                </div>
-            </div>
-            
-            <div id="slice-offset-options" style="display: none;">
-                <div class="form-group">
-                    {{ form.slice_offset_count.label }} {{ form.slice_offset_count(size=10, id='slice_offset_count') }}
-                    <small class="form-text text-muted">Enter a value between 4 and 128</small>
-                </div>
-                <div class="form-group">
-                    {{ form.slice_offset_max.label }} {{ form.slice_offset_max(size=10, id='slice_offset_max') }}
-                    <small class="form-text text-muted">Maximum random offset (1-512 pixels)</small>
-                </div>
-                <div class="form-group">
-                    {{ form.slice_offset_orientation.label }} {{ form.slice_offset_orientation(id='slice_offset_orientation') }}
-                </div>
-                <div class="form-group">
-                    {{ form.slice_offset_mode.label }} {{ form.slice_offset_mode(id='slice_offset_mode') }}
-                    <small class="form-text text-muted">Choose between random or sine wave pattern</small>
-                </div>
-                <div class="form-group" id="slice_offset_sine_options" style="display: none;">
-                    {{ form.slice_offset_frequency.label }} {{ form.slice_offset_frequency(size=10, step="0.01", id='slice_offset_frequency') }}
-                    <small class="form-text text-muted">Controls the wave frequency (0.01-1.0)</small>
-                </div>
-                <div class="form-group" id="slice_offset_random_options">
-                    {{ form.slice_offset_seed.label }} {{ form.slice_offset_seed(size=10, id='slice_offset_seed') }}
-                    <small class="form-text text-muted">Optional - leave empty for random results each time</small>
-                </div>
-            </div>
-            
-            <div id="slice-reduction-options" style="display: none;">
-                <div class="form-group">
-                    {{ form.slice_reduction_count.label }} {{ form.slice_reduction_count(size=10, id='slice_reduction_count') }}
-                    <small class="form-text text-muted">Enter a value between 16 and 256</small>
-                </div>
-                <div class="form-group">
-                    {{ form.slice_reduction_value.label }} {{ form.slice_reduction_value(size=10, id='slice_reduction_value') }}
-                    <small class="form-text text-muted">Enter a value between 2 and 8</small>
-                </div>
-                <div class="form-group">
-                    {{ form.slice_reduction_orientation.label }} {{ form.slice_reduction_orientation(id='slice_reduction_orientation') }}
-                </div>
-            </div>
-            
-            <!-- Pixel Sort Chunk (Combined) -->
-            <div id="pixel_sort_chunk_fields" class="effect-fields" style="display:none;">
-                <h3>Pixel Sort Chunk</h3>
-                <div class="alert alert-info">
-                    <strong>About Pixel Sort Chunk:</strong> This effect sorts pixels within defined rectangular chunks based on various properties like brightness, hue, or color. Choose between horizontal, vertical, or diagonal sorting directions for different aesthetic results. Larger chunks create bold glitch patterns while smaller chunks produce more subtle texture effects.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.sort_mode.label }}</label>
-                    {{ form.sort_mode(id="sort_mode", required=True) }}
-                    <span class="help-text">Choose the direction of pixel sorting within each chunk</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.sort_by.label }}</label>
-                    {{ form.sort_by(required=True) }}
-                    <span class="help-text">Property to sort pixels by</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.sort_order.label }}</label>
-                    {{ form.sort_order(required=True) }}
-                    <span class="help-text">Sort in ascending (low to high) or descending (high to low) order</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">Chunk Size</label>
-                    <div class="chunk-size-inputs">
-                        {{ form.chunk_width(required=True, placeholder="Width", value="48", min=2, max=2048, step=2) }}
-                        <span>x</span>
-                        {{ form.chunk_height(required=True, placeholder="Height", value="48", min=2, max=2048, step=2) }}
-                    </div>
-                    <span class="help-text">Values must be multiples of 2 (2-2048)</span>
-                </div>
-                <div id="diagonal_fields" class="sub-effect-fields" style="display:none;">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.starting_corner.label }}</label>
-                        {{ form.starting_corner(required=True) }}
-                        <span class="help-text">Starting point for diagonal sorting</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Full Frame Sorting -->
-            <div id="full_frame_sort_fields" class="effect-fields" style="display:none;">
-                <h3>Full Frame Sorting</h3>
-                <div class="alert alert-info">
-                    <strong>About Full Frame Sorting:</strong> This effect sorts all pixels across the entire image at once, creating smooth gradients or stark dividing lines. Unlike chunk-based sorting, this affects the entire image in one operation, resulting in dramatic transformations based on the property you choose to sort by.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.full_frame_direction.label }}</label>
-                    {{ form.full_frame_direction(required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.full_frame_sort_by.label }}</label>
-                    {{ form.full_frame_sort_by(required=True) }}
-                    <span class="help-text">Property to sort pixels by</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.full_frame_reverse.label }}</label>
-                    {{ form.full_frame_reverse(required=True) }}
-                </div>
-            </div>
-            
-            <!-- Polar Sorting -->
-            <div id="polar_sort_fields" class="effect-fields" style="display:none;">
-                <h3>Polar Sorting</h3>
-                <div class="alert alert-info">
-                    <strong>About Polar Sorting:</strong> This effect sorts pixels based on their relationship to the center of the image, using either angle (around the center) or radius (distance from center). The result creates circular or radial patterns that highlight the natural symmetry or asymmetry in your image.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.polar_chunk_size.label }}</label>
-                    {{ form.polar_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
-                    <span class="help-text">Size of square chunks (8-128, multiples of 8)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.polar_sort_by.label }}</label>
-                    {{ form.polar_sort_by(required=True) }}
-                    <span class="help-text">Sort by angle around center or distance from center</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.polar_reverse.label }}</label>
-                    {{ form.polar_reverse(required=True) }}
-                </div>
-            </div>
-            
-            <!-- Perlin Noise Sorting -->
-            <div id="perlin_noise_sort_fields" class="effect-fields" style="display:none;">
-                <h3>Perlin Noise Sorting</h3>
-                <div class="alert alert-info">
-                    <strong>About Perlin Noise Sorting:</strong> This effect uses Perlin noise (smooth random gradients) to determine how to sort pixels in chunks. This creates organic, flowing distortions that follow the noise pattern. The noise scale determines the "turbulence" of the effect, creating wavy, dreamlike distortions in your image.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">Chunk Size</label>
-                    <div class="chunk-size-inputs">
-                        {{ form.perlin_chunk_width(required=True, placeholder="Width", value="128", min=8, max=1024, step=8) }}
-                        <span>x</span>
-                        {{ form.perlin_chunk_height(required=True, placeholder="Height", value="1024", min=8, max=1024, step=8) }}
-                    </div>
-                    <span class="help-text">Values must be multiples of 8 (8-1024). Use large values for full rows/columns.</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_noise_scale.label }}</label>
-                    {{ form.perlin_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number", value="0.008") }}
-                    <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_seed.label }}</label>
-                    {{ form.perlin_seed(required=True, min=1, max=9999, type="number", value="420") }}
-                    <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_direction.label }}</label>
-                    {{ form.perlin_direction(required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_reverse.label }}</label>
-                    {{ form.perlin_reverse(required=True) }}
-                </div>
-            </div>
-            
-            <!-- Perlin Full Frame -->
-            <div id="perlin_full_frame_fields" class="effect-fields" style="display:none;">
-                <h3>Perlin Full Frame Sorting</h3>
-                <div class="alert alert-info">
-                    <strong>About Perlin Full Frame Sorting:</strong> This effect combines Perlin noise with full-frame sorting for extraordinary transformations. The noise pattern determines the sort order across the entire image at once, creating fluid, dreamlike distortions that completely reimagine your image while maintaining some semblance of the original structure.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_full_frame_noise_scale.label }}</label>
-                    {{ form.perlin_full_frame_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number", value="0.005") }}
-                    <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_full_frame_seed.label }}</label>
-                    {{ form.perlin_full_frame_seed(required=True, min=1, max=9999, type="number", value="69") }}
-                    <span class="help-text">Seed for noise pattern (1-9999, same seed = same pattern)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_full_frame_sort_by.label }}</label>
-                    {{ form.perlin_full_frame_sort_by(required=True) }}
-                    <span class="help-text">Property to sort pixels by</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_full_frame_reverse.label }}</label>
-                    {{ form.perlin_full_frame_reverse(required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_full_frame_pattern_width.label }}</label>
-                    {{ form.perlin_full_frame_pattern_width(required=True, min=1, max=8, type="number", value="1") }}
-                    <span class="help-text">Width of sorted patterns (1-8, higher = thicker lines)</span>
-                </div>
-            </div>
-            
-            <!-- Pixelate -->
-            <div id="pixelate_fields" class="effect-fields" style="display:none;">
-                <h3>Pixelate</h3>
-                <div class="alert alert-info">
-                    <strong>About Pixelate:</strong> This effect reduces the resolution of your image into larger blocks of color, but with advanced control over how those blocks are colored. Instead of simple downsampling, you can choose to represent each block based on different image attributes like hue or brightness, and control the intensity via the number of color bins.
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.pixelate_width.label }}</label>
-                        {{ form.pixelate_width(required=True, min=2, max=64) }}
-                        <span class="help-text">Width of each pixel block (2-64)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.pixelate_height.label }}</label>
-                        {{ form.pixelate_height(required=True, min=2, max=64) }}
-                        <span class="help-text">Height of each pixel block (2-64)</span>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.pixelate_attribute.label }}</label>
-                        {{ form.pixelate_attribute(required=True) }}
-                        <span class="help-text">Attribute to use for determining pixel color</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.pixelate_bins.label }}</label>
-                        {{ form.pixelate_bins(required=True, min=10, max=1000) }}
-                        <span class="help-text">Number of bins for quantizing attribute values (10-1000)</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Concentric Shapes -->
-            <div id="concentric_shapes_fields" class="effect-fields" style="display:none;">
-                <h3>Concentric Shapes</h3>
-                <div class="alert alert-info">
-                    <strong>About Concentric Shapes:</strong> This effect overlays geometric patterns of concentric shapes (circles, squares, hexagons, or triangles) onto your image. Starting from random seed points, it draws expanding shapes with customizable properties like thickness, spacing, and color. The result creates an abstract geometric overlay that interacts with your original image.
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.concentric_num_points.label }}</label>
-                        {{ form.concentric_num_points(required=True, min=1, max=100) }}
-                        <span class="help-text">Number of random points to select (1-100)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.shape_type.label }}</label>
-                        {{ form.shape_type(required=True) }}
-                        <span class="help-text">Type of shape to draw</span>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.concentric_thickness.label }}</label>
-                    {{ form.concentric_thickness(required=True, min=1, max=10) }}
-                    <span class="help-text">Thickness of each shape's outline (1-10)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.spacing.label }}</label>
-                    {{ form.spacing(required=True, min=1, max=50) }}
-                    <span class="help-text">Spacing between shapes (1-50)</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.rotation_angle.label }}</label>
-                    {{ form.rotation_angle(min=0, max=360) }}
-                    <span class="help-text">Rotation angle for each subsequent shape (0-360)</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.darken_step.label }}</label>
-                    {{ form.darken_step(min=0, max=255) }}
-                    <span class="help-text">Amount to darken each subsequent shape (0-255)</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.color_shift.label }}</label>
-                    {{ form.color_shift(min=0, max=360) }}
-                    <span class="help-text">Amount to shift the hue for each shape (0-360)</span>
-                </div>
-            </div>
-            
-            <!-- Color Channel Manipulation -->
-            <div id="color_channel_fields" class="effect-fields" style="display:none;">
-                <h3>Color Channel Manipulation</h3>
-                <div class="alert alert-info">
-                    <strong>About Color Channel Manipulation:</strong> This effect lets you alter the individual RGB color channels of your image in various ways. You can swap channels (e.g., red becomes green), invert specific channels, adjust channel intensity, or create a full negative. These operations create surreal color shifts while preserving the original image structure.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.manipulation_type.label }}</label>
-                    {{ form.manipulation_type(id="manipulation_type", required=True) }}
-                </div>
-                <div id="swap_fields" class="effect-fields" style="display:none;">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.swap_choice.label }}</label>
-                        {{ form.swap_choice(required=True) }}
-                    </div>
-                </div>
-                <div id="invert_fields" class="effect-fields" style="display:none;">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.invert_choice.label }}</label>
-                        {{ form.invert_choice(required=True) }}
-                    </div>
-                </div>
-                <div id="negative_fields" class="effect-fields" style="display:none;">
-                    <div class="form-group">
-                        <span class="help-text">Creates a negative of the entire image by inverting all color channels.</span>
-                    </div>
-                </div>
-                <div id="adjust_fields" class="effect-fields" style="display:none;">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="required-field">{{ form.adjust_choice.label }}</label>
-                            {{ form.adjust_choice(required=True) }}
-                        </div>
-                        <div class="form-group">
-                            <label class="required-field">{{ form.intensity_factor.label }}</label>
-                            {{ form.intensity_factor(required=True, placeholder="1.5", value="1.5") }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Double Expose -->
-            <div id="double_expose_fields" class="effect-fields" style="display:none;">
-                <h3>Double Expose</h3>
-                <div class="alert alert-info">
-                    <strong>About Double Expose:</strong> This effect combines two images using different blending modes, similar to traditional double exposure in film photography. Each blend mode creates a unique interaction between the images - from simple transparency blending to more complex operations like screen, multiply, or difference, which can dramatically alter colors and tones.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.secondary_image.label }}</label>
-                    {{ form.secondary_image(id="secondary-image-input", required=True) }}
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.blend_mode.label }}</label>
-                        {{ form.blend_mode(required=True) }}
-                        <span class="help-text">Different blend modes create different visual effects</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.opacity.label }}</label>
-                        {{ form.opacity(required=True, min=0.1, max=1.0, step=0.1, type="number") }}
-                        <span class="help-text">Strength of the blend (0.1-1.0)</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Pixel Drift -->
-            <div id="pixel_drift_fields" class="effect-fields" style="display:none;">
-                <h3>Pixel Drift</h3>
-                <div class="alert alert-info">
-                    <strong>About Pixel Drift:</strong> This effect shifts rows or columns of pixels in alternating patterns, creating a wave-like drifting or rippling effect. By controlling direction, number of bands, and intensity, you can create anything from subtle vibrations to dramatic distortions that make your image appear to be in motion.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.drift_direction.label }}</label>
-                    {{ form.drift_direction(required=True) }}
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.drift_bands.label }}</label>
-                    {{ form.drift_bands(required=True, min=8, max=48, step=8, type="number") }}
-                    <span class="help-text">Must be a multiple of 8 (8-48)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.drift_intensity.label }}</label>
-                    {{ form.drift_intensity(required=True, min=0.1, max=10, step=0.1, type="number") }}
-                    <span class="help-text">Higher values = more extreme drift (0.1-10)</span>
-                </div>
-            </div>
-            
-            <!-- Spiral Sort 2 -->
-            <div id="spiral_sort_2_fields" class="effect-fields" style="display:none;">
-                <h3>Spiral Sort 2</h3>
-                <div class="alert alert-info">
-                    <strong>About Spiral Sort 2:</strong> An advanced version of Spiral Sort, this effect offers more sorting options and control. Instead of just brightness, you can sort the spiral chunks by various attributes like hue, saturation, or individual color channels. This provides more creative control and diverse spiral arrangements for different visual effects.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.spiral2_chunk_size.label }}</label>
-                    {{ form.spiral2_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
-                    <span class="help-text">Size of square chunks (8-128, multiples of 8)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.spiral2_sort_by.label }}</label>
-                    {{ form.spiral2_sort_by(required=True) }}
-                    <span class="help-text">Property to sort pixels by</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.spiral2_reverse.label }}</label>
-                    {{ form.spiral2_reverse(required=True) }}
-                </div>
-            </div>
-            
-            <!-- Bit Manipulation -->
-            <div id="bit_manipulation_fields" class="effect-fields" style="display:none;">
-                <h3>Bit Manipulation</h3>
-                <div class="alert alert-info">
-                    <strong>About Bit Manipulation:</strong> This effect directly manipulates the binary data of your image, creating digital corruption artifacts. Choose different manipulation types, patterns, and randomization to create unique glitch effects. This technique mimics data corruption or compression glitches, producing unpredictable but fascinating visual distortions.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.bit_chunk_size.label }}</label>
-                    {{ form.bit_chunk_size(required=True, min=8, max=128, step=8, type="number") }}
-                    <span class="help-text">Size of chunks to process (8-128, multiples of 8)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.bit_manipulation_type.label }}</label>
-                    {{ form.bit_manipulation_type(required=True) }}
-                    <span class="help-text">Type of bit-level manipulation to apply</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.bit_skip_pattern.label }}</label>
-                    {{ form.bit_skip_pattern(required=True) }}
-                    <span class="help-text">Pattern for which chunks to process</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.bit_offset.label }}</label>
-                    {{ form.bit_offset(min=0, type="number") }}
-                    <span class="help-text">Number of bytes to skip at the beginning</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.bit_xor_value.label }}</label>
-                    {{ form.bit_xor_value(min=0, max=255, type="number") }}
-                    <span class="help-text">Value to XOR with bytes (0-255, used for XOR mode)</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.bit_shift.label }}</label>
-                    {{ form.bit_shift(min=-7, max=7, type="number") }}
-                    <span class="help-text">Number of bits to shift (-7 to 7, used for Shift mode)</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.bit_randomize.label }}</label>
-                    {{ form.bit_randomize() }}
-                    <span class="help-text">Add randomization to create more chaotic effects</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.bit_random_seed.label }}</label>
-                    {{ form.bit_random_seed(min=1, max=9999, type="number") }}
-                    <span class="help-text">Seed for random operations (same seed = same result)</span>
-                </div>
-            </div>
-            
-            <!-- Data Mosh Blocks -->
-            <div id="data_mosh_blocks_fields" class="effect-fields" style="display:none;">
-                <h3>Data Mosh Blocks</h3>
-                <div class="alert alert-info">
-                    <strong>About Data Mosh Blocks:</strong> This effect simulates the "datamoshing" technique by manipulating rectangular blocks of pixels. It can swap blocks, invert colors, shift color channels, and flip blocks horizontally or vertically. The result mimics compression artifacts found in corrupted video files, creating a disjointed collage effect from your original image.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.data_mosh_operations.label }}</label>
-                    {{ form.data_mosh_operations(required=True, min=1, max=256, type="number") }}
-                    <span class="help-text">Number of operations to perform (1-256)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.data_mosh_block_size.label }}</label>
-                    {{ form.data_mosh_block_size(required=True, min=1, max=500, type="number") }}
-                    <span class="help-text">Maximum size for block width and height (1-500)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.data_mosh_movement.label }}</label>
-                    {{ form.data_mosh_movement(required=True) }}
-                    <span class="help-text">How blocks should be manipulated</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.data_mosh_color_swap.label }}</label>
-                    {{ form.data_mosh_color_swap(required=True) }}
-                    <span class="help-text">Control color channel swapping</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.data_mosh_invert.label }}</label>
-                    {{ form.data_mosh_invert(required=True) }}
-                    <span class="help-text">Control color inversion</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.data_mosh_shift.label }}</label>
-                    {{ form.data_mosh_shift(required=True) }}
-                    <span class="help-text">Control channel value shifting</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.data_mosh_flip.label }}</label>
-                    {{ form.data_mosh_flip(required=True) }}
-                    <span class="help-text">Control block flipping</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.data_mosh_seed.label }}</label>
-                    {{ form.data_mosh_seed(min=0, type="number") }}
-                    <span class="help-text">Optional: Set for reproducible results</span>
-                </div>
-            </div>
-            
-            <!-- Color Shift Expansion -->
-            <div id="color_shift_expansion_fields" class="effect-fields" style="display:none;">
-                <h3>Color Shift Expansion</h3>
-                <div class="alert alert-info">
-                    <strong>About Color Shift Expansion:</strong> This effect creates expanding regions of color shifts from random seed points. Colors radiate outward in patterns, creating a psychedelic or heatmap-like effect. You can control the pattern type, color themes, and expansion style to create unique flowing color transformations that partially preserve your original image.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.color_shift_num_points.label }}</label>
-                    {{ form.color_shift_num_points(required=True, min=1, max=100, type="number") }}
-                    <span class="help-text">Number of random seed points (1-100)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.color_shift_amount.label }}</label>
-                    {{ form.color_shift_amount(required=True, min=1, max=10, type="number") }}
-                    <span class="help-text">Intensity of color effect (1-10, higher = more dramatic)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.expansion_type.label }}</label>
-                    {{ form.expansion_type(required=True) }}
-                    <span class="help-text">How the color shift expands from seed points</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.pattern_type.label }}</label>
-                    {{ form.pattern_type(required=True) }}
-                    <span class="help-text">Pattern for distributing seed points</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.color_theme.label }}</label>
-                    {{ form.color_theme(required=True) }}
-                    <span class="help-text">Color palette to use for the effect</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.saturation_boost.label }}</label>
-                    {{ form.saturation_boost(min=0.0, max=1.0, step=0.1, type="number") }}
-                    <span class="help-text">Increase color saturation (0.0-1.0)</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.value_boost.label }}</label>
-                    {{ form.value_boost(min=0.0, max=1.0, step=0.1, type="number") }}
-                    <span class="help-text">Increase brightness (0.0-1.0)</span>
-                </div>
-                <div class="form-group">
-                    <label>{{ form.decay_factor.label }}</label>
-                    {{ form.decay_factor(min=0.0, max=1.0, step=0.1, type="number") }}
-                    <span class="help-text">Controls effect intensity falloff from seed points (0=uniform, 1=concentrated)</span>
-                </div>
-            </div>
-            
-            <!-- Perlin Displacement -->
-            <div id="perlin_displacement_fields" class="effect-fields" style="display:none;">
-                <h3>Perlin Displacement</h3>
-                <div class="alert alert-info">
-                    <strong>About Perlin Displacement:</strong> This effect warps your image by shifting pixels according to a Perlin noise pattern. The result looks like your image is reflected in rippling water or a funhouse mirror. The noise pattern creates organically flowing distortions rather than mechanical or uniform warping, preserving the original image content in a dreamlike state.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_displacement_scale.label }}</label>
-                    {{ form.perlin_displacement_scale(required=True, min=10, max=500, type="number") }}
-                    <span class="help-text">Scale of the noise (10-500, higher = smoother distortion)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_displacement_intensity.label }}</label>
-                    {{ form.perlin_displacement_intensity(required=True, min=1, max=100, type="number") }}
-                    <span class="help-text">Maximum pixel displacement (1-100, higher = more extreme warping)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_displacement_octaves.label }}</label>
-                    {{ form.perlin_displacement_octaves(required=True, min=1, max=10, type="number") }}
-                    <span class="help-text">Number of noise layers (1-10, higher = more detail)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_displacement_persistence.label }}</label>
-                    {{ form.perlin_displacement_persistence(required=True, min=0.1, max=1.0, step=0.1, type="number") }}
-                    <span class="help-text">Amplitude of each octave (0.1-1.0)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.perlin_displacement_lacunarity.label }}</label>
-                    {{ form.perlin_displacement_lacunarity(required=True, min=1.0, max=4.0, step=0.1, type="number") }}
-                    <span class="help-text">Frequency of each octave (1.0-4.0)</span>
-                </div>
-            </div>
-            
-            <!-- Voronoi Pixel Sort -->
-            <div id="voronoi_sort_fields" class="effect-fields" style="display:none;">
-                <h3>Voronoi Pixel Sort</h3>
-                <div class="alert alert-info">
-                    <strong>About Voronoi Pixel Sort:</strong> This effect divides your image into Voronoi cells (organic-looking regions around seed points) and sorts pixels within each cell. The result creates a cellular, crystalline structure that follows the natural Voronoi pattern. By controlling sorting direction and orientation, you can create flowing lines within each cell that follow various patterns.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.voronoi_num_cells.label }}</label>
-                    {{ form.voronoi_num_cells(required=True, min=10, max=1000, type="number") }}
-                    <span class="help-text">Number of Voronoi cells (10-1000)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.voronoi_size_variation.label }}</label>
-                    {{ form.voronoi_size_variation(required=True, min=0.0, max=1.0, step=0.1, type="number") }}
-                    <span class="help-text">Variation in cell sizes (0.0-1.0, higher = more random sizes)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.voronoi_sort_by.label }}</label>
-                    {{ form.voronoi_sort_by(required=True) }}
-                    <span class="help-text">Property to sort pixels by within each cell</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.voronoi_sort_order.label }}</label>
-                    {{ form.voronoi_sort_order(required=True) }}
-                    <span class="help-text">Angular ordering around the cell center</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.voronoi_orientation.label }}</label>
-                    {{ form.voronoi_orientation(required=True) }}
-                    <span class="help-text">Direction of sorting lines within each cell</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.voronoi_start_position.label }}</label>
-                    {{ form.voronoi_start_position(required=True) }}
-                    <span class="help-text">Starting position for pixel sorting within each cell</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.voronoi_seed.label }}</label>
-                    {{ form.voronoi_seed(required=True, min=1, max=9999, type="number") }}
-                    <span class="help-text">Seed for cell generation (1-9999, same seed = same pattern)</span>
-                </div>
-            </div>
-            
-            <!-- RGB Channel Shift -->
-            <div id="channel_shift_fields" class="effect-fields" style="display:none;">
-                <h3>RGB Channel Shift</h3>
-                <div class="alert alert-info">
-                    <strong>About RGB Channel Shift:</strong> This effect physically separates the RGB color channels of your image, creating a chromatic aberration effect similar to misaligned color prints or 3D anaglyph images. You can either shift channels apart (like a color fringing effect) or mirror them in different directions for more dramatic transformations.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.channel_mode.label }}</label>
-                    {{ form.channel_mode(required=True, id="channel_mode") }}
-                    <span class="help-text">Choose between shifting channels apart or mirroring them</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.channel_shift_center.label }}</label>
-                    {{ form.channel_shift_center(required=True) }}
-                    <span class="help-text" id="center_channel_help">Channel that stays centered/unchanged (others will be processed)</span>
-                </div>
-                
-                <!-- Shift-specific fields -->
-                <div id="shift_mode_fields">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.channel_shift_amount.label }}</label>
-                        {{ form.channel_shift_amount(required=True, min=1, max=500, type="number") }}
-                        <span class="help-text">Number of pixels to shift non-centered channels (1-500)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.channel_shift_direction.label }}</label>
-                        {{ form.channel_shift_direction(required=True) }}
-                        <span class="help-text">Direction to shift the channels</span>
-                    </div>
-                </div>
-                
-                <!-- Mirror-specific message -->
-                <div id="mirror_mode_info" style="display:none;">
-                    <div class="form-group">
-                        <p class="help-text">In mirror mode, one channel remains unchanged while the other two are mirrored - one horizontally and one vertically.</p>
-                        <p class="help-text">No additional settings needed for mirror mode.</p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- JPEG Artifacts -->
-            <div id="jpeg_artifacts_fields" class="effect-fields" style="display:none;">
-                <h3>JPEG Artifacts</h3>
-                <div class="alert alert-info">
-                    <strong>About JPEG Artifacts:</strong> This effect simulates the compression artifacts that appear in highly compressed JPEG images. It creates blocky patterns, color banding, and edge ringing that are characteristic of low-quality JPEGs. The intensity control lets you determine how severely degraded the image becomes.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.jpeg_intensity.label }}</label>
-                    {{ form.jpeg_intensity(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
-                    <span class="help-text">Intensity of JPEG degradation (0.0-1.0, higher = more artifacts)</span>
-                </div>
-            </div>
-            
-            <!-- Pixel Scatter -->
-            <div id="pixel_scatter_fields" class="effect-fields" style="display:none;">
-                <h3>Pixel Scatter</h3>
-                <div class="alert alert-info">
-                    <strong>About Pixel Scatter:</strong> This effect identifies pixels in a specific range (e.g., certain brightness or hue values) and randomly scatters them horizontally or vertically. This creates streak-like artifacts that selectively affect only portions of your image matching your criteria, resulting in a unique distressed or particle-like effect.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.scatter_direction.label }}</label>
-                    {{ form.scatter_direction(required=True) }}
-                    <span class="help-text">Direction to scatter pixels within rows or columns</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.scatter_select_by.label }}</label>
-                    {{ form.scatter_select_by(required=True) }}
-                    <span class="help-text">Criterion for selecting which pixels to scatter</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.scatter_min_value.label }}</label>
-                    {{ form.scatter_min_value(required=True, min=0, max=360, step=1, type="number") }}
-                    <span class="help-text">Minimum value for pixel selection (0-360 for hue, 0-255 for brightness)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.scatter_max_value.label }}</label>
-                    {{ form.scatter_max_value(required=True, min=0, max=360, step=1, type="number") }}
-                    <span class="help-text">Maximum value for pixel selection (0-360 for hue, 0-255 for brightness)</span>
-                </div>
-            </div>
-            
-            <!-- Databending fields -->
-            <div id="databend_fields" class="effect-fields" style="display: none;">
-                <h3>Databending Settings</h3>
-                <div class="alert alert-info">
-                    <strong>About Databending:</strong> This effect simulates binary data corruption by applying various glitch-like transformations to the image. 
-                    It applies pixel shifts, channel mixing, block repeats, XOR operations, and other effects randomized by the seed value.
-                    Experiment with different intensity values and seeds to create unique glitches!
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="databend-intensity">Databend Intensity</label>
-                        <input type="number" id="databend-intensity" name="databend_intensity" min="0.1" max="1.0" step="0.1" value="0.1">
-                        <span class="help-text">Controls the number and strength of glitch effects (0.1-1.0). Start low for subtle effects.</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="databend-preserve-header">Preserve Header</label>
-                        <select id="databend-preserve-header" name="databend_preserve_header">
-                            <option value="true">Yes (Protect Top Area)</option>
-                            <option value="false">No (Glitch Everything)</option>
-                        </select>
-                        <span class="help-text">When enabled, protects the top 10% of the image from glitching to preserve key visual elements.</span>
-                    </div>
-                </div>
+    <div class="main-content">
+        <h1>XWAVE XLITCH ART</h1>
+        <div class="form-container">
+            <form method="POST" enctype="multipart/form-data" id="image-form">
+                {{ form.csrf_token }} 
                 
                 <div class="form-row">
-                    <div class="form-group">
-                        <label for="databend-seed">Random Seed</label>
-                        <input type="number" id="databend-seed" name="databend_seed" min="1" max="9999" value="42">
-                        <span class="help-text">Controls the randomization of glitch effects. Different seeds create completely different patterns.</span>
+                    <div class="form-group" id="form-group-primary_image">
+                        {{ form.primary_image.label(class_="required-field") }}
+                        {{ form.primary_image(class_="form-control-file", onchange="previewImage(event)", id="primary-image-input") }}
+                        {% if form.primary_image.errors %}
+                            <ul class="error-message">{% for error in form.primary_image.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                        {% endif %}
                     </div>
-                </div>
-            </div>
-            
-            <!-- Histogram Glitch fields -->
-            <div id="histogram_glitch_fields" class="effect-fields" style="display: none;">
-                <h3>Histogram Glitch Settings</h3>
-                <div class="alert alert-info">
-                    <strong>About Histogram Glitch:</strong> This effect applies different mathematical transformations to each color channel, creating solarization and unique color shifts. 
-                    Experiment with different combinations of transformation modes for interesting results.
-                </div>
-                
-                <!-- Channel Treatments -->
-                <h4>Channel Transformations</h4>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.hist_r_mode.label }}</label>
-                        {{ form.hist_r_mode(value="solarize") }}
-                        <span class="help-text">Mathematical transformation for the red channel</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.hist_g_mode.label }}</label>
-                        {{ form.hist_g_mode(value="solarize") }}
-                        <span class="help-text">Mathematical transformation for the green channel</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.hist_b_mode.label }}</label>
-                        {{ form.hist_b_mode(value="solarize") }}
-                        <span class="help-text">Mathematical transformation for the blue channel</span>
-                    </div>
-                </div>
-                
-                <!-- Solarize Parameters -->
-                <h4>Solarization Parameters</h4>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.hist_r_freq.label }}</label>
-                        {{ form.hist_r_freq(min=0.1, max=10.0, step=0.1, type="number", value="1.0") }}
-                        <span class="help-text">Wave frequency for red solarization</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.hist_r_phase.label }}</label>
-                        {{ form.hist_r_phase(min=0.0, max=6.28, step=0.1, type="number") }}
-                        <span class="help-text">Wave phase shift for red solarization</span>
+                    <div class="form-group" id="form-group-effect">
+                        {{ form.effect.label(class_="required-field") }}
+                        {{ form.effect(class_="form-control", id="effect") }}
+                        {% if form.effect.errors %}
+                            <ul class="error-message">{% for error in form.effect.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                        {% endif %}
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.hist_g_freq.label }}</label>
-                        {{ form.hist_g_freq(min=0.1, max=10.0, step=0.1, type="number", value="1.0") }}
-                        <span class="help-text">Wave frequency for green solarization</span>
+                <div id="effect-specific-fields-container" class="effect-fields">
+                    {# Initial rendering of specific form fields if available (e.g., on page load with selection or validation error) #}
+                    {% if effect_specific_form and selected_effect_key %}
+                        {% include '_effect_form_fields.html' %}
+                    {% else %}
+                        <p id="no-effect-selected-text">Select an effect to see its parameters.</p>
+                    {% endif %}
+                </div>
+                
+                <div class="form-row main-submit-row">
+                    <div class="form-group submit-button-group">
+                         {{ form.submit(class_="button", id="process-button") }}
                     </div>
-                    <div class="form-group">
-                        <label>{{ form.hist_g_phase.label }}</label>
-                        {{ form.hist_g_phase(min=0.0, max=6.28, step=0.1, type="number") }}
-                        <span class="help-text">Wave phase shift for green solarization</span>
+                     <div class="form-group reset-button-group">
+                        <button type="button" id="reset-button" class="button button-secondary">Reset Form</button>
                     </div>
                 </div>
+                <div id="global-error-message" class="error-message global-error" style="display:none;"></div>
+            </form>
+        </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.hist_b_freq.label }}</label>
-                        {{ form.hist_b_freq(min=0.1, max=10.0, step=0.1, type="number", value="1.0") }}
-                        <span class="help-text">Wave frequency for blue solarization</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.hist_b_phase.label }}</label>
-                        {{ form.hist_b_phase(min=0.0, max=6.28, step=0.1, type="number") }}
-                        <span class="help-text">Wave phase shift for blue solarization</span>
-                    </div>
-                </div>
-                
-                <!-- Gamma Parameter -->
-                <h4>Gamma Parameter</h4>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.hist_gamma.label }}</label>
-                        {{ form.hist_gamma(min=0.1, max=3.0, step=0.1, type="number", value="0.5") }}
-                        <span class="help-text">Gamma value for gamma transformation (0.1-3.0)</span>
+        <div id="image-preview" style="display:none;" class="preview-container">
+            <h2>Image Preview</h2>
+            <div class="preview-container">
+                <div class="preview-box" id="processed-container" style="display:none;">
+                    <h3>Processed Image</h3>
+                    <img id="processed-preview" src="" alt="Processed Image">
+                    <div class="action-buttons">
+                        <a id="download-link" href="" download>Download Processed Image</a>
+                        <button id="use-processed-button" type="button">Use as Input Image</button>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Ripple Effect fields -->
-            <div id="ripple_fields" class="effect-fields" style="display: none;">
-                <h3>Ripple Effect Settings</h3>
-                <div class="alert alert-info">
-                    <strong>About Ripple Effect:</strong> This effect simulates water droplets on the image surface, creating ripple distortions. 
-                    You can control the number of droplets, their intensity, and apply additional distortion effects like color shifting or pixelation for more dramatic results.
+                <div class="preview-box">
+                    <h3>Original Image</h3>
+                    <img id="original-preview" src="" alt="Original Image">
                 </div>
-                
-                <!-- Basic Ripple Parameters -->
-                <h4>Ripple Parameters</h4>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.ripple_num_droplets.label }}</label>
-                        {{ form.ripple_num_droplets(min=1, max=20, type="number") }}
-                        <span class="help-text">Number of ripple centers (1-20)</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.ripple_amplitude.label }}</label>
-                        {{ form.ripple_amplitude(min=1.0, max=50.0, step=1.0, type="number") }}
-                        <span class="help-text">Strength of the ripple effect (1.0-50.0)</span>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.ripple_frequency.label }}</label>
-                        {{ form.ripple_frequency(min=0.01, max=1.0, step=0.01, type="number") }}
-                        <span class="help-text">Frequency of ripple waves (0.01-1.0)</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.ripple_decay.label }}</label>
-                        {{ form.ripple_decay(min=0.001, max=0.1, step=0.001, type="number") }}
-                        <span class="help-text">How quickly ripples fade with distance (0.001-0.1)</span>
-                    </div>
-                </div>
-                
-                <!-- Distortion Type Selection -->
-                <h4>Distortion Options</h4>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>{{ form.ripple_distortion_type.label }}</label>
-                        {{ form.ripple_distortion_type(id="ripple_distortion_type") }}
-                        <span class="help-text">Type of additional distortion to apply</span>
-                    </div>
-                </div>
-                
-                <!-- Color Shift Parameters -->
-                <div id="ripple_color_shift_fields" class="nested-fields">
-                    <h4>Color Shift Factors</h4>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>{{ form.ripple_color_r.label }}</label>
-                            {{ form.ripple_color_r(min=0.5, max=1.5, step=0.1, type="number") }}
-                            <span class="help-text">Red channel displacement factor (0.5-1.5)</span>
-                        </div>
-                        <div class="form-group">
-                            <label>{{ form.ripple_color_g.label }}</label>
-                            {{ form.ripple_color_g(min=0.5, max=1.5, step=0.1, type="number") }}
-                            <span class="help-text">Green channel displacement factor (0.5-1.5)</span>
-                        </div>
-                        <div class="form-group">
-                            <label>{{ form.ripple_color_b.label }}</label>
-                            {{ form.ripple_color_b(min=0.5, max=1.5, step=0.1, type="number") }}
-                            <span class="help-text">Blue channel displacement factor (0.5-1.5)</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Pixelation Parameters -->
-                <div id="ripple_pixelation_fields" class="nested-fields" style="display: none;">
-                    <h4>Pixelation Parameters</h4>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>{{ form.ripple_pixelation_scale.label }}</label>
-                            {{ form.ripple_pixelation_scale(min=2, max=20, type="number") }}
-                            <span class="help-text">Size of pixels (2-20, higher = larger pixels)</span>
-                        </div>
-                        <div class="form-group">
-                            <label>{{ form.ripple_pixelation_max_mag.label }}</label>
-                            {{ form.ripple_pixelation_max_mag(min=1.0, max=20.0, step=0.5, type="number") }}
-                            <span class="help-text">Maximum magnitude for pixelation blend (1.0-20.0)</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Posterfy Effect fields -->
-            <div id="posterize_fields" class="effect-fields" style="display: none;">
-                <h3>Posterfy Settings</h3>
-                <div class="alert alert-info">
-                    <strong>About Posterfy:</strong> This effect reduces the number of colors in your image, creating a vintage poster-like look with well-defined color bands. Fewer levels create more dramatic, stylized results.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.posterize_levels.label }}</label>
-                    {{ form.posterize_levels(required=True, min=2, max=32, type="number") }}
-                    <span class="help-text">Number of color levels per channel (2-32, lower = more stylized)</span>
-                </div>
-            </div>
-            
-            <!-- Hue Skrift Effect fields -->
-            <div id="curved_hue_shift_fields" class="effect-fields" style="display: none;">
-                <h3>Hue Skrift Settings</h3>
-                <div class="alert alert-info">
-                    <strong>About Hue Skrift:</strong> This effect applies a curved hue shift across your image, creating gradual color transformations. The curve value controls how colors are redistributed, while the shift amount determines the intensity of the transformation.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.hue_curve.label }}</label>
-                    {{ form.hue_curve(required=True, min=1, max=360, type="number") }}
-                    <span class="help-text">Controls the curve of the hue transformation (1-360)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.hue_shift_amount.label }}</label>
-                    {{ form.hue_shift_amount(required=True, min=-180, max=180, type="number") }}
-                    <span class="help-text">Controls the intensity of the hue shift (-180 to 180)</span>
-                </div>
-            </div>
-            
-            <!-- Contour Effect fields -->
-            <div id="contour_fields" class="effect-fields" style="display: none;">
-                <h3>Contour Settings</h3>
-                <div class="alert alert-info">
-                    <strong>About Contour:</strong> This effect creates line art from your image by tracing contours at different intensity levels. The result is a sketch-like rendering with clean lines on a black background, similar to topographic maps or technical drawings. Adjust settings to control the level of detail and style of the lines.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_num_levels.label }}</label>
-                    {{ form.contour_num_levels(required=True, min=5, max=30, type="number", value="10") }}
-                    <span class="help-text">Number of contour levels to trace (5-30, higher = more detail)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_blur_kernel_size.label }}</label>
-                    {{ form.contour_blur_kernel_size(required=True, min=3, max=33, step=2, type="number", value="5") }}
-                    <span class="help-text">Size of blur kernel (3-33, must be odd, higher = smoother edges)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_sobel_kernel_size.label }}</label>
-                    {{ form.contour_sobel_kernel_size(required=True, min=3, max=33, step=2, type="number", value="15") }}
-                    <span class="help-text">Size of edge detection kernel (3-33, must be odd, higher = stronger/wider edges)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_noise_std.label }}</label>
-                    {{ form.contour_noise_std(required=True, min=0, max=10, type="number", value="5") }}
-                    <span class="help-text">Amount of noise to add to contours (0-10, higher = more jittery lines)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_smooth_sigma.label }}</label>
-                    {{ form.contour_smooth_sigma(required=True, min=1, max=20, type="number", value="16") }}
-                    <span class="help-text">Smoothness of contour lines (1-20, higher = smoother lines)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_line_thickness.label }}</label>
-                    {{ form.contour_line_thickness(required=True, min=1, max=5, type="number", value="1") }}
-                    <span class="help-text">Thickness of contour lines (1-5 pixels)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_grad_threshold.label }}</label>
-                    {{ form.contour_grad_threshold(required=True, min=1, max=100, type="number", value="28") }}
-                    <span class="help-text">Gradient threshold for filtering contours (1-100, higher = fewer background lines)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_min_distance.label }}</label>
-                    {{ form.contour_min_distance(required=True, min=1, max=20, type="number", value="3") }}
-                    <span class="help-text">Minimum distance between points (1-20, higher = less dense lines)</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.contour_max_line_length.label }}</label>
-                    {{ form.contour_max_line_length(required=True, min=50, max=500, type="number", value="256") }}
-                    <span class="help-text">Maximum length of a line segment (50-500, lower = more segments)</span>
-                </div>
-            </div>
-            
-            <!-- Masked Merge -->
-            <div id="masked_merge_fields" class="effect-fields" style="display: none;">
-                <h3>Masked Merge</h3>
-                <div class="alert alert-info">
-                    <strong>About Masked Merge:</strong> This effect merges two images using a mask pattern that selectively shows parts of each image. Choose between checkerboard, striped, or Perlin noise patterns and adjust the settings to create different visual effects.
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.masked_merge_secondary.label }}</label>
-                    {{ form.masked_merge_secondary(id="masked-merge-secondary-input", required=True) }}
-                    <span class="help-text">The secondary image to merge with the primary image</span>
-                </div>
-                <div class="form-group">
-                    <label class="required-field">{{ form.mask_type.label }}</label>
-                    {{ form.mask_type(id="mask_type", required=True) }}
-                    <span class="help-text">The type of mask pattern to use for merging</span>
-                </div>
-                
-                <!-- Checkerboard-specific fields -->
-                <div id="checkerboard_fields" class="nested-fields">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.mask_width.label }}</label>
-                        {{ form.mask_width(min=8, max=512, type="number", required=True) }}
-                        <span class="help-text">Width of each cell in the checkerboard pattern (pixels)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.mask_height.label }}</label>
-                        {{ form.mask_height(min=8, max=512, type="number", required=True) }}
-                        <span class="help-text">Height of each cell in the checkerboard pattern (pixels)</span>
-                    </div>
-                </div>
-                
-                <!-- Random checkerboard seed field -->
-                <div class="form-group" id="mask_random_seed_field" style="display: none;">
-                    <label>{{ form.mask_random_seed.label }}</label>
-                    {{ form.mask_random_seed(min=1, max=9999, type="number") }}
-                    <span class="help-text">Seed for random pattern generation (same seed = same pattern)</span>
-                </div>
-                
-                <!-- Striped-specific fields -->
-                <div id="striped_fields" class="nested-fields" style="display: none;">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.stripe_width.label }}</label>
-                        {{ form.stripe_width(min=1, max=200, type="number", required=True) }}
-                        <span class="help-text">Width of each stripe in pixels</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.stripe_angle.label }}</label>
-                        {{ form.stripe_angle(min=0, max=180, type="number", required=True) }}
-                        <span class="help-text">Angle of the stripes in degrees (0-180)</span>
-                    </div>
-                    <!-- Linear Gradient Direction (shown only for linear_gradient_striped) -->
-                    <div class="form-group" id="gradient_direction_field" style="display: none;">
-                        <label class="required-field">{{ form.gradient_direction.label }}</label>
-                        {{ form.gradient_direction(required=True) }}
-                        <span class="help-text">Direction of the linear gradient across each stripe</span>
-                    </div>
-                </div>
-                
-                <!-- Gradient description for gradient stripes -->
-                <div id="gradient_description" class="nested-fields" style="display: none;">
-                    <div class="form-group">
-                        <div class="alert alert-info">
-                            <strong>About Gradient Striped:</strong> Creates smooth transitions between images using sine wave gradients rather than hard edges. The stripe width controls the frequency of these transitions.
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Perlin noise fields -->
-                <div id="perlin_fields" class="nested-fields" style="display: none;">
-                    <div class="form-group">
-                        <div class="alert alert-info">
-                            <strong>About Perlin Noise:</strong> Creates natural, cloud-like transition boundaries between the two images rather than a simple crossfade, resulting in an organic-looking composite image.
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.perlin_noise_scale.label }}</label>
-                        {{ form.perlin_noise_scale(required=True, min=0.001, max=0.1, step=0.001, type="number") }}
-                        <span class="help-text">Scale of noise (0.001-0.1, higher = more detailed pattern)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.perlin_threshold.label }}</label>
-                        {{ form.perlin_threshold(required=True, min=0.0, max=1.0, step=0.01, type="number") }}
-                        <span class="help-text">Threshold for pixel replacement (0.0-1.0, higher = less replacement)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.perlin_octaves.label }}</label>
-                        {{ form.perlin_octaves(required=True, min=1, max=8, type="number") }}
-                        <span class="help-text">Number of octaves (1=smooth curves, 8=detailed noise)</span>
-                    </div>
-                </div>
-                
-                <!-- Voronoi fields -->
-                <div id="voronoi_fields" class="nested-fields" style="display: none;">
-                    <div class="form-group">
-                        <div class="alert alert-info">
-                            <strong>About Voronoi Cells:</strong> Creates a geometric pattern of angular cells with straight edges, randomly assigning each cell to show either the primary or secondary image. This creates a striking crystalline composite effect.
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.voronoi_cells.label }}</label>
-                        {{ form.voronoi_cells(required=True, min=10, max=500, type="number") }}
-                        <span class="help-text">Number of cells (10-500, higher = more detailed pattern with smaller cells)</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.mask_random_seed.label }}</label>
-                        {{ form.mask_random_seed(min=1, max=9999, type="number") }}
-                        <span class="help-text">Seed for random pattern generation (same seed = same pattern)</span>
-                    </div>
-                </div>
-                
-                <!-- Concentric Rectangles fields -->
-                <div id="concentric_rectangles_fields" class="nested-fields" style="display: none;">
-                    <div class="form-group">
-                        <div class="alert alert-info">
-                            <strong>About Concentric Rectangles:</strong> Creates a mask of concentric rectangles that follow the aspect ratio of your image. Each alternating rectangle shows either the primary or secondary image, creating a captivating, frame-like effect that draws the eye inward.
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.concentric_rectangle_width.label }}</label>
-                        {{ form.concentric_rectangle_width(min=2, max=100, type="number", required=True) }}
-                        <span class="help-text">Width of each rectangle band in pixels (2-100, smaller values create more detailed patterns)</span>
-                    </div>
-                </div>
-                
-                <!-- Concentric Circles fields -->
-                <div id="concentric_circles_fields" class="nested-fields" style="display: none;">
-                    <div class="form-group">
-                        <div class="alert alert-info">
-                            <strong>About Concentric Circles:</strong> Creates a mask of concentric circles (or ellipses, depending on image aspect ratio) originating from a specified point. Alternating rings show either the primary or secondary image, creating a ripple-like merge effect.
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.concentric_circle_width.label }}</label>
-                        {{ form.concentric_circle_width(min=2, max=100, type="number", required=True) }}
-                        <span class="help-text">Width of each circle band (2-100, smaller values = more rings)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.concentric_origin.label }}</label>
-                        {{ form.concentric_origin(required=True) }}
-                        <span class="help-text">Point where the circles originate (center or corners)</span>
-                    </div>
-                </div>
-                
-                <!-- Random Triangles fields -->
-                <div id="random_triangles_fields" class="nested-fields" style="display: none;">
-                    <div class="form-group">
-                        <div class="alert alert-info">
-                            <strong>About Random Triangles:</strong> Creates a mask from a grid of randomly filled equilateral triangles, similar to Random Checkerboard but with triangular geometry.
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.triangle_size.label }}</label>
-                        {{ form.triangle_size(min=4, max=256, type="number", required=True) }}
-                        <span class="help-text">Side length of each equilateral triangle (4-256 pixels)</span>
-                    </div>
-                    <!-- Random seed field will be shown by JS when this mask type is selected -->
-                </div>
-            </div>
-            
-            <div id="block_shuffle_fields" class="effect-fields" style="display:none;">
-                <h3>Block Shuffle</h3>
-                <div class="alert alert-info">
-                    <strong>About Block Shuffle:</strong> This effect divides your image into blocks of the specified width and height, then randomly rearranges the blocks. You can optionally enter a random seed for reproducible shuffles.
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="required-field">{{ form.block_shuffle_block_width.label }}</label>
-                        {{ form.block_shuffle_block_width(required=True, min=2, max=512, type="number") }}
-                        <span class="help-text">Width of each block (2-512)</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="required-field">{{ form.block_shuffle_block_height.label }}</label>
-                        {{ form.block_shuffle_block_height(required=True, min=2, max=512, type="number") }}
-                        <span class="help-text">Height of each block (2-512)</span>
-                    </div>
-                    <div class="form-group">
-                        <label>{{ form.block_shuffle_seed.label }}</label>
-                        {{ form.block_shuffle_seed(min=1, max=9999, type="number") }}
-                        <span class="help-text">Optional: Enter a seed for repeatable shuffles</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="content-block form-buttons-block">
-                <button type="submit" id="process-button">Process Image</button>
-                <button type="button" id="reset-button">Reset Form</button>
-            </div>
-        </form>
-    </div>
-    
-    <!-- Image Preview Section -->
-    <div class="image-preview" id="image-preview">
-        <h2>Image Preview</h2>
-        <div class="preview-container">
-            <div class="preview-box" id="processed-container" style="display:none;">
-                <h3>Processed Image</h3>
-                <img id="processed-preview" src="" alt="Processed Image">
-                <div class="action-buttons">
-                    <a id="download-link" href="" download>Download Processed Image</a>
-                    <button id="use-processed-button" type="button">Use as Input Image</button>
-                </div>
-            </div>
-            <div class="preview-box">
-                <h3>Original Image</h3>
-                <img id="original-preview" src="" alt="Original Image">
             </div>
         </div>
-    </div>
-    
-    <!-- Debug Info Section -->
-    <div class="debug-info" id="debug-info">
-        <h3>Debug Information</h3>
-        <div id="debug-content"></div>
+        
+        <!-- Debug Info Section -->
+        <div class="debug-info" id="debug-info">
+            <h3>Debug Information</h3>
+            <div id="debug-content"></div>
+        </div>
     </div>
     
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
-        // Handle sort mode selection to show/hide diagonal fields
+        // This entire script block is new or heavily refactored.
         $(document).ready(function() {
-            $('#sort_mode').change(function() {
-                var sortMode = $(this).val();
-                if (sortMode === 'diagonal') {
-                    $('#diagonal_fields').show();
-                } else {
-                    $('#diagonal_fields').hide();
+            var selected_effect_key_from_server = {{ selected_effect_key|tojson if selected_effect_key is not none else 'null'|safe }};
+            var initialEffectFromDropdown = $('#effect').val();
+
+            function loadEffectFields(effectKey, isInitialLoad) {
+                if (!effectKey) {
+                    $('#effect-specific-fields-container').html('<p id="no-effect-selected-text">Select an effect to see its parameters.</p>');
+                    return;
                 }
-            });
-            
-            // Trigger change on page load to set initial state
-            $('#sort_mode').trigger('change');
-            
-            // Trigger the effect selection change on page load
-            $('#effect').trigger('change');
-        });
+                console.log("(Re)Loading fields for effect:", effectKey, "Initial Load Flag:", isInitialLoad);
+                $('#effect-specific-fields-container').html('<p class="loading-text">Loading parameters for ' + effectKey.replace(/_/g, ' ') + '...</p>');
 
-        document.addEventListener("DOMContentLoaded", function(){
-            var effectField = document.getElementById("effect");
-            var offsetOptions = document.getElementById("offset-options");
-            var sliceShuffleOptions = document.getElementById("slice-shuffle-options");
-            var sliceOffsetOptions = document.getElementById("slice-offset-options");
-            var sliceReductionOptions = document.getElementById("slice-reduction-options");
-            var blockShuffleFields = document.getElementById("block_shuffle_fields");
-
-            // For slice offset mode toggle
-            var sliceOffsetModeField = document.getElementById("slice_offset_mode");
-            var sliceOffsetSineOptions = document.getElementById("slice_offset_sine_options");
-            var sliceOffsetRandomOptions = document.getElementById("slice_offset_random_options");
-
-            function toggleEffectOptions() {
-                // Hide all option sections first
-                offsetOptions.style.display = "none";
-                sliceShuffleOptions.style.display = "none";
-                sliceOffsetOptions.style.display = "none";
-                sliceReductionOptions.style.display = "none";
-                blockShuffleFields.style.display = "none";
-
-                // Show the appropriate section based on selected effect
-                if(effectField.value === "offset") {
-                    offsetOptions.style.display = "block";
-                } else if(effectField.value === "slice_shuffle") {
-                    sliceShuffleOptions.style.display = "block";
-                } else if(effectField.value === "slice_offset") {
-                    sliceOffsetOptions.style.display = "block";
-                    toggleSliceOffsetMode(); // Also toggle the mode options
-                } else if(effectField.value === "slice_reduction") {
-                    sliceReductionOptions.style.display = "block";
-                } else if(effectField.value === "block_shuffle") {
-                    blockShuffleFields.style.display = "block";
-                }
+                $.ajax({
+                    url: '/get-effect-form/' + effectKey,
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        if (data.success) {
+                            $('#effect-specific-fields-container').html(data.html);
+                            setupConditionalFields(effectKey);
+                            if (isInitialLoad && selected_effect_key_from_server && selected_effect_key_from_server !== $('#effect').val()) {
+                                console.log('Syncing dropdown to server key:', selected_effect_key_from_server);
+                                $('#effect').val(selected_effect_key_from_server);
+                            }
+                        } else {
+                            $('#effect-specific-fields-container').html('<p class="error-message">Error loading parameters: ' + (data.error || 'Unknown error') + '</p>');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error("Error loading effect fields:", status, error, xhr.responseText);
+                        var errorDetail = xhr.responseJSON ? xhr.responseJSON.error : error;
+                        $('#effect-specific-fields-container').html('<p class="error-message">Error loading parameters. Please try again. (' + errorDetail + ')</p>');
+                    }
+                });
             }
+            
+            var serverRenderedSpecificFields = $('#effect-specific-fields-container').children().not('#no-effect-selected-text, .loading-text').length > 0;
+            console.log('selected_effect_key_from_server:', selected_effect_key_from_server, 'initialEffectFromDropdown:', initialEffectFromDropdown, 'serverRenderedSpecificFields:', serverRenderedSpecificFields);
 
-            function toggleSliceOffsetMode() {
-                if(sliceOffsetModeField.value === "sine") {
-                    sliceOffsetSineOptions.style.display = "block";
-                    sliceOffsetRandomOptions.style.display = "none";
-                } else {
-                    sliceOffsetSineOptions.style.display = "none";
-                    sliceOffsetRandomOptions.style.display = "block";
+            if (selected_effect_key_from_server) {
+                if (!serverRenderedSpecificFields || selected_effect_key_from_server !== initialEffectFromDropdown) {
+                    console.log('Case 1: Server key exists, but fields not rendered OR dropdown mismatch. Loading for server key.');
+                    loadEffectFields(selected_effect_key_from_server, true); 
+                } else { 
+                    console.log('Case 2: Server key exists, fields rendered, dropdown matches. Setting up conditionals.');
+                    if ($('#effect').val() !== selected_effect_key_from_server) { $('#effect').val(selected_effect_key_from_server); }
+                    setupConditionalFields(selected_effect_key_from_server); 
                 }
-            }
-
-            // Add event listeners
-            effectField.addEventListener("change", toggleEffectOptions);
-            sliceOffsetModeField.addEventListener("change", toggleSliceOffsetMode);
-            
-            // Initial setup
-            toggleEffectOptions(); // initial check on page load
-        });
-
-        // JavaScript to show/hide effect parameters based on selected effect
-        document.addEventListener("DOMContentLoaded", function() {
-            var effectSelect = document.getElementById("effect");
-            // ... existing code ...
-            
-            // Define all field divs
-            var fieldDivs = [
-                // ... existing field divs ...
-                document.getElementById("curved_hue_shift_fields"),
-                document.getElementById("contour_fields")
-            ];
-            
-            function hideAllFieldDivs() {
-                for (var i = 0; i < fieldDivs.length; i++) {
-                    if (fieldDivs[i]) {
-                        fieldDivs[i].style.display = "none";
+            } else { 
+                if (initialEffectFromDropdown && !serverRenderedSpecificFields) {
+                    console.log('Case 3: No server key, dropdown has value, fields not rendered. Loading for dropdown value.');
+                    loadEffectFields(initialEffectFromDropdown, false); 
+                } else if (!initialEffectFromDropdown && !serverRenderedSpecificFields) {
+                    console.log('Case 4: No server key, no dropdown value, fields not rendered. Showing placeholder.');
+                    $('#effect-specific-fields-container').html('<p id="no-effect-selected-text">Select an effect to see its parameters.</p>');
+                } else if (serverRenderedSpecificFields && !initialEffectFromDropdown && !selected_effect_key_from_server){
+                    // This case implies fields were rendered for some reason but no selection is active.
+                    // This might happen if template renders default fields even when selected_effect_key is null.
+                    // To be safe, clear them or set placeholder if the main #effect is also empty.
+                    console.log('Case 5: Fields rendered, but no active selection. Clearing to placeholder if dropdown is empty.');
+                    if(!$('#effect').val()){ // only clear if dropdown is also empty
+                        $('#effect-specific-fields-container').html('<p id="no-effect-selected-text">Select an effect to see its parameters.</p>');
                     }
                 }
             }
-            
-            function updateVisibleFields() {
-                hideAllFieldDivs();
-                var selectedEffect = effectSelect.value;
-                
-                // Show the appropriate field div based on selected effect
-                // ... existing cases ...
-                
-                if (selectedEffect === "curved_hue_shift") {
-                    document.getElementById("curved_hue_shift_fields").style.display = "block";
+
+            $('#effect').on('change', function() {
+                var selectedEffect = $(this).val();
+                console.log("Effect dropdown changed to:", selectedEffect);
+                selected_effect_key_from_server = selectedEffect; // Update global tracker
+                if (selectedEffect) {
+                    var currentUrl = new URL(window.location.href);
+                    currentUrl.searchParams.set('effect', selectedEffect);
+                    window.history.pushState({path:currentUrl.href}, '', currentUrl.href);
+                } else {
+                     var currentUrl = new URL(window.location.href);
+                     currentUrl.searchParams.delete('effect');
+                     window.history.pushState({path:currentUrl.href}, '', currentUrl.href);
                 }
-                
-                if (selectedEffect === "contour") {
-                    document.getElementById("contour_fields").style.display = "block";
+                loadEffectFields(selectedEffect, false);
+            });
+
+            function setupConditionalFields(effectKey) {
+                console.log("Setting up conditional fields for:", effectKey);
+                if (!effectKey) return;
+                function getFieldGroupId(fieldId) { return '#form-group-' + effectKey + '-' + fieldId; }
+                if (effectKey === 'color_channel') {
+                    const manipType = $(getFieldGroupId('manipulation_type') + ' select');
+                    const swapFields = $(getFieldGroupId('swap_choice'));
+                    const invertFields = $(getFieldGroupId('invert_choice'));
+                    const adjustFields = $(getFieldGroupId('adjust_choice') + ', ' + getFieldGroupId('intensity_factor'));
+                    function toggle() { const val = manipType.val(); swapFields.toggle(val === 'swap'); invertFields.toggle(val === 'invert'); adjustFields.toggle(val === 'adjust'); }
+                    manipType.off('change.conditionalColor').on('change.conditionalColor', toggle); toggle();
+                } else if (effectKey === 'slice_offset') {
+                    const offsetMode = $(getFieldGroupId('offset_mode') + ' select');
+                    const frequencyField = $(getFieldGroupId('frequency'));
+                    function toggle() { frequencyField.toggle(offsetMode.val() === 'sine'); }
+                    offsetMode.off('change.conditionalSliceOffset').on('change.conditionalSliceOffset', toggle); toggle();
+                } else if (effectKey === 'masked_merge') {
+                    const maskTypeSelect = $(getFieldGroupId('mask_type') + ' select');
+                    const commonFields = $(getFieldGroupId('mask_width') + ', ' + getFieldGroupId('mask_height'));
+                    const stripedFields = $(getFieldGroupId('stripe_width') + ', ' + getFieldGroupId('stripe_angle'));
+                    const linearGradientField = $(getFieldGroupId('gradient_direction'));
+                    const perlinFields = $(getFieldGroupId('perlin_noise_scale') + ', ' + getFieldGroupId('perlin_threshold') + ', ' + getFieldGroupId('perlin_octaves'));
+                    const voronoiField = $(getFieldGroupId('voronoi_num_cells'));
+                    const concentricRectField = $(getFieldGroupId('rectangle_band_width'));
+                    const concentricCircleFields = $(getFieldGroupId('circle_band_width') + ', ' + getFieldGroupId('circle_origin'));
+                    const randomTriangleField = $(getFieldGroupId('triangle_size'));
+                    function toggle() {
+                        const type = maskTypeSelect.val();
+                        [commonFields, stripedFields, linearGradientField, perlinFields, voronoiField, concentricRectField, concentricCircleFields, randomTriangleField].forEach(f => f.hide());
+                        if (type === 'checkerboard' || type === 'random_checkerboard') commonFields.show();
+                        else if (type === 'striped' || type === 'gradient_striped' || type === 'linear_gradient_striped') { stripedFields.show(); if (type === 'linear_gradient_striped') linearGradientField.show(); }
+                        else if (type === 'perlin') perlinFields.show();
+                        else if (type === 'voronoi') voronoiField.show();
+                        else if (type === 'concentric_rectangles') concentricRectField.show();
+                        else if (type === 'concentric_circles') concentricCircleFields.show();
+                        else if (type === 'random_triangles') randomTriangleField.show();
+                    }
+                    maskTypeSelect.off('change.conditionalMaskedMerge').on('change.conditionalMaskedMerge', toggle); toggle();
+                } else if (effectKey === 'ripple') {
+                    const distortionTypeSelect = $(getFieldGroupId('distortion_type') + ' select');
+                    const colorShiftFields = $(getFieldGroupId('color_r_factor') + ', ' + getFieldGroupId('color_g_factor') + ', ' + getFieldGroupId('color_b_factor'));
+                    const pixelationFields = $(getFieldGroupId('pixelation_scale') + ', ' + getFieldGroupId('pixelation_magnitude'));
+                    function toggle() { const type = distortionTypeSelect.val(); colorShiftFields.toggle(type === 'color_shift'); pixelationFields.toggle(type === 'pixelation'); }
+                    distortionTypeSelect.off('change.conditionalRipple').on('change.conditionalRipple', toggle); toggle();
                 }
             }
+
+            $('#image-form').on('submit', function(e) {
+                e.preventDefault();
+                $('#global-error-message').hide().empty();
+                $('.specific-field-error').remove(); 
+                $('.form-group.has-error').removeClass('has-error');
+                
+                var formData = new FormData(this);
+                var submitButton = $('#process-button'); 
+                var originalButtonText = submitButton.val() || submitButton.text();
+                submitButton.val('Processing...').text('Processing...').prop('disabled', true);
+
+                $.ajax({
+                    url: '/', 
+                    type: 'POST',
+                    data: formData,
+                    dataType: 'json',
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-CSRFToken': $('input[name="csrf_token"]').val() },
+                    success: function(data) {
+                        submitButton.val(originalButtonText).text(originalButtonText).prop('disabled', false);
+                        if (data.success) {
+                            $('#processed-image').attr('src', data.processed_url).show();
+                            $('#download-link').attr('href', data.processed_url);
+                            $('#replace-primary-link').data('new-image-url', data.processed_url);
+                            $('#processed-container').show();
+                            $('#image-preview').show(); 
+                             if(data.was_resized) {
+                                $('#resize-notification-text').text('Image was resized from ' + data.original_size + ' to ' + data.new_size + ' for performance.');
+                                $('#resize-notification').fadeIn().css('display', 'block');
+                            } else {
+                                $('#resize-notification').fadeOut();
+                            }
+                        } else {
+                            var errorMessage = data.error || "An unknown error occurred.";
+                            if (data.form_errors) {
+                                errorMessage = "Please correct the following errors:";
+                                var currentEffectKeyForErrorDisplay = selected_effect_key_from_server || $('#effect').val();
+                                $.each(data.form_errors, function(fieldName, errors) {
+                                    var fieldIdPrefix = currentEffectKeyForErrorDisplay ? currentEffectKeyForErrorDisplay + '-' : '';
+                                    var fieldGroup = $('#form-group-' + fieldIdPrefix + fieldName);
+                                    if (!fieldGroup.length) { fieldGroup = $('#form-group-' + fieldName); } 
+                                    if (!fieldGroup.length) { fieldGroup = $('[name="'+fieldName+'"]').closest('.form-group'); }
+
+                                    if(fieldGroup.length){ //Only proceed if group found
+                                        fieldGroup.addClass('has-error');
+                                        var errorList = '<ul class="error-message specific-field-error">';
+                                        $.each(errors, function(i, error) { errorList += '<li>' + error + '</li>'; });
+                                        errorList += '</ul>';
+                                        fieldGroup.append(errorList);
+                                    } else { // Log if field group not found for an error
+                                        console.warn("Could not find field group for error on field:", fieldName, "Tried prefix:", fieldIdPrefix);
+                                        // Append to global if specific field not found
+                                        if ($('#global-error-message').is(':empty')) { $('#global-error-message').text(errorMessage); }
+                                        $('#global-error-message').append('<br/>Error for ' + fieldName + ': ' + errors.join(', ')).show();                                        
+                                    }
+                                });
+                                if (!$('#global-error-message').is(':empty') && $('#global-error-message').text() !== errorMessage) { /* Keep specific errors */ } 
+                                else { $('#global-error-message').text(errorMessage).show(); }
+
+                            } else { // No form_errors, just a general error message
+                                $('#global-error-message').text(errorMessage).show();
+                            }
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        submitButton.val(originalButtonText).text(originalButtonText).prop('disabled', false);
+                        var errorMsg = "Error processing image. Please try again.";
+                        try {
+                            var response = JSON.parse(xhr.responseText);
+                            if (response && response.error) {
+                                errorMsg = response.error;
+                                if (response.form_errors) {
+                                     errorMsg = "Please correct the following errors:";
+                                     // Simplified error display for XHR errors, main logic is in success block
+                                }
+                            }
+                        } catch (e) { /* Response was not JSON */ }
+                        $('#global-error-message').text(errorMsg).show();
+                        console.error("XHR Error:", error, xhr.status, xhr.responseText);
+                    }
+                });
+            });
+
+            $('#reset-button').on('click', function() {
+                $('#image-form')[0].reset();
+                $('#effect').val("").trigger('change'); // Trigger change to clear specific fields via loadEffectFields
+                $('#original-preview').attr('src', '#').hide();
+                $('#processed-image').attr('src', '#').hide();
+                $('#processed-container').hide();
+                $('#image-preview').hide();
+                $('#global-error-message').hide().empty();
+                $('.specific-field-error').remove();
+                $('.form-group.has-error').removeClass('has-error');
+                $('#resize-notification').hide();
+                var currentUrl = new URL(window.location.href);
+                currentUrl.searchParams.delete('effect');
+                window.history.pushState({path:currentUrl.href}, '', currentUrl.href);
+                selected_effect_key_from_server = null;
+            });
             
-            // Initial update and add listener for changes
-            effectSelect.addEventListener("change", updateVisibleFields);
-            updateVisibleFields();
+            $('#replace-primary-link').on('click', function(e) {
+                e.preventDefault();
+                var newImageUrl = $(this).data('new-image-url');
+                if (newImageUrl) {
+                    fetch(newImageUrl)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            var filename = newImageUrl.substring(newImageUrl.lastIndexOf('/')+1);
+                            var originalPart = filename.split('_').slice(0, -2).join('_') || "processed_image";
+                            var extension = filename.split('.').pop() || "jpg";
+                            var newFilename = originalPart + "_reprocessed." + extension;
+                            var file = new File([blob], newFilename, { type: blob.type });
+                            var dataTransfer = new DataTransfer(); dataTransfer.items.add(file);
+                            $('#primary-image-input')[0].files = dataTransfer.files;
+                            $('#primary-image-input').trigger('change'); // To trigger previewImage
+                            $('html, body').animate({ scrollTop: 0 }, 'slow');
+                            // alert("Processed image loaded as new primary image."); // Can be too intrusive
+                            $('#global-error-message').removeClass('error-message').addClass('success-message').text('Processed image loaded as new primary.').show().delay(3000).fadeOut(function(){ $(this).removeClass('success-message').addClass('error-message'); });
+                        })
+                        .catch(error => {
+                            console.error("Error fetching processed image for replace:", error);
+                            $('#global-error-message').text('Could not load processed image as primary.').show();
+                        });
+                }
+            });
         });
+
+        function previewImage(event) {
+            var file = event.target.files[0];
+            if (file) {
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    $('#original-preview').attr('src', e.target.result).show();
+                    $('#image-preview').show(); 
+                    $('#processed-container').hide(); 
+                    $('#processed-image').attr('src', '#');
+                    $('#resize-notification').hide();
+                };
+                reader.readAsDataURL(file);
+            } else {
+                 $('#original-preview').attr('src', '#').hide();
+            }
+        }
     </script>
 </body>
 </html>

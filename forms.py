@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileRequired, FileAllowed
-from wtforms import SelectField, StringField, FloatField, IntegerField, SubmitField
+from wtforms import SelectField, StringField, FloatField, IntegerField, SubmitField, BooleanField
 from wtforms.validators import DataRequired, Optional, ValidationError, NumberRange
 import re
 import logging
@@ -8,6 +8,7 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# --- Custom Validators ---
 def validate_chunk_size(form, field):
     """Validate that chunk size is in the format NxN where N is a number."""
     if not field.data:
@@ -30,8 +31,742 @@ def validate_multiple_of_2(form, field):
     if field.data % 2 != 0:
         raise ValidationError('Value must be a multiple of 2 (e.g., 2, 4, 6, 8, etc.)')
 
+def validate_is_odd(form, field):
+    """Validate that the value is an odd number."""
+    if field.data is None: # Allow optional fields to be empty
+        return
+    if field.data % 2 == 0:
+        raise ValidationError('Value must be an odd number.')
+
+# --- Base Forms and Mixins ---
+
+class BaseEffectForm(FlaskForm):
+    """
+    Conceptual base for specific effect forms.
+    Can be used for common methods or configurations if needed later.
+    Individual effect forms will inherit from FlaskForm directly or via mixins.
+    """
+    pass
+
+class SortingFieldsMixin:
+    """Mixin for common sorting parameters."""
+    sort_by = SelectField('Sort By', choices=[
+        ('color', 'Color (R+G+B)'),
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
+    ], default='brightness', validators=[DataRequired()])
+
+    reverse_sort = BooleanField('Descending Sort (High to Low)', default=True, validators=[Optional()])
+
+class SeedMixin:
+    """Mixin for a common random seed parameter."""
+    seed = IntegerField('Random Seed', validators=[Optional(), NumberRange(min=1, max=99999)])
+
+class SecondaryImageMixin:
+    """Mixin for a secondary image upload field."""
+    secondary_image = FileField('Secondary Image', validators=[
+        FileRequired(message="A secondary image is required for this effect."),
+        FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Secondary image must be a JPG, PNG, or GIF.')
+    ])
+
+# --- Effect Specific Forms ---
+
+class PixelSortChunkForm(FlaskForm, SortingFieldsMixin):
+    """Form for Pixel Sort Chunk effect."""
+    width = IntegerField('Chunk Width',
+                         default=48,
+                         validators=[DataRequired(), NumberRange(min=2, max=2048), validate_multiple_of_2])
+    height = IntegerField('Chunk Height',
+                           default=48,
+                           validators=[DataRequired(), NumberRange(min=2, max=2048), validate_multiple_of_2])
+    sort_mode = SelectField('Sort Mode', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical'),
+        ('diagonal', 'Diagonal')
+    ], default='horizontal', validators=[DataRequired()])
+    starting_corner = SelectField('Starting Corner (for Diagonal mode)', choices=[
+        ('top-left', 'Top-Left'),
+        ('top-right', 'Top-Right'),
+        ('bottom-left', 'Bottom-Left'),
+        ('bottom-right', 'Bottom-Right')
+    ], default='top-left', validators=[Optional()]) # Optional, only if sort_mode is diagonal
+
+class ColorChannelForm(FlaskForm):
+    """Form for Color Channel Manipulation effect."""
+    manipulation_type = SelectField('Manipulation Type', choices=[
+        ('swap', 'Swap Channels'),
+        ('invert', 'Invert Channel'),
+        ('adjust', 'Adjust Channel Intensity'),
+        ('negative', 'Negative (Invert All Channels)')
+    ], default='swap', validators=[DataRequired()])
+    # These fields will be shown/hidden via JS based on manipulation_type
+    swap_choice = SelectField('Swap Channels', choices=[
+        ('red-green', 'Red-Green'),
+        ('red-blue', 'Red-Blue'),
+        ('green-blue', 'Green-Blue')
+    ], default='red-green', validators=[Optional()])
+    invert_choice = SelectField('Invert Channel', choices=[
+        ('red', 'Red'),
+        ('green', 'Green'),
+        ('blue', 'Blue')
+    ], default='red', validators=[Optional()])
+    adjust_choice = SelectField('Adjust Channel', choices=[
+        ('red', 'Red'),
+        ('green', 'Green'),
+        ('blue', 'Blue')
+    ], default='red', validators=[Optional()])
+    intensity_factor = FloatField('Intensity Factor (for Adjust)',
+                                 default=1.5,
+                                 validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+
+class BitManipulationForm(FlaskForm, SeedMixin):
+    """Form for Bit Manipulation effect."""
+    chunk_size = IntegerField('Chunk Size', 
+                                default=24,
+                                validators=[DataRequired(), NumberRange(min=8, max=128), validate_multiple_of_8])
+    offset = IntegerField('Byte Offset',
+                            default=1,
+                            validators=[DataRequired(), NumberRange(min=0, max=1000000)])
+    xor_value = IntegerField('XOR Value',
+                               default=255,
+                               validators=[DataRequired(), NumberRange(min=0, max=255)])
+    skip_pattern = SelectField('Skip Pattern', choices=[
+        ('alternate', 'Every Other Chunk'),
+        ('every_third', 'Every Third Chunk'),
+        ('every_fourth', 'Every Fourth Chunk'),
+        ('random', 'Random Chunks')
+    ], default='alternate', validators=[DataRequired()])
+    manipulation_type = SelectField('Manipulation Type', choices=[
+        ('xor', 'XOR (Blend)'),
+        ('invert', 'Invert (Negative)'),
+        ('shift', 'Bit Shift'),
+        ('swap', 'Swap Chunks')
+    ], default='xor', validators=[DataRequired()])
+    shift_amount = IntegerField('Bit Shift Amount',
+                           default=1,
+                           validators=[DataRequired(), NumberRange(min=-7, max=7)])
+    randomize_effect = BooleanField('Add Randomness', default=False, validators=[Optional()])
+
+class DoubleExposeForm(FlaskForm, SecondaryImageMixin):
+    """Form for Double Expose effect."""
+    # secondary_image is inherited from SecondaryImageMixin
+    blend_mode = SelectField('Blend Mode', choices=[
+        ('classic', 'Classic Blend'),
+        ('screen', 'Screen'),
+        ('multiply', 'Multiply'),
+        ('overlay', 'Overlay'),
+        ('hard_light', 'Hard Light'),
+        ('difference', 'Difference'),
+        ('exclusion', 'Exclusion'),
+        ('add', 'Add (Linear Dodge)'),
+        ('subtract', 'Subtract'),
+        ('darken_only', 'Darken Only'),
+        ('lighten_only', 'Lighten Only'),
+        ('color_dodge', 'Color Dodge'),
+        ('burn', 'Color Burn')
+    ], default='classic', validators=[DataRequired()])
+    opacity = FloatField('Opacity', 
+                        default=0.5,
+                        validators=[DataRequired(), NumberRange(min=0.0, max=1.0)])
+
+class FullFrameSortForm(FlaskForm, SortingFieldsMixin):
+    """Form for Full Frame Sorting effect."""
+    direction = SelectField('Direction', choices=[
+        ('vertical', 'Vertical'), 
+        ('horizontal', 'Horizontal')
+    ], default='vertical', validators=[DataRequired()])
+    # sort_by and reverse_sort are inherited from SortingFieldsMixin
+    # Note: original form had full_frame_reverse as a SelectField ('true'/'false').
+    # Mixin uses BooleanField reverse_sort, which is preferred.
+
+class PixelDriftForm(FlaskForm):
+    """Form for Pixel Drift effect."""
+    direction = SelectField('Drift Direction', choices=[
+        ('up', 'Up'), 
+        ('down', 'Down'), 
+        ('left', 'Left'), 
+        ('right', 'Right')
+    ], default='right', validators=[DataRequired()])
+    bands = IntegerField('Number of Bands', 
+                              default=12,
+                              validators=[DataRequired(), NumberRange(min=1, max=48)]) # Renamed from drift_bands
+    intensity = FloatField('Drift Intensity Multiplier', 
+                               default=4.0,
+                               validators=[DataRequired(), NumberRange(min=0.1, max=10.0)]) # Renamed from drift_intensity
+
+class DatabendingForm(FlaskForm, SeedMixin):
+    """Form for Databending effect."""
+    intensity = FloatField('Databend Intensity',
+                                 default=0.1,
+                                 validators=[DataRequired(), NumberRange(min=0.1, max=1.0)]) # Renamed from databend_intensity
+    preserve_header = BooleanField('Preserve Header (More Stable)', default=True, validators=[Optional()]) # Renamed & changed from SelectField
+    # seed is inherited from SeedMixin (renamed from databend_seed)
+
+class PolarSortForm(FlaskForm):
+    """Form for Polar Sorting effect."""
+    chunk_size = IntegerField('Chunk Size', 
+                                default=64,
+                                validators=[DataRequired(), NumberRange(min=8, max=128), validate_multiple_of_8])
+    sort_by = SelectField('Sort By', choices=[
+        ('angle', 'Angle (around center)'), 
+        ('radius', 'Radius (distance from center)')
+    ], default='radius', validators=[DataRequired()])
+    reverse_sort = BooleanField('Descending Sort', default=True, validators=[Optional()]) # Standardized from polar_reverse
+
+class SpiralSort2Form(FlaskForm, SortingFieldsMixin):
+    """Form for Spiral Sort 2 effect."""
+    chunk_size = IntegerField('Chunk Size', 
+                                default=64,
+                                validators=[DataRequired(), NumberRange(min=8, max=128), validate_multiple_of_8])
+    # sort_by and reverse_sort are inherited from SortingFieldsMixin
+    # Original spiral2_sort_by had same choices as SortingFieldsMixin.default='brightness'
+    # Original spiral2_reverse was SelectField 'false'/'true', now handled by mixin's BooleanField.
+
+class JpegArtifactsForm(FlaskForm):
+    """Form for Simulate JPEG Artifacts effect."""
+    intensity = FloatField('Artifact Intensity', 
+                               default=1.0,
+                               validators=[DataRequired(), NumberRange(min=0.0, max=1.0)]) # Renamed from jpeg_intensity
+
+class PerlinFullFrameForm(FlaskForm, SortingFieldsMixin, SeedMixin):
+    """Form for Perlin Full Frame Sorting effect."""
+    noise_scale = FloatField('Noise Scale', 
+                                default=0.005,
+                                validators=[DataRequired(), NumberRange(min=0.001, max=0.1)]) # Renamed
+    pattern_width = IntegerField('Pattern Width',
+                                default=1,
+                                validators=[DataRequired(), NumberRange(min=1, max=8)]) # Renamed
+    # sort_by and reverse_sort from SortingFieldsMixin. Original perlin_full_frame_sort_by used same choices.
+    # seed from SeedMixin. Original perlin_full_frame_seed.
+
+class VoronoiSortForm(FlaskForm, SeedMixin):
+    """Form for Voronoi Pixel Sort effect."""
+    num_cells = IntegerField('Number of Cells',
+                                default=69,
+                                validators=[DataRequired(), NumberRange(min=10, max=1000)]) # Renamed
+    size_variation = FloatField('Size Variation',
+                                default=0.8,
+                                validators=[DataRequired(), NumberRange(min=0.0, max=1.0)]) # Renamed
+    sort_by = SelectField('Sort By', choices=[
+        ('color', 'Color (R+G+B)'), 
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
+    ], default='hue', validators=[DataRequired()]) # Defined specifically as sort_order is custom
+    sort_order = SelectField('Sort Order', choices=[
+        ('clockwise', 'Clockwise'), 
+        ('counter-clockwise', 'Counter-Clockwise')
+    ], default='clockwise', validators=[DataRequired()]) # Renamed
+    orientation = SelectField('Line Orientation', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical'),
+        ('radial', 'Radial'),
+        ('spiral', 'Spiral')
+    ], default='spiral', validators=[DataRequired()]) # Renamed
+    start_position = SelectField('Start Position', choices=[
+        ('left', 'Left'),
+        ('right', 'Right'),
+        ('top', 'Top'),
+        ('bottom', 'Bottom'),
+        ('center', 'Center')
+    ], default='center', validators=[DataRequired()]) # Renamed
+    # seed from SeedMixin. Original voronoi_seed.
+
+class PerlinNoiseSortForm(FlaskForm, SeedMixin):
+    """Form for Perlin Noise Sorting effect."""
+    chunk_width = IntegerField('Chunk Width', 
+                                default=128,
+                                validators=[DataRequired(), NumberRange(min=8, max=1024), validate_multiple_of_8])
+    chunk_height = IntegerField('Chunk Height', 
+                                default=1024,
+                                validators=[DataRequired(), NumberRange(min=8, max=1024), validate_multiple_of_8])
+    noise_scale = FloatField('Noise Scale', 
+                                default=0.008,
+                                validators=[DataRequired(), NumberRange(min=0.001, max=0.1)])
+    direction = SelectField('Direction', choices=[
+        ('horizontal', 'Horizontal'), 
+        ('vertical', 'Vertical')
+    ], default='horizontal', validators=[DataRequired()]) # Renamed from perlin_direction
+    reverse_sort = BooleanField('Descending Sort', default=True, validators=[Optional()]) # Standardized from perlin_reverse
+    # seed from SeedMixin. Original perlin_seed.
+
+class PixelScatterForm(FlaskForm):
+    """Form for Pixel Scatter effect."""
+    direction = SelectField('Scatter Direction', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical')
+    ], default='horizontal', validators=[DataRequired()]) # Renamed from scatter_direction
+    select_by = SelectField('Select Pixels By', choices=[
+        ('brightness', 'Brightness'),
+        ('red', 'Red Channel'),
+        ('green', 'Green Channel'),
+        ('blue', 'Blue Channel'),
+        ('hue', 'Hue'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance'),
+        ('contrast', 'Contrast')
+    ], default='red', validators=[DataRequired()]) # Renamed from scatter_select_by
+    min_value = FloatField('Minimum Value',
+                              default=180,
+                              validators=[DataRequired(), NumberRange(min=0, max=360)]) # Renamed from scatter_min_value
+    max_value = FloatField('Maximum Value',
+                              default=360,
+                              validators=[DataRequired(), NumberRange(min=0, max=360)]) # Renamed from scatter_max_value
+    
+    def validate_max_value(self, field):
+        if self.min_value.data is not None and field.data is not None:
+            if field.data < self.min_value.data:
+                raise ValidationError('Maximum value must not be less than minimum value.')
+
+class PerlinDisplacementForm(FlaskForm, SeedMixin): # Added SeedMixin assuming Perlin noise can be seeded
+    """Form for Perlin Noise Displacement effect."""
+    scale = IntegerField('Noise Scale',
+                        default=44, # Changed from 25
+                        validators=[DataRequired(), NumberRange(min=10, max=500)]) # Renamed
+    intensity = IntegerField('Displacement Intensity',
+                            default=25, # Changed from 40
+                            validators=[DataRequired(), NumberRange(min=1, max=100)]) # Renamed
+    octaves = IntegerField('Octaves',
+                        default=3, # Changed from 4
+                        validators=[DataRequired(), NumberRange(min=1, max=10)]) # Renamed
+    # SeedMixin provides the seed field
+
+class RippleEffectForm(FlaskForm, SeedMixin): # Added SeedMixin assuming droplet placement can be seeded
+    """Form for Ripple Effect."""
+    num_droplets = IntegerField('Number of Droplets',
+                                default=9,
+                                validators=[DataRequired(), NumberRange(min=1, max=20)]) # Renamed
+    amplitude = FloatField('Ripple Amplitude',
+                            default=45.0,
+                            validators=[DataRequired(), NumberRange(min=1.0, max=50.0)]) # Renamed
+    frequency = FloatField('Ripple Frequency',
+                            default=0.4,
+                            validators=[DataRequired(), NumberRange(min=0.01, max=1.0)]) # Renamed
+    decay = FloatField('Ripple Decay',
+                        default=0.004,
+                        validators=[DataRequired(), NumberRange(min=0.001, max=0.1)]) # Renamed
+    distortion_type = SelectField('Distortion Type', choices=[
+        ('color_shift', 'Color Shift'),
+        ('pixelation', 'Pixelation'),
+        ('none', 'None (Plain Ripple)')
+    ], default='color_shift', validators=[DataRequired()]) # Renamed
+    # Conditional fields based on distortion_type (shown/hidden with JS)
+    color_r_factor = FloatField('Red Channel Factor (for Color Shift)',
+                                default=0.8,
+                                validators=[Optional(), NumberRange(min=0.5, max=1.5)]) # Renamed
+    color_g_factor = FloatField('Green Channel Factor (for Color Shift)',
+                                default=1.0,
+                                validators=[Optional(), NumberRange(min=0.5, max=1.5)]) # Renamed
+    color_b_factor = FloatField('Blue Channel Factor (for Color Shift)',
+                                default=1.2,
+                                validators=[Optional(), NumberRange(min=0.5, max=1.5)]) # Renamed
+    pixelation_scale = IntegerField('Pixelation Scale (for Pixelation)',
+                                    default=10,
+                                    validators=[Optional(), NumberRange(min=2, max=20)]) # Renamed
+    pixelation_magnitude = FloatField('Pixelation Magnitude (for Pixelation)',
+                                    default=10.0,
+                                    validators=[Optional(), NumberRange(min=1.0, max=20.0)]) # Renamed
+    # seed from SeedMixin
+
+class RGBChannelShiftForm(FlaskForm):
+    """Form for RGB Channel Shift effect."""
+    shift_amount = IntegerField('Shift Amount',
+                                default=42,
+                                validators=[DataRequired(), NumberRange(min=1, max=500)]) # Renamed
+    direction = SelectField('Shift Direction', choices=[
+        ('horizontal', 'Horizontal'), 
+        ('vertical', 'Vertical')
+    ], default='horizontal', validators=[DataRequired()]) # Renamed
+    center_channel = SelectField('Centered Channel', choices=[
+        ('red', 'Red'), 
+        ('green', 'Green'), 
+        ('blue', 'Blue')
+    ], default='green', validators=[DataRequired()]) # Renamed
+    mode = SelectField('Mode', choices=[
+        ('shift', 'Shift Channels'), 
+        ('mirror', 'Mirror Channels')
+    ], default='shift', validators=[DataRequired()]) # Renamed
+
+class HistogramGlitchForm(FlaskForm):
+    """Form for Histogram Glitch effect."""
+    # Renamed fields by removing 'hist_' prefix and standardizing freq/phase
+    r_mode = SelectField('Red Channel Treatment', choices=[
+        ('solarize', 'Solarize (Sine Wave)'),
+        ('log', 'Logarithmic Compression'),
+        ('gamma', 'Gamma Adjustment'),
+        ('normal', 'Normal (No Change)')
+    ], default='solarize', validators=[DataRequired()])
+    g_mode = SelectField('Green Channel Treatment', choices=[
+        ('solarize', 'Solarize (Sine Wave)'),
+        ('log', 'Logarithmic Compression'),
+        ('gamma', 'Gamma Adjustment'),
+        ('normal', 'Normal (No Change)')
+    ], default='solarize', validators=[DataRequired()])
+    b_mode = SelectField('Blue Channel Treatment', choices=[
+        ('solarize', 'Solarize (Sine Wave)'),
+        ('log', 'Logarithmic Compression'),
+        ('gamma', 'Gamma Adjustment'),
+        ('normal', 'Normal (No Change)')
+    ], default='solarize', validators=[DataRequired()])
+    
+    # Conditional fields (shown/hidden with JS based on mode selections)
+    r_freq = FloatField('Red Solarize Frequency',
+                        default=1.0,
+                        validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+    r_phase = FloatField('Red Solarize Phase',
+                        default=0.4,
+                        validators=[Optional(), NumberRange(min=0.0, max=6.28)])
+    g_freq = FloatField('Green Solarize Frequency',
+                        default=1.0,
+                        validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+    g_phase = FloatField('Green Solarize Phase',
+                        default=0.3,
+                        validators=[Optional(), NumberRange(min=0.0, max=6.28)])
+    b_freq = FloatField('Blue Solarize Frequency',
+                        default=1.0,
+                        validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+    b_phase = FloatField('Blue Solarize Phase',
+                        default=0.2,
+                        validators=[Optional(), NumberRange(min=0.0, max=6.28)])
+    gamma_value = FloatField('Gamma Value (for Gamma Adjustment)',
+                            default=0.5,
+                            validators=[Optional(), NumberRange(min=0.1, max=3.0)]) # Renamed
+
+class ColorShiftExpansionForm(FlaskForm, SeedMixin): # Added SeedMixin
+    """Form for Color Shift Expansion effect."""
+    # Renamed fields for clarity/consistency
+    num_points = IntegerField('Number of Seed Points',
+                                default=7,
+                                validators=[DataRequired(), NumberRange(min=1, max=100)])
+    shift_amount = IntegerField('Shift Amount',
+                                default=20, # Default was previously updated in a commit
+                                validators=[DataRequired(), NumberRange(min=1, max=50)])
+    expansion_type = SelectField('Expansion Type', choices=[
+        ('square', 'Square (8 directions)'),
+        ('diamond', 'Diamond (4 directions)'),
+        ('circle', 'Circle')
+    ], default='circle', validators=[DataRequired()])
+    pattern_type = SelectField('Seed Point Pattern', choices=[
+        ('random', 'Random'),
+        ('grid', 'Grid'),
+        ('edges', 'Around Edges')
+    ], default='random', validators=[DataRequired()])
+    color_theme = SelectField('Color Theme', choices=[
+        ('full-spectrum', 'Full Spectrum'),
+        ('warm', 'Warm Colors'),
+        ('cool', 'Cool Colors'),
+        ('pastel', 'Pastel Colors')
+    ], default='full-spectrum', validators=[DataRequired()])
+    saturation_boost = FloatField('Saturation Boost',
+                                default=0.5,
+                                validators=[DataRequired(), NumberRange(min=0.0, max=1.0)])
+    value_boost = FloatField('Brightness Boost',
+                            default=0.0,
+                            validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    decay_factor = FloatField('Decay Factor',
+                            default=0.2,
+                            validators=[DataRequired(), NumberRange(min=0.0, max=1.0)])
+    # seed is from SeedMixin
+
+class PixelateForm(FlaskForm):
+    """Form for Pixelate effect."""
+    width = IntegerField('Pixel Width',
+                        default=16,
+                        validators=[DataRequired(), NumberRange(min=2, max=64)]) # Renamed
+    height = IntegerField('Pixel Height',
+                        default=16,
+                        validators=[DataRequired(), NumberRange(min=2, max=64)]) # Renamed
+    attribute = SelectField('Attribute', choices=[
+        ('color', 'Color (Most Common)'),
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance')
+    ], default='hue', validators=[DataRequired()]) # Renamed
+    bins = IntegerField('Number of Bins',
+                        default=200,
+                        validators=[DataRequired(), NumberRange(min=10, max=1000)]) # Renamed
+
+class ConcentricShapesForm(FlaskForm, SeedMixin): # Added SeedMixin
+    """Form for Concentric Shapes effect."""
+    num_points = IntegerField('Number of Points',
+                                default=7,
+                                validators=[DataRequired(), NumberRange(min=1, max=100)]) # Renamed
+    shape_type = SelectField('Shape Type', choices=[
+        ('square', 'Square'),
+        ('circle', 'Circle'),
+        ('hexagon', 'Hexagon'),
+        ('triangle', 'Triangle')
+    ], default='triangle', validators=[DataRequired()])
+    thickness = IntegerField('Line Thickness',
+                                default=2,
+                                validators=[DataRequired(), NumberRange(min=1, max=10)]) # Renamed
+    spacing = IntegerField('Spacing',
+                        default=20,
+                        validators=[DataRequired(), NumberRange(min=1, max=50)])
+    rotation_angle = IntegerField('Rotation Angle',
+                                default=9,
+                                validators=[DataRequired(), NumberRange(min=0, max=360)])
+    darken_step = IntegerField('Darken Step',
+                            default=0,
+                            validators=[Optional(), NumberRange(min=0, max=255)])
+    color_shift_amount = IntegerField('Color Shift',
+                                default=15,
+                                validators=[DataRequired(), NumberRange(min=0, max=360)]) # Renamed
+    # seed is from SeedMixin
+
+class PosterizeForm(FlaskForm):
+    """Form for Posterize effect."""
+    levels = IntegerField('Color Levels',
+                        default=4,
+                        validators=[DataRequired(), NumberRange(min=2, max=32, message="Levels must be between 2 and 32")]) # Renamed
+
+class CurvedHueShiftForm(FlaskForm):
+    """Form for Curved Hue Shift effect."""
+    curve_value = FloatField('Curve Value',
+                            default=180,
+                            validators=[DataRequired(), NumberRange(min=1, max=360)]) # Renamed from hue_curve
+    shift_amount = FloatField('Shift Amount (degrees)',
+                                default=45.0, # Default was previously updated in a commit
+                                validators=[DataRequired(), NumberRange(min=-360.0, max=360.0)]) # Renamed from hue_shift_amount
+
+class MaskedMergeForm(FlaskForm, SeedMixin, SecondaryImageMixin):
+    """Form for Masked Merge effect."""
+    # secondary_image from SecondaryImageMixin (replaces masked_merge_secondary)
+    # seed from SeedMixin (replaces mask_random_seed)
+    mask_type = SelectField('Mask Type', choices=[
+        ('checkerboard', 'Checkerboard'),
+        ('random_checkerboard', 'Random Checkerboard'), # Will use seed
+        ('striped', 'Striped'),
+        ('gradient_striped', 'Gradient Striped (Sawtooth)'),
+        ('linear_gradient_striped', 'Linear Gradient Striped'),
+        ('perlin', 'Perlin Noise'), # Will use seed
+        ('voronoi', 'Voronoi Cells'), # Will use seed
+        ('concentric_rectangles', 'Concentric Rectangles'),
+        ('concentric_circles', 'Concentric Circles'),
+        ('random_triangles', 'Random Triangles') # Will use seed
+    ], default='checkerboard', validators=[DataRequired()])
+
+    # --- Fields for specific mask types (conditional logic in template/JS) ---
+    # For Checkerboard, Random Checkerboard (mask_width, mask_height)
+    # For Striped (stripe_width, stripe_angle)
+    # For Gradient Striped, Linear Gradient Striped (stripe_width, stripe_angle, gradient_direction for linear)
+    # For Perlin Noise (perlin_noise_scale, perlin_threshold, perlin_octaves)
+    # For Voronoi Cells (voronoi_cells)
+    # For Concentric Rectangles (concentric_rectangle_width)
+    # For Concentric Circles (concentric_circle_width, concentric_origin)
+    # For Random Triangles (triangle_size)
+    
+    # General mask dimensions (used by some, like checkerboard)
+    mask_width = IntegerField('Mask/Cell Width (pixels)',
+                            default=32,
+                            validators=[Optional(), NumberRange(min=2, max=512)]) 
+    mask_height = IntegerField('Mask/Cell Height (pixels)',
+                            default=32,
+                            validators=[Optional(), NumberRange(min=2, max=512)])
+
+    # Striped masks
+    stripe_width = IntegerField('Stripe Width (pixels)',
+                            default=16,
+                            validators=[Optional(), NumberRange(min=1, max=200)])
+    stripe_angle = IntegerField('Stripe Angle (degrees)',
+                            default=45,
+                            validators=[Optional(), NumberRange(min=0, max=180)])
+    gradient_direction = SelectField('Gradient Direction (for Linear Gradient Stripe)', choices=[
+        ('up', 'Up (0 -> 255)'),
+        ('down', 'Down (255 -> 0)')
+    ], default='up', validators=[Optional()])
+
+    # Perlin mask
+    perlin_noise_scale = FloatField('Perlin Noise Scale',
+                                default=0.01,
+                                validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    perlin_threshold = FloatField('Perlin Threshold',
+                                default=0.5,
+                                validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    perlin_octaves = IntegerField('Perlin Octaves (1=smooth, 8=detailed)',
+                                default=1,
+                                validators=[Optional(), NumberRange(min=1, max=8)])
+
+    # Voronoi mask
+    voronoi_num_cells = IntegerField('Number of Voronoi Cells',
+                                default=50,
+                                validators=[Optional(), NumberRange(min=10, max=500)]) # Renamed
+
+    # Concentric Rectangles mask
+    rectangle_band_width = IntegerField('Rectangle Band Width (pixels)',
+                                        default=16,
+                                        validators=[Optional(), NumberRange(min=2, max=100)]) # Renamed
+
+    # Concentric Circles mask
+    circle_band_width = IntegerField('Circle Band Thickness (pixels)',
+                                    default=16, # Original: concentric_circle_width
+                                    validators=[Optional(), NumberRange(min=2, max=100)])
+    circle_origin = SelectField('Circle Origin', choices=[
+        ('center', 'Center'),
+        ('top-left', 'Top-Left'),
+        ('top-right', 'Top-Right'),
+        ('bottom-left', 'Bottom-Left'),
+        ('bottom-right', 'Bottom-Right')
+    ], default='center', validators=[Optional()]) # Renamed
+
+    # Random Triangles mask
+    triangle_size = IntegerField('Triangle Size (pixels)',
+                                default=50, # Added a default
+                                validators=[Optional(), NumberRange(min=4, max=256)])
+
+class OffsetEffectForm(FlaskForm):
+    """Form for Offset effect.""" 
+    # Original form had offset_x_value, offset_y_value, etc.
+    x_value = FloatField('Horizontal Offset Value', default=0.0, validators=[Optional()])
+    x_unit = SelectField('Horizontal Offset Unit', choices=[('pixels', 'Pixels'), ('percentage', 'Percentage')], default='pixels', validators=[DataRequired()])
+    y_value = FloatField('Vertical Offset Value', default=0.0, validators=[Optional()])
+    y_unit = SelectField('Vertical Offset Unit', choices=[('pixels', 'Pixels'), ('percentage', 'Percentage')], default='pixels', validators=[DataRequired()])
+
+class SliceShuffleForm(FlaskForm, SeedMixin):
+    """Form for Slice Shuffle effect."""
+    count = IntegerField('Slice Count',
+                        default=16, # Added a default, original had no default in form but used in effect
+                        validators=[DataRequired(), NumberRange(min=4, max=128)]) # Renamed from slice_count
+    orientation = SelectField('Slice Orientation', choices=[
+        ('rows', 'Rows'), 
+        ('columns', 'Columns')
+    ], default='rows', validators=[DataRequired()]) # Renamed from slice_orientation
+    # seed from SeedMixin (replaces slice_seed)
+
+class SliceOffsetForm(FlaskForm, SeedMixin):
+    """Form for Slice Offset effect."""
+    count = IntegerField('Number of Slices',
+                        default=16, # Added a default
+                        validators=[DataRequired(), NumberRange(min=4, max=128)]) # Renamed
+    max_offset = IntegerField('Maximum Offset (pixels)',
+                            default=50, # Added a default
+                            validators=[DataRequired(), NumberRange(min=1, max=512)]) # Renamed
+    orientation = SelectField('Slice Orientation', choices=[
+        ('rows', 'Rows (horizontal slices, horizontal offset)'), 
+        ('columns', 'Columns (vertical slices, vertical offset)')
+    ], default='rows', validators=[DataRequired()]) # Renamed
+    offset_mode = SelectField('Offset Pattern', choices=[
+        ('random', 'Random Offsets'), 
+        ('sine', 'Sine Wave Pattern')
+    ], default='random', validators=[DataRequired()]) # Renamed
+    # Conditional field, only if offset_mode is 'sine'
+    frequency = FloatField('Sine Wave Frequency',
+                            default=0.1,
+                            validators=[Optional(), NumberRange(min=0.01, max=1.0)]) # Renamed
+    # seed from SeedMixin (replaces slice_offset_seed)
+
+class SliceReductionForm(FlaskForm):
+    """Form for Slice Reduction effect."""
+    count = IntegerField('Number of Slices',
+                        default=32, # Added a default
+                        validators=[DataRequired(), NumberRange(min=16, max=256)]) # Renamed
+    reduction_value = IntegerField('Reduction Value',
+                                default=2, 
+                                validators=[DataRequired(), NumberRange(min=2, max=8)]) # Renamed
+    orientation = SelectField('Slice Orientation', choices=[
+        ('rows', 'Rows (horizontal slices)'), 
+        ('columns', 'Columns (vertical slices)')
+    ], default='rows', validators=[DataRequired()]) # Renamed
+
+class ContourForm(FlaskForm, SeedMixin): # Added SeedMixin
+    """Form for Contour effect."""
+    # Standardized names by removing 'contour_' prefix
+    num_levels = IntegerField('Number of Contour Levels',
+                            default=10,
+                            validators=[DataRequired(), NumberRange(min=5, max=30)])
+    noise_std = IntegerField('Noise Amount',
+                            default=5,
+                            validators=[DataRequired(), NumberRange(min=0, max=10)])
+    smooth_sigma = IntegerField('Contour Smoothness',
+                                default=16,
+                                validators=[DataRequired(), NumberRange(min=1, max=20)])
+    line_thickness = IntegerField('Line Thickness',
+                                default=1,
+                                validators=[DataRequired(), NumberRange(min=1, max=5)])
+    grad_threshold = IntegerField('Gradient Threshold',
+                                default=28,
+                                validators=[DataRequired(), NumberRange(min=1, max=100)])
+    min_distance = IntegerField('Minimum Distance Between Points',
+                                default=3,
+                                validators=[DataRequired(), NumberRange(min=1, max=20)])
+    max_line_length = IntegerField('Maximum Line Segment Length',
+                                default=256,
+                                validators=[DataRequired(), NumberRange(min=50, max=500)])
+    blur_kernel_size = IntegerField('Blur Kernel Size (odd number)',
+                                default=5,
+                                validators=[DataRequired(), NumberRange(min=3, max=33), validate_is_odd]) # Added validate_is_odd
+    sobel_kernel_size = IntegerField('Edge Detection Kernel Size (odd number)',
+                                default=15,
+                                validators=[DataRequired(), NumberRange(min=3, max=33), validate_is_odd]) # Added validate_is_odd
+    # seed from SeedMixin
+
+class BlockShuffleForm(FlaskForm, SeedMixin):
+    """Form for Block Shuffle effect."""
+    # Standardized names
+    block_width = IntegerField('Block Width',
+                                default=32, # Added a default
+                                validators=[DataRequired(), NumberRange(min=2, max=512)])
+    block_height = IntegerField('Block Height',
+                                default=32, # Added a default
+                                validators=[DataRequired(), NumberRange(min=2, max=512)])
+    # seed from SeedMixin
+
+class DataMoshBlocksForm(FlaskForm, SeedMixin):
+    """Form for Data Mosh Blocks effect."""
+    # Standardized names by removing 'data_mosh_' prefix
+    operations = IntegerField('Number of Operations',
+                            default=69,
+                            validators=[DataRequired(), NumberRange(min=1, max=256)])
+    block_size = IntegerField('Max Block Size',
+                            default=128,
+                            validators=[DataRequired(), NumberRange(min=1, max=500)])
+    movement = SelectField('Block Movement', choices=[
+        ('swap', 'Swap Blocks'), 
+        ('in_place', 'In Place')
+    ], default='swap', validators=[DataRequired()])
+    color_swap = SelectField('Color Channel Swap', choices=[
+        ('never', 'Never'), 
+        ('always', 'Always'),
+        ('random', 'Random') # If random, effect function can use seed
+    ], default='random', validators=[DataRequired()])
+    invert_colors = SelectField('Color Inversion', choices=[
+        ('never', 'Never'), 
+        ('always', 'Always'),
+        ('random', 'Random') # If random, effect function can use seed
+    ], default='random', validators=[DataRequired()]) # Renamed
+    shift_values = SelectField('Channel Value Shift', choices=[
+        ('never', 'Never'), 
+        ('always', 'Always'),
+        ('random', 'Random') # If random, effect function can use seed
+    ], default='random', validators=[DataRequired()]) # Renamed
+    flip_blocks = SelectField('Block Flipping', choices=[
+        ('never', 'Never'), 
+        ('vertical', 'Vertical'),
+        ('horizontal', 'Horizontal'),
+        ('random', 'Random') # If random, effect function can use seed
+    ], default='random', validators=[DataRequired()]) # Renamed
+    # seed from SeedMixin
+
+# Add other specific effect forms here following the pattern:
+# class AnotherEffectForm(FlaskForm, OptionalMixin1, OptionalMixin2):
+#     param1 = ...
+#     param2 = ...
+
+# --- Main Form for Effect Selection ---
 class ImageProcessForm(FlaskForm):
-    """Form for image upload and effect selection."""
+    """Main form for image upload and primary effect selection."""
     primary_image = FileField('Primary Image', validators=[
         FileRequired(),
         FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
@@ -79,1228 +814,43 @@ class ImageProcessForm(FlaskForm):
         ('contour', 'Contour'),
         ('block_shuffle', 'Block Shuffle'),
     ], validators=[DataRequired()])
-    
-    # Pixel Sort Chunk (Combined pixel_sort_original and pixel_sort_corner)
-    chunk_width = IntegerField('Chunk Width', 
-                              default=48,
-                              validators=[Optional(), NumberRange(min=2, max=2048), validate_multiple_of_2])
-    chunk_height = IntegerField('Chunk Height', 
-                               default=48,
-                               validators=[Optional(), NumberRange(min=2, max=2048), validate_multiple_of_2])
-    sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color (R+G+B)'), 
-        ('brightness', 'Brightness'), 
-        ('hue', 'Hue'),
-        ('red', 'Red Channel'),
-        ('green', 'Green Channel'),
-        ('blue', 'Blue Channel'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance'),
-        ('contrast', 'Contrast')
-    ], default='brightness', validators=[Optional()])
-    sort_order = SelectField('Sort Order', choices=[
-        ('ascending', 'Ascending (Low to High)'), 
-        ('descending', 'Descending (High to Low)')
-    ], default='descending', validators=[Optional()])
-    sort_mode = SelectField('Sort Mode', choices=[
-        ('horizontal', 'Horizontal'), 
-        ('vertical', 'Vertical'),
-        ('diagonal', 'Diagonal')
-    ], default='horizontal', validators=[Optional()])
-    starting_corner = SelectField('Starting Corner (for Diagonal mode)', choices=[
-        ('top-left', 'Top-Left'), 
-        ('top-right', 'Top-Right'),
-        ('bottom-left', 'Bottom-Left'), 
-        ('bottom-right', 'Bottom-Right')
-    ], default='top-left', validators=[Optional()])
-    
-    # Color Channel Manipulation
-    manipulation_type = SelectField('Manipulation Type', choices=[
-        ('swap', 'Swap Channels'), 
-        ('invert', 'Invert Channel'), 
-        ('adjust', 'Adjust Channel Intensity'),
-        ('negative', 'Negative (Invert All Channels)')
-    ], default='swap', validators=[Optional()])
-    swap_choice = SelectField('Swap Channels', choices=[
-        ('red-green', 'Red-Green'), 
-        ('red-blue', 'Red-Blue'), 
-        ('green-blue', 'Green-Blue')
-    ], default='red-green', validators=[Optional()])
-    invert_choice = SelectField('Invert Channel', choices=[
-        ('red', 'Red'), 
-        ('green', 'Green'), 
-        ('blue', 'Blue')
-    ], default='red', validators=[Optional()])
-    adjust_choice = SelectField('Adjust Channel', choices=[
-        ('red', 'Red'), 
-        ('green', 'Green'), 
-        ('blue', 'Blue')
-    ], default='red', validators=[Optional()])
-    intensity_factor = FloatField('Intensity Factor', 
-                                 default=1.5,
-                                 validators=[Optional(), NumberRange(min=0.1, max=10.0)])
-    
-    # Data Moshing
-    secondary_image = FileField('Secondary Image', validators=[
-        Optional(),
-        FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
-    ])
-    blend_mode = SelectField('Blend Mode', choices=[
-        ('classic', 'Classic Blend'),
-        ('screen', 'Screen'),
-        ('multiply', 'Multiply'),
-        ('overlay', 'Overlay'),
-        ('difference', 'Difference'),
-        ('color_dodge', 'Color Dodge')
-    ], default='classic', validators=[Optional()])
-    opacity = FloatField('Opacity', 
-                        default=0.5,
-                        validators=[Optional(), NumberRange(min=0.1, max=1.0)])
-    
-    # Pixel Drift
-    drift_direction = SelectField('Drift Direction', choices=[
-        ('up', 'Up'), 
-        ('down', 'Down'), 
-        ('left', 'Left'), 
-        ('right', 'Right')
-    ], default='right', validators=[Optional()])
-    drift_bands = IntegerField('Number of Bands', 
-                              default=12,
-                              validators=[Optional(), NumberRange(min=1, max=48)])
-    drift_intensity = FloatField('Drift Intensity Multiplier', 
-                               default=4.0,
-                               validators=[Optional(), NumberRange(min=0.1, max=10.0)])
-    
-    # Spiral Sort 2 (Replaces original Spiral Sort)
-    spiral2_chunk_size = IntegerField('Chunk Size', 
-                                   default=64,
-                                   validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
-    spiral2_sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color (R+G+B)'), 
-        ('brightness', 'Brightness'),
-        ('hue', 'Hue'),
-        ('red', 'Red Channel'),
-        ('green', 'Green Channel'),
-        ('blue', 'Blue Channel'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance'),
-        ('contrast', 'Contrast')
-    ], default='brightness', validators=[Optional()])
-    spiral2_reverse = SelectField('Sort Order', choices=[
-        ('false', 'Ascending (Low to High)'), 
-        ('true', 'Descending (High to Low)')
-    ], default='false', validators=[Optional()])
-    
-    # Bit Manipulation
-    bit_chunk_size = IntegerField('Chunk Size', 
-                                default=24,
-                                validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
-    
-    bit_offset = IntegerField('Byte Offset',
-                            default=0,
-                            validators=[Optional(), NumberRange(min=0, max=1000000)])
-    
-    bit_xor_value = IntegerField('XOR Value',
-                               default=255,
-                               validators=[Optional(), NumberRange(min=0, max=255)])
-    
-    bit_skip_pattern = SelectField('Skip Pattern', choices=[
-        ('alternate', 'Every Other Chunk'),
-        ('every_third', 'Every Third Chunk'),
-        ('every_fourth', 'Every Fourth Chunk'),
-        ('random', 'Random Chunks')
-    ], default='alternate', validators=[Optional()])
-    
-    bit_manipulation_type = SelectField('Manipulation Type', choices=[
-        ('xor', 'XOR (Blend)'),
-        ('invert', 'Invert (Negative)'),
-        ('shift', 'Bit Shift'),
-        ('swap', 'Swap Chunks')
-    ], default='xor', validators=[Optional()])
-    
-    bit_shift = IntegerField('Bit Shift Amount',
-                           default=1,
-                           validators=[Optional(), NumberRange(min=-7, max=7)])
-    
-    bit_randomize = SelectField('Add Randomness', choices=[
-        ('false', 'No'),
-        ('true', 'Yes')
-    ], default='false', validators=[Optional()])
-    
-    bit_random_seed = IntegerField('Random Seed',
-                                 default=42,
-                                 validators=[Optional(), NumberRange(min=1, max=9999)])
-    
-    # Full Frame Sorting
-    full_frame_direction = SelectField('Direction', choices=[
-        ('vertical', 'Vertical'), 
-        ('horizontal', 'Horizontal')
-    ], default='vertical', validators=[Optional()])
-    full_frame_sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color (R+G+B)'), 
-        ('brightness', 'Brightness'),
-        ('hue', 'Hue'),
-        ('red', 'Red Channel'),
-        ('green', 'Green Channel'),
-        ('blue', 'Blue Channel'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance'),
-        ('contrast', 'Contrast')
-    ], default='hue', validators=[Optional()])
-    full_frame_reverse = SelectField('Sort Order', choices=[
-        ('false', 'Ascending (Low to High)'), 
-        ('true', 'Descending (High to Low)')
-    ], default='true', validators=[Optional()])
-    
-    # Polar Sorting
-    polar_chunk_size = IntegerField('Chunk Size', 
-                                  default=64,
-                                  validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
-    polar_sort_by = SelectField('Sort By', choices=[
-        ('angle', 'Angle (around center)'), 
-        ('radius', 'Radius (distance from center)')
-    ], default='radius', validators=[Optional()])
-    polar_reverse = SelectField('Sort Order', choices=[
-        ('false', 'Ascending (Low to High)'), 
-        ('true', 'Descending (High to Low)')
-    ], default='true', validators=[Optional()])
-    
-    # Perlin Noise Sorting
-    perlin_chunk_width = IntegerField('Chunk Width', 
-                                    default=128,
-                                    validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
-    perlin_chunk_height = IntegerField('Chunk Height', 
-                                     default=1024,
-                                     validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
-    perlin_noise_scale = FloatField('Noise Scale', 
-                                  default=0.008,
-                                  validators=[Optional(), NumberRange(min=0.001, max=0.1)])
-    perlin_seed = IntegerField('Noise Seed', 
-                             default=420,
-                             validators=[Optional(), NumberRange(min=1, max=9999)])
-    perlin_direction = SelectField('Direction', choices=[
-        ('horizontal', 'Horizontal'), 
-        ('vertical', 'Vertical')
-    ], default='horizontal', validators=[Optional()])
-    perlin_reverse = SelectField('Sort Order', choices=[
-        ('false', 'Ascending (Low to High)'), 
-        ('true', 'Descending (High to Low)')
-    ], default='true', validators=[Optional()])
-    
-    # Perlin Full Frame
-    perlin_full_frame_noise_scale = FloatField('Noise Scale', 
-                                            default=0.005,
-                                            validators=[Optional(), NumberRange(min=0.001, max=0.1)])
-    perlin_full_frame_sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color (R+G+B)'), 
-        ('brightness', 'Brightness'),
-        ('hue', 'Hue'),
-        ('red', 'Red Channel'),
-        ('green', 'Green Channel'),
-        ('blue', 'Blue Channel'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance'),
-        ('contrast', 'Contrast')
-    ], default='hue', validators=[Optional()])
-    perlin_full_frame_reverse = SelectField('Sort Order', choices=[
-        ('false', 'Ascending (Low to High)'), 
-        ('true', 'Descending (High to Low)')
-    ], default='false', validators=[Optional()])
-    perlin_full_frame_seed = IntegerField('Noise Seed',
-                                        default=69,
-                                        validators=[Optional(), NumberRange(min=1, max=9999)])
-    perlin_full_frame_pattern_width = IntegerField('Pattern Width',
-                                                 default=1,
-                                                 validators=[Optional(), NumberRange(min=1, max=8)])
-    
-    # Pixelate
-    pixelate_width = IntegerField('Pixel Width',
-                                default=16,
-                                validators=[Optional(), NumberRange(min=2, max=64)])
-    pixelate_height = IntegerField('Pixel Height',
-                                 default=16,
-                                 validators=[Optional(), NumberRange(min=2, max=64)])
-    pixelate_attribute = SelectField('Attribute', choices=[
-        ('color', 'Color (Most Common)'),
-        ('brightness', 'Brightness'),
-        ('hue', 'Hue'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance')
-    ], default='hue', validators=[Optional()])
-    pixelate_bins = IntegerField('Number of Bins',
-                               default=200,
-                               validators=[Optional(), NumberRange(min=10, max=1000)])
-    
-    # Concentric Shapes
-    concentric_num_points = IntegerField('Number of Points',
-                                      default=7,
-                                      validators=[Optional(), NumberRange(min=1, max=100)])
-    shape_type = SelectField('Shape Type', choices=[
-        ('square', 'Square'),
-        ('circle', 'Circle'),
-        ('hexagon', 'Hexagon'),
-        ('triangle', 'Triangle')
-    ], default='triangle', validators=[Optional()])
-    concentric_thickness = IntegerField('Line Thickness',
-                                     default=2,
-                                     validators=[Optional(), NumberRange(min=1, max=10)])
-    spacing = IntegerField('Spacing',
-                         default=20,
-                         validators=[Optional(), NumberRange(min=1, max=50)])
-    rotation_angle = IntegerField('Rotation Angle',
-                                default=9,
-                                validators=[Optional(), NumberRange(min=0, max=360)])
-    darken_step = IntegerField('Darken Step',
-                             default=0,
-                             validators=[Optional(), NumberRange(min=0, max=255)])
-    color_shift = IntegerField('Color Shift',
-                             default=15,
-                             validators=[Optional(), NumberRange(min=0, max=360)])
-    
-    # Color Shift Expansion
-    color_shift_num_points = IntegerField('Number of Seed Points',
-                                 default=7,
-                                 validators=[Optional(), NumberRange(min=1, max=100)])
-    color_shift_amount = IntegerField('Shift Amount',
-                                 default=5,
-                                 validators=[Optional(), NumberRange(min=1, max=50)])
-    expansion_type = SelectField('Expansion Type', choices=[
-        ('square', 'Square (8 directions)'),
-        ('diamond', 'Diamond (4 directions)'),
-        ('circle', 'Circle')
-    ], default='circle', validators=[Optional()])
-    pattern_type = SelectField('Seed Point Pattern', choices=[
-        ('random', 'Random'),
-        ('grid', 'Grid'),
-        ('edges', 'Around Edges')
-    ], default='random', validators=[Optional()])
-    color_theme = SelectField('Color Theme', choices=[
-        ('full-spectrum', 'Full Spectrum'),
-        ('warm', 'Warm Colors'),
-        ('cool', 'Cool Colors'),
-        ('pastel', 'Pastel Colors')
-    ], default='full-spectrum', validators=[Optional()])
-    saturation_boost = FloatField('Saturation Boost',
-                              default=0.5,
-                              validators=[Optional(), NumberRange(min=0.0, max=1.0)])
-    value_boost = FloatField('Brightness Boost',
-                         default=0.0,
-                         validators=[Optional(), NumberRange(min=0.0, max=1.0)])
-    decay_factor = FloatField('Decay Factor',
-                          default=0.2,
-                          validators=[Optional(), NumberRange(min=0.0, max=1.0)])
-    
-    # Perlin Displacement
-    perlin_displacement_scale = IntegerField('Noise Scale',
-                                          default=200,
-                                          validators=[Optional(), NumberRange(min=10, max=500)])
-    perlin_displacement_intensity = IntegerField('Displacement Intensity',
-                                              default=40,
-                                              validators=[Optional(), NumberRange(min=1, max=100)])
-    perlin_displacement_octaves = IntegerField('Octaves',
-                                            default=4,
-                                            validators=[Optional(), NumberRange(min=1, max=10)])
-    perlin_displacement_persistence = FloatField('Persistence',
-                                              default=0.6,
-                                              validators=[Optional(), NumberRange(min=0.1, max=1.0)])
-    perlin_displacement_lacunarity = FloatField('Lacunarity',
-                                             default=2.0,
-                                             validators=[Optional(), NumberRange(min=1.0, max=4.0)])
-    
-    # Add form fields for Data Mosh Blocks effect
-    data_mosh_operations = IntegerField('Number of Operations', 
-                                      default=69,
-                                      validators=[Optional(), NumberRange(min=1, max=256)])
-    data_mosh_block_size = IntegerField('Max Block Size', 
-                                      default=128,
-                                      validators=[Optional(), NumberRange(min=1, max=500)])
-    data_mosh_movement = SelectField('Block Movement', choices=[
-        ('swap', 'Swap Blocks'), 
-        ('in_place', 'In Place')
-    ], default='swap', validators=[Optional()])
-    data_mosh_color_swap = SelectField('Color Channel Swap', choices=[
-        ('never', 'Never'), 
-        ('always', 'Always'),
-        ('random', 'Random')
-    ], default='random', validators=[Optional()])
-    data_mosh_invert = SelectField('Color Inversion', choices=[
-        ('never', 'Never'), 
-        ('always', 'Always'),
-        ('random', 'Random')
-    ], default='random', validators=[Optional()])
-    data_mosh_shift = SelectField('Channel Value Shift', choices=[
-        ('never', 'Never'), 
-        ('always', 'Always'),
-        ('random', 'Random')
-    ], default='random', validators=[Optional()])
-    data_mosh_flip = SelectField('Block Flipping', choices=[
-        ('never', 'Never'), 
-        ('vertical', 'Vertical'),
-        ('horizontal', 'Horizontal'),
-        ('random', 'Random')
-    ], default='random', validators=[Optional()])
-    data_mosh_seed = IntegerField('Random Seed', 
-                                validators=[Optional(), NumberRange(min=1, max=9999)])
-    
-    # Voronoi Pixel Sort
-    voronoi_num_cells = IntegerField('Number of Cells',
-                                  default=69,
-                                  validators=[Optional(), NumberRange(min=10, max=1000)])
-    voronoi_size_variation = FloatField('Size Variation',
-                                     default=0.8,
-                                     validators=[Optional(), NumberRange(min=0.0, max=1.0)])
-    voronoi_sort_by = SelectField('Sort By', choices=[
-        ('color', 'Color (R+G+B)'), 
-        ('brightness', 'Brightness'),
-        ('hue', 'Hue'),
-        ('red', 'Red Channel'),
-        ('green', 'Green Channel'),
-        ('blue', 'Blue Channel'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance'),
-        ('contrast', 'Contrast')
-    ], default='hue', validators=[Optional()])
-    voronoi_sort_order = SelectField('Sort Order', choices=[
-        ('clockwise', 'Clockwise'), 
-        ('counter-clockwise', 'Counter-Clockwise')
-    ], default='clockwise', validators=[Optional()])
-    voronoi_orientation = SelectField('Line Orientation', choices=[
-        ('horizontal', 'Horizontal'),
-        ('vertical', 'Vertical'),
-        ('radial', 'Radial'),
-        ('spiral', 'Spiral')
-    ], default='spiral', validators=[Optional()])
-    voronoi_start_position = SelectField('Start Position', choices=[
-        ('left', 'Left'),
-        ('right', 'Right'),
-        ('top', 'Top'),
-        ('bottom', 'Bottom'),
-        ('center', 'Center')
-    ], default='center', validators=[Optional()])
-    voronoi_seed = IntegerField('Random Seed',
-                             default=420,
-                             validators=[Optional(), NumberRange(min=1, max=9999)])
-    
-    # RGB Channel Shift
-    channel_shift_amount = IntegerField('Shift Amount', 
-                                   default=42,
-                                   validators=[Optional(), NumberRange(min=1, max=500)])
-    channel_shift_direction = SelectField('Shift Direction', choices=[
-        ('horizontal', 'Horizontal'), 
-        ('vertical', 'Vertical')
-    ], default='horizontal', validators=[Optional()])
-    channel_shift_center = SelectField('Centered Channel', choices=[
-        ('red', 'Red'), 
-        ('green', 'Green'), 
-        ('blue', 'Blue')
-    ], default='green', validators=[Optional()])
-    channel_mode = SelectField('Mode', choices=[
-        ('shift', 'Shift Channels'), 
-        ('mirror', 'Mirror Channels')
-    ], default='shift', validators=[Optional()])
-    
-    # JPEG Artifacts
-    jpeg_intensity = FloatField('Artifact Intensity', 
-                               default=1.0,
-                               validators=[Optional(), NumberRange(min=0.0, max=1.0)])
-    
-    # Pixel Scatter
-    scatter_direction = SelectField('Scatter Direction', choices=[
-        ('horizontal', 'Horizontal'),
-        ('vertical', 'Vertical')
-    ], default='horizontal', validators=[Optional()])
-    
-    scatter_select_by = SelectField('Select Pixels By', choices=[
-        ('brightness', 'Brightness'),
-        ('red', 'Red Channel'),
-        ('green', 'Green Channel'),
-        ('blue', 'Blue Channel'),
-        ('hue', 'Hue'),
-        ('saturation', 'Saturation'),
-        ('luminance', 'Luminance'),
-        ('contrast', 'Contrast')
-    ], default='red', validators=[Optional()])
-    
-    scatter_min_value = FloatField('Minimum Value',
-                              default=180,
-                              validators=[Optional(), NumberRange(min=0, max=360)])
-    
-    scatter_max_value = FloatField('Maximum Value',
-                              default=360,
-                              validators=[Optional(), NumberRange(min=0, max=360)])
-    
-    # Databending
-    databend_intensity = FloatField('Databend Intensity',
-                                 default=0.1,
-                                 validators=[Optional(), NumberRange(min=0.1, max=1.0)])
-    
-    databend_preserve_header = SelectField('Preserve Header', choices=[
-        ('true', 'Yes (More Stable)'),
-        ('false', 'No (More Glitchy)')
-    ], default='true', validators=[Optional()])
-    
-    databend_seed = IntegerField('Random Seed',
-                               default=42,
-                               validators=[Optional(), NumberRange(min=1, max=9999)])
-    
-    # Histogram Glitch
-    hist_r_mode = SelectField('Red Channel Treatment', choices=[
-        ('solarize', 'Solarize (Sine Wave)'),
-        ('log', 'Logarithmic Compression'),
-        ('gamma', 'Gamma Adjustment'),
-        ('normal', 'Normal (No Change)')
-    ], default='solarize', validators=[Optional()])
-    
-    hist_g_mode = SelectField('Green Channel Treatment', choices=[
-        ('solarize', 'Solarize (Sine Wave)'),
-        ('log', 'Logarithmic Compression'),
-        ('gamma', 'Gamma Adjustment'),
-        ('normal', 'Normal (No Change)')
-    ], default='solarize', validators=[Optional()])
-    
-    hist_b_mode = SelectField('Blue Channel Treatment', choices=[
-        ('solarize', 'Solarize (Sine Wave)'),
-        ('log', 'Logarithmic Compression'),
-        ('gamma', 'Gamma Adjustment'),
-        ('normal', 'Normal (No Change)')
-    ], default='solarize', validators=[Optional()])
-    
-    hist_r_freq = FloatField('Red Solarize Frequency',
-                           default=1.0,
-                           validators=[Optional(), NumberRange(min=0.1, max=10.0)])
-    
-    hist_r_phase = FloatField('Red Solarize Phase',
-                            default=0.4,
-                            validators=[Optional(), NumberRange(min=0.0, max=6.28)])
-    
-    hist_g_freq = FloatField('Green Solarize Frequency',
-                           default=1.0,
-                           validators=[Optional(), NumberRange(min=0.1, max=10.0)])
-    
-    hist_g_phase = FloatField('Green Solarize Phase',
-                            default=0.3,
-                            validators=[Optional(), NumberRange(min=0.0, max=6.28)])
-    
-    hist_b_freq = FloatField('Blue Solarize Frequency',
-                           default=1.0,
-                           validators=[Optional(), NumberRange(min=0.1, max=10.0)])
-    
-    hist_b_phase = FloatField('Blue Solarize Phase',
-                            default=0.2,
-                            validators=[Optional(), NumberRange(min=0.0, max=6.28)])
-    
-    hist_gamma = FloatField('Gamma Value',
-                          default=0.5,
-                          validators=[Optional(), NumberRange(min=0.1, max=3.0)])
-    
-    # Ripple Effect
-    ripple_num_droplets = IntegerField('Number of Droplets',
-                                     default=9,
-                                     validators=[Optional(), NumberRange(min=1, max=20)])
-    
-    ripple_amplitude = FloatField('Ripple Amplitude',
-                                default=45.0,
-                                validators=[Optional(), NumberRange(min=1.0, max=50.0)])
-                                
-    ripple_frequency = FloatField('Ripple Frequency',
-                               default=0.4,
-                               validators=[Optional(), NumberRange(min=0.01, max=1.0)])
-                               
-    ripple_decay = FloatField('Ripple Decay',
-                           default=0.004,
-                           validators=[Optional(), NumberRange(min=0.001, max=0.1)])
-                           
-    ripple_distortion_type = SelectField('Distortion Type', choices=[
-        ('color_shift', 'Color Shift'),
-        ('pixelation', 'Pixelation'),
-        ('none', 'None (Plain Ripple)')
-    ], default='color_shift', validators=[Optional()])
-    
-    ripple_color_r = FloatField('Red Channel Factor',
-                             default=0.8,
-                             validators=[Optional(), NumberRange(min=0.5, max=1.5)])
-                             
-    ripple_color_g = FloatField('Green Channel Factor',
-                             default=1.0,
-                             validators=[Optional(), NumberRange(min=0.5, max=1.5)])
-                             
-    ripple_color_b = FloatField('Blue Channel Factor',
-                             default=1.2,
-                             validators=[Optional(), NumberRange(min=0.5, max=1.5)])
-                             
-    ripple_pixelation_scale = IntegerField('Pixelation Scale',
-                                        default=10,
-                                        validators=[Optional(), NumberRange(min=2, max=20)])
-                                        
-    ripple_pixelation_max_mag = FloatField('Pixelation Magnitude',
-                                        default=10.0,
-                                        validators=[Optional(), NumberRange(min=1.0, max=20.0)])
-    
-    # Masked Merge
-    masked_merge_secondary = FileField('Secondary Image', validators=[
-        Optional(),
-        FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
-    ])
-    mask_type = SelectField('Mask Type', choices=[
-        ('checkerboard', 'Checkerboard'),
-        ('random_checkerboard', 'Random Checkerboard'),
-        ('striped', 'Striped'),
-        ('gradient_striped', 'Gradient Striped (Sawtooth)'),
-        ('linear_gradient_striped', 'Linear Gradient Striped'),
-        ('perlin', 'Perlin Noise'),
-        ('voronoi', 'Voronoi Cells'),
-        ('concentric_rectangles', 'Concentric Rectangles'),
-        ('concentric_circles', 'Concentric Circles'),
-        ('random_triangles', 'Random Triangles')
-    ], default='checkerboard', validators=[Optional()])
-    mask_width = IntegerField('Width (pixels)',
-                          default=32,
-                          validators=[Optional(), NumberRange(min=8, max=512)])
-    mask_height = IntegerField('Height (pixels)',
-                           default=32,
-                           validators=[Optional(), NumberRange(min=8, max=512)])
-    mask_random_seed = IntegerField('Random Seed',
-                               default=42,
-                               validators=[Optional(), NumberRange(min=1, max=9999)])
-    stripe_width = IntegerField('Stripe Width (pixels)',
-                            default=16,
-                            validators=[Optional(), NumberRange(min=1, max=200)])
-    stripe_angle = IntegerField('Stripe Angle (degrees)',
-                           default=45,
-                           validators=[Optional(), NumberRange(min=0, max=180)])
-    perlin_noise_scale = FloatField('Noise Scale',
-                                default=0.01,
-                                validators=[Optional(), NumberRange(min=0.001, max=0.1)])
-    perlin_threshold = FloatField('Threshold',
-                              default=0.5,
-                              validators=[Optional(), NumberRange(min=0.0, max=1.0)])
-    perlin_octaves = IntegerField('Octaves (1=smooth, 8=detailed)',
-                              default=1,
-                              validators=[Optional(), NumberRange(min=1, max=8)])
-    voronoi_cells = IntegerField('Number of Cells',
-                             default=50,
-                             validators=[Optional(), NumberRange(min=10, max=500)])
-    
-    # Concentric Rectangles specific width
-    concentric_rectangle_width = IntegerField('Band Width (pixels)',
-                                           default=16, # Provide a distinct default
-                                           validators=[Optional(), NumberRange(min=2, max=100)])
-    
-    # Offset Effect Fields
-    offset_x_value = FloatField('Horizontal Offset', validators=[Optional()])
-    offset_x_unit = SelectField('Horizontal Offset Unit', choices=[('pixels', 'Pixels'), ('percentage', 'Percentage')], default='pixels', validators=[Optional()])
-    offset_y_value = FloatField('Vertical Offset', validators=[Optional()])
-    offset_y_unit = SelectField('Vertical Offset Unit', choices=[('pixels', 'Pixels'), ('percentage', 'Percentage')], default='pixels', validators=[Optional()])
-
-    # Slice Shuffle Effect Fields
-    slice_count = IntegerField('Slice Count', validators=[Optional(), NumberRange(min=4, max=128, message="Slice count must be between 4 and 128")])
-    slice_orientation = SelectField('Slice Orientation', choices=[('rows', 'Rows'), ('columns', 'Columns')], default='rows', validators=[Optional()])
-    slice_seed = IntegerField('Slice Shuffle Seed (optional)', validators=[Optional()])
-
-    # Slice Offset Effect Fields
-    slice_offset_count = IntegerField('Number of Slices', validators=[Optional(), NumberRange(min=4, max=128, message="Slice count must be between 4 and 128")])
-    slice_offset_max = IntegerField('Maximum Offset (pixels)', validators=[Optional(), NumberRange(min=1, max=512, message="Maximum offset must be between 1 and 512 pixels")])
-    slice_offset_orientation = SelectField('Slice Orientation', 
-                                     choices=[('rows', 'Rows (horizontal slices, horizontal offset)'), 
-                                             ('columns', 'Columns (vertical slices, vertical offset)')], 
-                                     default='rows', validators=[Optional()])
-    slice_offset_mode = SelectField('Offset Pattern', 
-                                  choices=[('random', 'Random Offsets'), 
-                                           ('sine', 'Sine Wave Pattern')], 
-                                  default='random', validators=[Optional()])
-    slice_offset_frequency = FloatField('Sine Wave Frequency', 
-                                      default=0.1,
-                                      validators=[Optional(), NumberRange(min=0.01, max=1.0, message="Frequency must be between 0.01 and 1.0")])
-    slice_offset_seed = IntegerField('Random Seed (optional)', validators=[Optional()])
-
-    # Slice Reduction Effect Fields
-    slice_reduction_count = IntegerField('Number of Slices', validators=[Optional(), NumberRange(min=16, max=256, message="Slice count must be between 16 and 256")])
-    slice_reduction_value = IntegerField('Reduction Value', validators=[Optional(), NumberRange(min=2, max=8, message="Reduction value must be between 2 and 8")])
-    slice_reduction_orientation = SelectField('Slice Orientation', 
-                                     choices=[('rows', 'Rows (horizontal slices)'), 
-                                             ('columns', 'Columns (vertical slices)')], 
-                                     default='rows', validators=[Optional()])
-
-    # Posterize Effect Field
-    posterize_levels = IntegerField('Color Levels',
-                              default=4,
-                              validators=[Optional(), NumberRange(min=2, max=32, message="Levels must be between 2 and 32")])
-
-    # Curved Hue Shift Effect Fields
-    hue_curve = FloatField('Curve Value',
-                         default=180,
-                         validators=[Optional(), NumberRange(min=1, max=360, message="Curve value must be between 1 and 360")])
-    hue_shift_amount = FloatField('Shift Amount (degrees)',
-                                 default=60,
-                                 validators=[Optional(), NumberRange(min=-180, max=180, message="Shift amount must be between -180 and 180 degrees")])
-
-    # Concentric Circles Mask Specific
-    concentric_origin = SelectField('Circle Origin', choices=[
-        ('center', 'Center'),
-        ('top-left', 'Top-Left'),
-        ('top-right', 'Top-Right'),
-        ('bottom-left', 'Bottom-Left'),
-        ('bottom-right', 'Bottom-Right')
-    ], default='center', validators=[Optional()])
-
-    # Linear Gradient Stripe Specific                             
-    gradient_direction = SelectField('Gradient Direction', choices=[
-        ('up', 'Up (0 -> 255)'),
-        ('down', 'Down (255 -> 0)')
-    ], default='up', validators=[Optional()])
-
-    # Random Triangles Mask Specific
-    triangle_size = IntegerField('Triangle Size (pixels)',
-                           [Optional(),
-                            NumberRange(min=4, max=256)])
-    
-    mask_width = IntegerField('Width (pixels)',
-                           [Optional(),
-                            NumberRange(min=2, max=512)])
-    
-    concentric_circle_width = IntegerField('Circle Band Thickness (pixels)',
-                           [Optional(),
-                            NumberRange(min=2, max=100)])
-                            
-    mask_height = IntegerField('Height (pixels)',
-                           default=32,
-                           validators=[Optional(), NumberRange(min=8, max=512)])
-
-    # Contour Effect Fields
-    contour_num_levels = IntegerField('Number of Contour Levels',
-                                  default=10,
-                                  validators=[Optional(), NumberRange(min=5, max=30, message="Number of contour levels must be between 5 and 30")])
-    contour_noise_std = IntegerField('Noise Amount',
-                                 default=5,
-                                 validators=[Optional(), NumberRange(min=0, max=10, message="Noise amount must be between 0 and 10")])
-    contour_smooth_sigma = IntegerField('Contour Smoothness',
-                                    default=16,
-                                    validators=[Optional(), NumberRange(min=1, max=20, message="Smoothness must be between 1 and 20")])
-    contour_line_thickness = IntegerField('Line Thickness',
-                                      default=1,
-                                      validators=[Optional(), NumberRange(min=1, max=5, message="Line thickness must be between 1 and 5")])
-    contour_grad_threshold = IntegerField('Gradient Threshold',
-                                      default=28,
-                                      validators=[Optional(), NumberRange(min=1, max=100, message="Gradient threshold must be between 1 and 100")])
-    contour_min_distance = IntegerField('Minimum Distance Between Points',
-                                    default=3,
-                                    validators=[Optional(), NumberRange(min=1, max=20, message="Minimum distance must be between 1 and 20")])
-    contour_max_line_length = IntegerField('Maximum Line Segment Length',
-                                       default=256,
-                                       validators=[Optional(), NumberRange(min=50, max=500, message="Maximum line length must be between 50 and 500")])
-    contour_blur_kernel_size = IntegerField('Blur Kernel Size',
-                                       default=5,
-                                       validators=[Optional(), NumberRange(min=3, max=33, message="Blur kernel size must be between 3 and 33")])
-    contour_sobel_kernel_size = IntegerField('Edge Detection Kernel Size',
-                                       default=15,
-                                       validators=[Optional(), NumberRange(min=3, max=33, message="Edge detection kernel size must be between 3 and 33")])
-
-    # Block Shuffle
-    block_shuffle_block_width = IntegerField('Block Width', validators=[Optional(), NumberRange(min=2, max=512)])
-    block_shuffle_block_height = IntegerField('Block Height', validators=[Optional(), NumberRange(min=2, max=512)])
-    block_shuffle_seed = IntegerField('Random Seed (optional)', validators=[Optional(), NumberRange(min=1, max=9999)])
-
     submit = SubmitField('Process Image')
-    
-    def validate(self, extra_validators=None):
-        """Custom validation based on the selected effect."""
-        logger.debug(f"Validating form with effect: {self.effect.data}")
-        
-        # First run the standard validation
-        if not super(ImageProcessForm, self).validate(extra_validators=extra_validators):
-            logger.debug(f"Standard validation failed: {self.errors}")
-            return False
-            
-        # Get the selected effect
-        effect = self.effect.data
-        logger.debug(f"Selected effect: {effect}")
-        
-        # Validate fields based on the selected effect
-        if effect == 'pixel_sort_chunk':
-            if not self.chunk_width.data:
-                self.chunk_width.errors = ['Chunk width is required for Pixel Sort Chunk']
-                logger.debug("Missing chunk_width for pixel_sort_chunk")
-                return False
-            if not self.chunk_height.data:
-                self.chunk_height.errors = ['Chunk height is required for Pixel Sort Chunk']
-                logger.debug("Missing chunk_height for pixel_sort_chunk")
-                return False
-            if not self.sort_by.data:
-                self.sort_by.errors = ['Sort by is required for Pixel Sort Chunk']
-                logger.debug("Missing sort_by for pixel_sort_chunk")
-                return False
-            if not self.sort_order.data:
-                self.sort_order.errors = ['Sort order is required for Pixel Sort Chunk']
-                logger.debug("Missing sort_order for pixel_sort_chunk")
-                return False
-            if not self.sort_mode.data:
-                self.sort_mode.errors = ['Sort mode is required for Pixel Sort Chunk']
-                logger.debug("Missing sort_mode for pixel_sort_chunk")
-                return False
-            
-            # Validate starting_corner when sort_mode is diagonal
-            if self.sort_mode.data == 'diagonal' and not self.starting_corner.data:
-                self.starting_corner.errors = ['Starting corner is required for Diagonal sort mode']
-                logger.debug("Missing starting_corner for diagonal sort mode")
-                return False
-                
-        elif effect == 'full_frame_sort':
-            if not self.full_frame_direction.data:
-                self.full_frame_direction.errors = ['Direction is required for Full Frame Sorting']
-                logger.debug("Missing full_frame_direction for full_frame_sort")
-                return False
-            if not self.full_frame_sort_by.data:
-                self.full_frame_sort_by.errors = ['Sort by is required for Full Frame Sorting']
-                logger.debug("Missing full_frame_sort_by for full_frame_sort")
-                return False
-            if not self.full_frame_reverse.data:
-                self.full_frame_reverse.errors = ['Sort order is required for Full Frame Sorting']
-                logger.debug("Missing full_frame_reverse for full_frame_sort")
-                return False
-                
-        elif effect == 'polar_sort':
-            if not self.polar_chunk_size.data:
-                self.polar_chunk_size.errors = ['Chunk size is required for Polar Sorting']
-                logger.debug("Missing polar_chunk_size for polar_sort")
-                return False
-            if not self.polar_sort_by.data:
-                self.polar_sort_by.errors = ['Sort by is required for Polar Sorting']
-                logger.debug("Missing polar_sort_by for polar_sort")
-                return False
-            if not self.polar_reverse.data:
-                self.polar_reverse.errors = ['Sort order is required for Polar Sorting']
-                logger.debug("Missing polar_reverse for polar_sort")
-                return False
-                
-        elif effect == 'perlin_noise_sort':
-            logger.debug("Validating perlin_noise_sort fields")
-            if not self.perlin_chunk_width.data:
-                self.perlin_chunk_width.errors = ['Chunk width is required for Perlin Noise Sorting']
-                logger.debug("Missing perlin_chunk_width for perlin_noise_sort")
-                return False
-            if not self.perlin_chunk_height.data:
-                self.perlin_chunk_height.errors = ['Chunk height is required for Perlin Noise Sorting']
-                logger.debug("Missing perlin_chunk_height for perlin_noise_sort")
-                return False
-            if not self.perlin_noise_scale.data:
-                self.perlin_noise_scale.errors = ['Noise scale is required for Perlin Noise Sorting']
-                logger.debug("Missing perlin_noise_scale for perlin_noise_sort")
-                return False
-            if not self.perlin_direction.data:
-                self.perlin_direction.errors = ['Direction is required for Perlin Noise Sorting']
-                logger.debug("Missing perlin_direction for perlin_noise_sort")
-                return False
-            if not self.perlin_reverse.data:
-                self.perlin_reverse.errors = ['Sort order is required for Perlin Noise Sorting']
-                logger.debug("Missing perlin_reverse for perlin_noise_sort")
-                return False
-                
-        elif effect == 'perlin_full_frame':
-            logger.debug("Validating perlin_full_frame fields")
-            if not self.perlin_full_frame_noise_scale.data:
-                self.perlin_full_frame_noise_scale.errors = ['Noise scale is required for Perlin Full Frame']
-                logger.debug("Missing perlin_full_frame_noise_scale for perlin_full_frame")
-                return False
-            if not self.perlin_full_frame_sort_by.data:
-                self.perlin_full_frame_sort_by.errors = ['Sort by is required for Perlin Full Frame']
-                logger.debug("Missing perlin_full_frame_sort_by for perlin_full_frame")
-                return False
-            if not self.perlin_full_frame_reverse.data:
-                self.perlin_full_frame_reverse.errors = ['Sort order is required for Perlin Full Frame']
-                logger.debug("Missing perlin_full_frame_reverse for perlin_full_frame")
-                return False
-            # Pattern width can have a default value if not provided
-            if self.perlin_full_frame_pattern_width.data is None:
-                self.perlin_full_frame_pattern_width.data = 1
-            elif self.perlin_full_frame_pattern_width.data < 1 or self.perlin_full_frame_pattern_width.data > 8:
-                self.perlin_full_frame_pattern_width.errors = ['Pattern width must be between 1 and 8']
-                logger.debug(f"Invalid perlin_full_frame_pattern_width: {self.perlin_full_frame_pattern_width.data}")
-                return False
-                
-        elif effect == 'pixelate':
-            if not self.pixelate_width.data:
-                self.pixelate_width.errors = ['Pixel width is required for Pixelate']
-                logger.debug("Missing pixelate_width for pixelate")
-                return False
-            if not self.pixelate_height.data:
-                self.pixelate_height.errors = ['Pixel height is required for Pixelate']
-                logger.debug("Missing pixelate_height for pixelate")
-                return False
-            if not self.pixelate_attribute.data:
-                self.pixelate_attribute.errors = ['Attribute is required for Pixelate']
-                logger.debug("Missing pixelate_attribute for pixelate")
-                return False
-            if not self.pixelate_bins.data:
-                self.pixelate_bins.errors = ['Number of bins is required for Pixelate']
-                logger.debug("Missing pixelate_bins for pixelate")
-                return False
-                
-        elif effect == 'concentric_shapes':
-            if not self.concentric_num_points.data:
-                self.concentric_num_points.errors = ['Number of points is required for Concentric Shapes']
-                logger.debug("Missing concentric_num_points for concentric_shapes")
-                return False
-            if not self.shape_type.data:
-                self.shape_type.errors = ['Shape type is required for Concentric Shapes']
-                logger.debug("Missing shape_type for concentric_shapes")
-                return False
-            if not self.concentric_thickness.data:
-                self.concentric_thickness.errors = ['Line thickness is required for Concentric Shapes']
-                logger.debug("Missing concentric_thickness for concentric_shapes")
-                return False
-            if not self.spacing.data:
-                self.spacing.errors = ['Spacing is required for Concentric Shapes']
-                logger.debug("Missing spacing for concentric_shapes")
-                return False
-            # These parameters can be optional with defaults
-            if self.rotation_angle.data is None:
-                self.rotation_angle.data = 0
-            if self.darken_step.data is None:
-                self.darken_step.data = 0
-            if self.color_shift.data is None:
-                self.color_shift.data = 0
-                
-        elif effect == 'color_shift_expansion':
-            if not self.color_shift_num_points.data:
-                self.color_shift_num_points.errors = ['Number of seed points is required for Color Shift Expansion']
-                logger.debug("Missing color_shift_num_points for color_shift_expansion")
-                return False
-            if not self.color_shift_amount.data:
-                self.color_shift_amount.errors = ['Shift amount is required for Color Shift Expansion']
-                logger.debug("Missing color_shift_amount for color_shift_expansion")
-                return False
-            if not self.expansion_type.data:
-                self.expansion_type.errors = ['Expansion type is required for Color Shift Expansion']
-                logger.debug("Missing expansion_type for color_shift_expansion")
-                return False
-            if not self.pattern_type.data:
-                self.pattern_type.errors = ['Seed point pattern is required for Color Shift Expansion']
-                logger.debug("Missing pattern_type for color_shift_expansion")
-                return False
-            if not self.color_theme.data:
-                self.color_theme.errors = ['Color theme is required for Color Shift Expansion']
-                logger.debug("Missing color_theme for color_shift_expansion")
-                return False
-            # These can have default values
-            if self.saturation_boost.data is None:
-                self.saturation_boost.data = 0.0
-            if self.value_boost.data is None:
-                self.value_boost.data = 0.0
-            if self.decay_factor.data is None:
-                self.decay_factor.data = 0.0
-                
-        elif effect == 'perlin_displacement':
-            if not self.perlin_displacement_scale.data:
-                self.perlin_displacement_scale.errors = ['Noise scale is required for Perlin Displacement']
-                logger.debug("Missing perlin_displacement_scale for perlin_displacement")
-                return False
-            if not self.perlin_displacement_intensity.data:
-                self.perlin_displacement_intensity.errors = ['Displacement intensity is required for Perlin Displacement']
-                logger.debug("Missing perlin_displacement_intensity for perlin_displacement")
-                return False
-            if not self.perlin_displacement_octaves.data:
-                self.perlin_displacement_octaves.errors = ['Octaves is required for Perlin Displacement']
-                logger.debug("Missing perlin_displacement_octaves for perlin_displacement")
-                return False
-            if not self.perlin_displacement_persistence.data:
-                self.perlin_displacement_persistence.errors = ['Persistence is required for Perlin Displacement']
-                logger.debug("Missing perlin_displacement_persistence for perlin_displacement")
-                return False
-            if not self.perlin_displacement_lacunarity.data:
-                self.perlin_displacement_lacunarity.errors = ['Lacunarity is required for Perlin Displacement']
-                logger.debug("Missing perlin_displacement_lacunarity for perlin_displacement")
-                return False
-                
-        elif effect == 'voronoi_sort':
-            logger.debug("Validating voronoi_sort fields")
-            if not self.voronoi_num_cells.data:
-                self.voronoi_num_cells.errors = ['Number of cells is required for Voronoi Pixel Sort']
-                logger.debug("Missing voronoi_num_cells for voronoi_sort")
-                return False
-            if not self.voronoi_size_variation.data and self.voronoi_size_variation.data != 0:
-                self.voronoi_size_variation.errors = ['Size variation is required for Voronoi Pixel Sort']
-                logger.debug("Missing voronoi_size_variation for voronoi_sort")
-                return False
-            if not self.voronoi_sort_by.data:
-                self.voronoi_sort_by.errors = ['Sort by is required for Voronoi Pixel Sort']
-                logger.debug("Missing voronoi_sort_by for voronoi_sort")
-                return False
-            if not self.voronoi_sort_order.data:
-                self.voronoi_sort_order.errors = ['Sort order is required for Voronoi Pixel Sort']
-                logger.debug("Missing voronoi_sort_order for voronoi_sort")
-                return False
-            if not self.voronoi_orientation.data:
-                self.voronoi_orientation.errors = ['Line orientation is required for Voronoi Pixel Sort']
-                logger.debug("Missing voronoi_orientation for voronoi_sort")
-                return False
-            if not self.voronoi_start_position.data:
-                self.voronoi_start_position.errors = ['Start position is required for Voronoi Pixel Sort']
-                logger.debug("Missing voronoi_start_position for voronoi_sort")
-                return False
-        
-        # Check if channel_shift is valid        
-        elif effect == 'channel_shift':
-            logger.debug("Validating channel_shift fields")
-            if not self.channel_shift_amount.data:
-                self.channel_shift_amount.errors = ['Shift amount is required for RGB Channel Shift']
-                logger.debug("Missing channel_shift_amount for channel_shift")
-                return False
-            if not self.channel_shift_direction.data:
-                self.channel_shift_direction.errors = ['Shift direction is required for RGB Channel Shift']
-                logger.debug("Missing channel_shift_direction for channel_shift")
-                return False
-            if not self.channel_shift_center.data:
-                self.channel_shift_center.errors = ['Centered channel is required for RGB Channel Shift']
-                logger.debug("Missing channel_shift_center for channel_shift")
-                return False
-            if not self.channel_mode.data:
-                self.channel_mode.errors = ['Mode is required for RGB Channel Shift']
-                logger.debug("Missing channel_mode for channel_shift")
-                return False
-                
-        # Check if bit_manipulation is valid
-        elif effect == 'bit_manipulation':
-            logger.debug("Validating bit_manipulation fields")
-            if not self.bit_chunk_size.data:
-                self.bit_chunk_size.errors = ['Chunk size is required for Bit Manipulation']
-                logger.debug("Missing bit_chunk_size for bit_manipulation")
-                return False
-            if not self.bit_manipulation_type.data:
-                self.bit_manipulation_type.errors = ['Manipulation type is required for Bit Manipulation']
-                logger.debug("Missing bit_manipulation_type for bit_manipulation")
-                return False
-            if not self.bit_skip_pattern.data:
-                self.bit_skip_pattern.errors = ['Skip pattern is required for Bit Manipulation']
-                logger.debug("Missing bit_skip_pattern for bit_manipulation")
-                return False
-            
-            # Ensure offset is not negative
-            if self.bit_offset.data is None:
-                self.bit_offset.data = 0
-            elif self.bit_offset.data < 0:
-                self.bit_offset.errors = ['Offset must be non-negative']
-                logger.debug(f"Invalid bit_offset: {self.bit_offset.data}")
-                return False
-                
-            # Ensure XOR value is between 0-255
-            if self.bit_xor_value.data is None:
-                self.bit_xor_value.data = 255
-            elif self.bit_xor_value.data < 0 or self.bit_xor_value.data > 255:
-                self.bit_xor_value.errors = ['XOR value must be between 0 and 255']
-                logger.debug(f"Invalid bit_xor_value: {self.bit_xor_value.data}")
-                return False
-                
-            # Validate bit_shift is in range
-            if self.bit_shift.data is None:
-                self.bit_shift.data = 1
-            elif self.bit_shift.data < -7 or self.bit_shift.data > 7:
-                self.bit_shift.errors = ['Bit shift must be between -7 and 7']
-                logger.debug(f"Invalid bit_shift: {self.bit_shift.data}")
-                return False
-                
-            # Validate randomize
-            if not self.bit_randomize.data:
-                self.bit_randomize.data = 'false'
-                
-            # Set a default random seed if not provided
-            if self.bit_random_seed.data is None:
-                self.bit_random_seed.data = 42
-                
-        # Check if pixel_scatter is valid
-        elif effect == 'pixel_scatter':
-            logger.debug("Validating pixel_scatter fields")
-            if not self.scatter_direction.data:
-                self.scatter_direction.errors = ['Scatter direction is required for Pixel Scatter']
-                logger.debug("Missing scatter_direction for pixel_scatter")
-                return False
-            if not self.scatter_select_by.data:
-                self.scatter_select_by.errors = ['Select by is required for Pixel Scatter']
-                logger.debug("Missing scatter_select_by for pixel_scatter")
-                return False
-            if self.scatter_min_value.data is None:
-                self.scatter_min_value.errors = ['Minimum value is required for Pixel Scatter']
-                logger.debug("Missing scatter_min_value for pixel_scatter")
-                return False
-            if self.scatter_max_value.data is None:
-                self.scatter_max_value.errors = ['Maximum value is required for Pixel Scatter']
-                logger.debug("Missing scatter_max_value for pixel_scatter")
-                return False
-            if self.scatter_min_value.data >= self.scatter_max_value.data:
-                self.scatter_min_value.errors = ['Minimum value must be less than maximum value']
-                logger.debug("Invalid value range for pixel_scatter")
-                return False
-                
-        # Check if databend is valid
-        elif effect == 'databend':
-            logger.debug("Validating databend fields")
-            if self.databend_intensity.data is None:
-                self.databend_intensity.errors = ['Databend intensity is required']
-                logger.debug("Missing databend_intensity for databend")
-                return False
-            if self.databend_intensity.data < 0.1 or self.databend_intensity.data > 1.0:
-                self.databend_intensity.errors = ['Databend intensity must be between 0.1 and 1.0']
-                logger.debug(f"Invalid databend_intensity: {self.databend_intensity.data}")
-                return False
-            if not self.databend_preserve_header.data:
-                self.databend_preserve_header.errors = ['Preserve header option is required for Databending']
-                logger.debug("Missing databend_preserve_header for databend")
-                return False
-        
-        # Check if histogram_glitch is valid
-        elif effect == 'histogram_glitch':
-            logger.debug("Validating histogram_glitch fields")
-            if not self.hist_r_mode.data:
-                self.hist_r_mode.errors = ['Red channel treatment is required for Histogram Glitch']
-                logger.debug("Missing hist_r_mode for histogram_glitch")
-                return False
-            if not self.hist_g_mode.data:
-                self.hist_g_mode.errors = ['Green channel treatment is required for Histogram Glitch']
-                logger.debug("Missing hist_g_mode for histogram_glitch")
-                return False
-            if not self.hist_b_mode.data:
-                self.hist_b_mode.errors = ['Blue channel treatment is required for Histogram Glitch']
-                logger.debug("Missing hist_b_mode for histogram_glitch")
-                return False
-            
-            # Check solarize parameters if any channel is set to solarize mode
-            if self.hist_r_mode.data == 'solarize':
-                if self.hist_r_freq.data is None or self.hist_r_phase.data is None:
-                    self.hist_r_freq.errors = ['Frequency required for solarize mode']
-                    self.hist_r_phase.errors = ['Phase required for solarize mode']
-                    logger.debug("Missing solarize parameters for red channel")
-                    return False
-            
-            if self.hist_g_mode.data == 'solarize':
-                if self.hist_g_freq.data is None or self.hist_g_phase.data is None:
-                    self.hist_g_freq.errors = ['Frequency required for solarize mode']
-                    self.hist_g_phase.errors = ['Phase required for solarize mode']
-                    logger.debug("Missing solarize parameters for green channel")
-                    return False
-            
-            if self.hist_b_mode.data == 'solarize':
-                if self.hist_b_freq.data is None or self.hist_b_phase.data is None:
-                    self.hist_b_freq.errors = ['Frequency required for solarize mode']
-                    self.hist_b_phase.errors = ['Phase required for solarize mode']
-                    logger.debug("Missing solarize parameters for blue channel")
-                    return False
-            
-            # Check gamma if any channel is set to gamma mode
-            if 'gamma' in [self.hist_r_mode.data, self.hist_g_mode.data, self.hist_b_mode.data]:
-                if not self.hist_gamma.data:
-                    self.hist_gamma.errors = ['Gamma value is required when a channel is set to gamma mode']
-                    logger.debug("Missing hist_gamma for histogram_glitch")
-                    return False
-                if self.hist_gamma.data < 0.1 or self.hist_gamma.data > 3.0:
-                    self.hist_gamma.errors = ['Gamma value must be between 0.1 and 3.0']
-                    return False
-        
-        elif effect == 'offset':
-            # For the offset effect, both horizontal and vertical offsets are required (can be 0)
-            if self.offset_x_value.data is None:
-                self.offset_x_value.errors = ['Horizontal offset is required for Offset effect']
-                return False
-            if self.offset_y_value.data is None:
-                self.offset_y_value.errors = ['Vertical offset is required for Offset effect']
-                return False
 
-        elif effect == 'slice_shuffle':
-            # For the slice shuffle effect, slice_count and slice_orientation are required
-            if self.slice_count.data is None:
-                self.slice_count.errors = ['Slice count is required for Slice Shuffle effect']
-                return False
-            if self.slice_orientation.data is None:
-                self.slice_orientation.errors = ['Slice orientation is required for Slice Shuffle effect']
-                return False
+# The monolithic ImageProcessForm class previously containing all effect parameters
+# and its custom .validate() method has been removed.
+# Effect-specific parameters are now defined in their own form classes.
+# The custom validators (validate_chunk_size, etc.) are preserved at the top.
 
-        elif effect == 'slice_offset':
-            # For the slice offset effect, slice_offset_count, slice_offset_max, and slice_offset_orientation are required
-            if self.slice_offset_count.data is None:
-                self.slice_offset_count.errors = ['Number of slices is required for Slice Offset effect']
-                return False
-            if self.slice_offset_max.data is None:
-                self.slice_offset_max.errors = ['Maximum offset is required for Slice Offset effect']
-                return False
-            if self.slice_offset_orientation.data is None:
-                self.slice_offset_orientation.errors = ['Slice orientation is required for Slice Offset effect']
-                return False
-            if self.slice_offset_mode.data is None:
-                self.slice_offset_mode.errors = ['Offset pattern is required for Slice Offset effect']
-                return False
-            # Sine frequency is required only when sine mode is selected
-            if self.slice_offset_mode.data == 'sine' and self.slice_offset_frequency.data is None:
-                self.slice_offset_frequency.errors = ['Sine frequency is required when using Sine Wave Pattern']
-                return False
+# Contour Effect Fields
+contour_num_levels = IntegerField('Number of Contour Levels',
+default=10,
+validators=[Optional(), NumberRange(min=5, max=30, message="Number of contour levels must be between 5 and 30")])
+contour_noise_std = IntegerField('Noise Amount',
+default=5,
+validators=[Optional(), NumberRange(min=0, max=10, message="Noise amount must be between 0 and 10")])
+contour_smooth_sigma = IntegerField('Contour Smoothness',
+default=16,
+validators=[Optional(), NumberRange(min=1, max=20, message="Smoothness must be between 1 and 20")])
+contour_line_thickness = IntegerField('Line Thickness',
+default=1,
+validators=[Optional(), NumberRange(min=1, max=5, message="Line thickness must be between 1 and 5")])
+contour_grad_threshold = IntegerField('Gradient Threshold',
+default=28,
+validators=[Optional(), NumberRange(min=1, max=100, message="Gradient threshold must be between 1 and 100")])
+contour_min_distance = IntegerField('Minimum Distance Between Points',
+default=3,
+validators=[Optional(), NumberRange(min=1, max=20, message="Minimum distance must be between 1 and 20")])
+contour_max_line_length = IntegerField('Maximum Line Segment Length',
+default=256,
+validators=[Optional(), NumberRange(min=50, max=500, message="Maximum line length must be between 50 and 500")])
+contour_blur_kernel_size = IntegerField('Blur Kernel Size',
+default=5,
+validators=[Optional(), NumberRange(min=3, max=33, message="Blur kernel size must be between 3 and 33")])
+contour_sobel_kernel_size = IntegerField('Edge Detection Kernel Size',
+default=15,
+validators=[Optional(), NumberRange(min=3, max=33, message="Edge detection kernel size must be between 3 and 33")])
 
-        # Slice Reduction Effect Fields
-        elif effect == 'slice_reduction':
-            if self.slice_reduction_count.data is None:
-                self.slice_reduction_count.errors = ['Number of slices is required for Slice Reduction effect']
-                return False
-            if self.slice_reduction_value.data is None:
-                self.slice_reduction_value.errors = ['Reduction value is required for Slice Reduction effect']
-                return False
-            if self.slice_reduction_orientation.data is None:
-                self.slice_reduction_orientation.errors = ['Slice orientation is required for Slice Reduction effect']
-                return False
-
-        # Posterize Effect Fields
-        elif effect == 'posterize':
-            logger.debug("Validating posterize fields")
-            if self.posterize_levels.data is None:
-                self.posterize_levels.errors = ['Color levels is required for Posterfy effect']
-                logger.debug("Missing posterize_levels for posterize")
-                return False
-            if self.posterize_levels.data < 2:
-                self.posterize_levels.errors = ['Levels must be at least 2']
-                logger.debug(f"Invalid posterize_levels: {self.posterize_levels.data}")
-                return False
-
-        # Contour Effect Fields
-        elif effect == 'contour':
-            if self.contour_num_levels.data is None:
-                self.contour_num_levels.errors = ['Number of contour levels is required for Contour effect']
-                return False
-            if self.contour_noise_std.data is None:
-                self.contour_noise_std.errors = ['Noise amount is required for Contour effect']
-                return False
-            if self.contour_smooth_sigma.data is None:
-                self.contour_smooth_sigma.errors = ['Contour smoothness is required for Contour effect']
-                return False
-            if self.contour_line_thickness.data is None:
-                self.contour_line_thickness.errors = ['Line thickness is required for Contour effect']
-                return False
-            if self.contour_grad_threshold.data is None:
-                self.contour_grad_threshold.errors = ['Gradient threshold is required for Contour effect'] 
-                return False
-            if self.contour_min_distance.data is None:
-                self.contour_min_distance.errors = ['Minimum distance is required for Contour effect']
-                return False
-            if self.contour_max_line_length.data is None:
-                self.contour_max_line_length.errors = ['Maximum line length is required for Contour effect']
-                return False
-            if self.contour_blur_kernel_size.data is None:
-                self.contour_blur_kernel_size.errors = ['Blur kernel size is required for Contour effect']
-                return False
-            if self.contour_blur_kernel_size.data % 2 == 0:
-                self.contour_blur_kernel_size.errors = ['Blur kernel size must be an odd number']
-                return False
-            if self.contour_sobel_kernel_size.data is None:
-                self.contour_sobel_kernel_size.errors = ['Edge detection kernel size is required for Contour effect']
-                return False
-            if self.contour_sobel_kernel_size.data % 2 == 0:
-                self.contour_sobel_kernel_size.errors = ['Edge detection kernel size must be an odd number']
-                return False
-
-        # Block Shuffle
-        elif effect == 'block_shuffle':
-            if not self.block_shuffle_block_width.data:
-                self.block_shuffle_block_width.errors = ['Block width is required for Block Shuffle']
-                return False
-            if not self.block_shuffle_block_height.data:
-                self.block_shuffle_block_height.errors = ['Block height is required for Block Shuffle']
-                return False
-            # Seed is optional, no validation needed
-
-        # If we get here, validation passed
-        logger.debug("Validation passed")
-        return True
+# Block Shuffle
+block_shuffle_block_width = IntegerField('Block Width', validators=[Optional(), NumberRange(min=2, max=512)])
+block_shuffle_block_height = IntegerField('Block Height', validators=[Optional(), NumberRange(min=2, max=512)])
+block_shuffle_seed = IntegerField('Random Seed (optional)', validators=[Optional(), NumberRange(min=1, max=9999)])

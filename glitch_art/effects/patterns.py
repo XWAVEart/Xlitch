@@ -59,17 +59,14 @@ def voronoi_pixel_sort(image, num_cells=100, size_variation=0.5, sort_by='color'
     regions = regions.reshape((height, width))
 
     # Define sorting functions based on PixelAttributes class
-    sort_function = {
-        'color': lambda p: np.sum(p[:3], dtype=int),
+    # Keep the original sort_function map for PixelAttributes methods
+    pa_sort_functions = {
         'brightness': PixelAttributes.brightness,
         'hue': PixelAttributes.hue,
         'saturation': PixelAttributes.saturation,
         'luminance': PixelAttributes.luminance,
-        'contrast': PixelAttributes.contrast,
-        'red': lambda p: p[0],
-        'green': lambda p: p[1],
-        'blue': lambda p: p[2]
-    }.get(sort_by, lambda p: np.sum(p[:3], dtype=int))
+        'contrast': PixelAttributes.contrast
+    }
 
     # Process each cell
     for region_id in np.unique(regions):
@@ -91,7 +88,21 @@ def voronoi_pixel_sort(image, num_cells=100, size_variation=0.5, sort_by='color'
         centroid_y = np.mean(ys_cell)
 
         # Sort the pixels based on the sorting property
-        pixel_values = np.array([sort_function(p) for p in pixels])
+        if sort_by == 'color':
+            pixel_values = np.sum(pixels, axis=1, dtype=int)
+        elif sort_by == 'red':
+            pixel_values = pixels[:, 0]
+        elif sort_by == 'green':
+            pixel_values = pixels[:, 1]
+        elif sort_by == 'blue':
+            pixel_values = pixels[:, 2]
+        elif sort_by in pa_sort_functions:
+            # Use list comprehension for PixelAttributes methods
+            selected_pa_func = pa_sort_functions[sort_by]
+            pixel_values = np.array([selected_pa_func(p) for p in pixels])
+        else: # Default to color sum if sort_by is unknown
+            pixel_values = np.sum(pixels, axis=1, dtype=int)
+            
         pixel_order = np.argsort(pixel_values)
         sorted_pixels = pixels[pixel_order]
         
@@ -216,28 +227,38 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     img_width, img_height = image.size
     
     # Create mask based on mask_type
-    mask = Image.new('L', image.size, 0)
-    
+    mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
+
+    yy_grid, xx_grid = np.mgrid[0:img_height, 0:img_width]
+
     if mask_type == 'checkerboard':
-        # Draw a regular checkerboard pattern
-        draw = ImageDraw.Draw(mask)
-        
-        for y in range(0, img_height, height):
-            for x in range(0, img_width, width):
-                if ((x // width) + (y // height)) % 2 == 0:
-                    draw.rectangle([x, y, x + width - 1, y + height - 1], fill=255)
+        # Draw a regular checkerboard pattern using NumPy
+        # Ensure width and height are at least 1 to avoid division by zero or empty patterns
+        safe_width = max(1, width)
+        safe_height = max(1, height)
+        mask_array = (((xx_grid // safe_width) + (yy_grid // safe_height)) % 2 == 0) * 255
+        mask_array = mask_array.astype(np.uint8)
+        mask = Image.fromarray(mask_array, mode='L')
     
     elif mask_type == 'random_checkerboard':
-        # Draw a random checkerboard pattern
+        # Draw a random checkerboard pattern using NumPy
         if random_seed is not None:
-            random.seed(random_seed)
+            np.random.seed(random_seed) # Use NumPy's random for consistency
         
-        draw = ImageDraw.Draw(mask)
+        safe_width = max(1, width)
+        safe_height = max(1, height)
+
+        num_blocks_y = (img_height + safe_height - 1) // safe_height
+        num_blocks_x = (img_width + safe_width - 1) // safe_width
         
-        for y in range(0, img_height, height):
-            for x in range(0, img_width, width):
-                if random.random() > 0.5:
-                    draw.rectangle([x, y, x + width - 1, y + height - 1], fill=255)
+        block_choices = np.random.randint(0, 2, size=(num_blocks_y, num_blocks_x), dtype=np.uint8)
+        
+        # Create the full mask by repeating blocks using np.kron
+        mask_array_full = np.kron(block_choices, np.ones((safe_height, safe_width), dtype=np.uint8)) * 255
+        
+        # Crop to the exact image dimensions
+        mask_array = mask_array_full[:img_height, :img_width]
+        mask = Image.fromarray(mask_array, mode='L')
     
     elif mask_type == 'striped':
         # Draw stripes at the specified angle with consistent width
@@ -250,18 +271,16 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         nx = math.cos(angle_rad)
         ny = math.sin(angle_rad)
         
-        # Create coordinate arrays
-        y_coords, x_coords = np.mgrid[:img_height, :img_width]
-        
         # Calculate the perpendicular distance for each pixel using vectorization
-        distances = x_coords * nx + y_coords * ny
+        distances = xx_grid * nx + yy_grid * ny
         
         # Create stripes with consistent width using modulo operation
+        safe_stripe_width = max(1, stripe_width)
         mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
-        mask_array[np.int32(distances / stripe_width) % 2 == 0] = 255
+        mask_array[np.int32(distances / safe_stripe_width) % 2 == 0] = 255
         
         # Convert the mask array to a PIL image
-        mask = Image.fromarray(mask_array)
+        mask = Image.fromarray(mask_array, mode='L')
     
     elif mask_type == 'gradient_striped':
         # Draw gradient stripes using a sawtooth wave for linear alpha blend within stripes
@@ -274,11 +293,8 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         nx = math.cos(angle_rad)
         ny = math.sin(angle_rad)
         
-        # Create coordinate arrays
-        y_coords, x_coords = np.mgrid[:img_height, :img_width]
-        
         # Calculate the perpendicular distance for each pixel using vectorization
-        distances = x_coords * nx + y_coords * ny
+        distances = xx_grid * nx + yy_grid * ny
         
         # Ensure stripe_width is at least 1 to avoid division by zero
         safe_stripe_width = max(1, stripe_width)
@@ -292,21 +308,19 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
         pos_in_stripe = (distances - start_of_stripe) / safe_stripe_width
         pos_in_stripe = np.clip(pos_in_stripe, 0.0, 1.0) # Ensure it stays within 0-1
 
-        # Initialize mask array
-        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
-
         # Apply sawtooth gradient based on even/odd bands
         even_bands = (band_index % 2 == 0)
         odd_bands = ~even_bands
 
         # For even bands (e.g., 0, 2, 4...), gradient 0 -> 255 (secondary -> primary)
+        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
         mask_array[even_bands] = (pos_in_stripe[even_bands] * 255).astype(np.uint8)
 
         # For odd bands (e.g., 1, 3, 5...), gradient 255 -> 0 (primary -> secondary)
         mask_array[odd_bands] = ((1.0 - pos_in_stripe[odd_bands]) * 255).astype(np.uint8)
         
         # Convert the mask array to a PIL image
-        mask = Image.fromarray(mask_array)
+        mask = Image.fromarray(mask_array, mode='L')
     
     elif mask_type == 'linear_gradient_striped':
         # Draw stripes with a consistent linear gradient (sawtooth across whole image)
@@ -345,34 +359,62 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     
     elif mask_type == 'perlin':
         # Create a perlin noise pattern
-        # Use the simple, reliable implementation from perlin_noise_replacement
+        noise_module_found = False
         try:
             import noise
-            # Generate perlin noise map
-            noise_map = np.zeros((img_height, img_width), dtype=np.float32)
-            for y in range(img_height):
-                for x in range(img_width):
-                    # Simple scaling approach that works well
-                    if random_seed is not None:
-                        noise_map[y, x] = noise.pnoise2(y * perlin_noise_scale, x * perlin_noise_scale, 
-                                                       octaves=perlin_octaves, base=random_seed)
-                    else:
-                        noise_map[y, x] = noise.pnoise2(y * perlin_noise_scale, x * perlin_noise_scale,
-                                                       octaves=perlin_octaves)
+            noise_module_found = True
         except ImportError:
-            # Fallback to random noise if noise module is not available
-            print("Warning: noise module not found, using random noise instead")
-            noise_map = np.random.rand(img_height, img_width) * 2 - 1  # Scale to [-1, 1] like perlin noise
+            print("Warning: noise module not found for Perlin mask, using random noise fallback.")
+            # Fallback to random noise
+            if random_seed is not None:
+                np.random.seed(random_seed)
+            perlin_mask_array = (np.random.rand(img_height, img_width) > threshold).astype(np.uint8) * 255
+            mask = Image.fromarray(perlin_mask_array, mode='L')
+            # No need to fall through to composite if this path is taken and mask is set.
+            # The structure implies 'mask' should be set by one of the branches.
         
-        # Normalize the noise map from [-1, 1] to [0, 1]
-        noise_map = (noise_map - noise_map.min()) / (noise_map.max() - noise_map.min())
-        
-        # Create the mask array
-        mask_array = np.zeros((img_height, img_width), dtype=np.uint8)
-        mask_array[noise_map > threshold] = 255
-        
-        # Convert the mask array to a PIL image
-        mask = Image.fromarray(mask_array)
+        if noise_module_found:
+            noise_map_values = np.zeros((img_height, img_width), dtype=np.float32)
+            
+            # The 'base' parameter in noise.pnoise2 acts as a seed offset.
+            # If random_seed is None, use 0, otherwise use the int value of random_seed.
+            base_for_noise_module = int(random_seed) if random_seed is not None else 0
+
+            # Note: Calling pnoise2 in a loop is standard for the 'noise' library to fill a map.
+            # This can be slow for very large images or high octaves.
+            for y_idx in range(img_height):
+                for x_idx in range(img_width):
+                    noise_map_values[y_idx, x_idx] = noise.pnoise2(
+                        y_idx * perlin_noise_scale,
+                        x_idx * perlin_noise_scale,
+                        octaves=perlin_octaves,
+                        persistence=0.5, # Default persistence
+                        lacunarity=2.0,  # Default lacunarity
+                        repeatx=1024,    # Default repeat
+                        repeaty=1024,    # Default repeat
+                        base=base_for_noise_module # Seed for the noise instance
+                    )
+            
+            # Normalize the noise map from its actual range (approx -1 to 1 for pnoise2) to [0, 1]
+            min_val = np.min(noise_map_values)
+            max_val = np.max(noise_map_values)
+            
+            if max_val == min_val: # Avoid division by zero if noise_map is flat
+                # If flat, make all pixels either 0 or 255 based on threshold comparison with the flat value
+                # e.g. if noise_map is all 0.5 and threshold is 0.4, all should be 255.
+                # if noise_map is all 0.3 and threshold is 0.4, all should be 0.
+                normalized_noise_map = np.ones_like(noise_map_values) if min_val > threshold else np.zeros_like(noise_map_values)
+
+            else:
+                normalized_noise_map = (noise_map_values - min_val) / (max_val - min_val)
+            
+            perlin_mask_array = (normalized_noise_map > threshold).astype(np.uint8) * 255
+            mask = Image.fromarray(perlin_mask_array, mode='L')
+        # If noise_module_found is false, the 'except' block should have already set 'mask' and returned or skipped this.
+        # However, the original structure was if/elif, so this 'if noise_module_found' implies
+        # 'mask' might not be set if the import fails and the 'except' block doesn't create it.
+        # The provided snippet had the except block printing and then continuing, which means it would fall through.
+        # My change to the except block makes it create a random mask and set `mask`.
     
     elif mask_type == 'voronoi':
         # Create a Voronoi pattern with straight edges
@@ -493,45 +535,75 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     elif mask_type == 'concentric_circles':
         # width parameter determines the thickness of the circle bands
         img_width, img_height = image.size
-        mask = Image.new('L', (img_width, img_height), 0) # Start with a black background
-        draw = ImageDraw.Draw(mask)
+        # mask = Image.new('L', (img_width, img_height), 0) # Start with a black background
+        # draw = ImageDraw.Draw(mask)
 
         # Determine the center coordinates based on circle_origin
         if circle_origin == 'top-left':
-            cx, cy = 0, 0
+            cx, cy = 0.0, 0.0 # Use floats for precision in distance calcs
         elif circle_origin == 'top-right':
-            cx, cy = img_width, 0
+            cx, cy = float(img_width -1), 0.0
         elif circle_origin == 'bottom-left':
-            cx, cy = 0, img_height
+            cx, cy = 0.0, float(img_height -1)
         elif circle_origin == 'bottom-right':
-            cx, cy = img_width, img_height
+            cx, cy = float(img_width -1), float(img_height -1)
         else: # default to center
-            cx, cy = img_width / 2, img_height / 2
-
-        # Calculate the maximum radius needed to cover the image from the origin
-        corners = [(0, 0), (img_width, 0), (0, img_height), (img_width, img_height)]
-        max_radius = 0
-        for corner_x, corner_y in corners:
-            dist_sq = (corner_x - cx)**2 + (corner_y - cy)**2
-            max_radius = max(max_radius, math.sqrt(dist_sq))
+            cx, cy = (img_width - 1) / 2.0, (img_height - 1) / 2.0
 
         # The 'width' parameter now directly corresponds to the band thickness
         band_thickness = max(1, width) # Ensure at least 1 pixel thickness
-        
-        current_radius = max_radius
-        fill_value = 255 # Start with white (outermost ring)
 
-        while current_radius > 0:
-            # Define the bounding box for the ellipse
-            bbox = [cx - current_radius, cy - current_radius, 
-                    cx + current_radius, cy + current_radius]
-            
-            # Draw the ellipse for the current band
-            draw.ellipse(bbox, fill=fill_value)
-            
-            # Update radius and fill value for the next inner ring
-            current_radius -= band_thickness
-            fill_value = 255 - fill_value # Alternate between black and white
+        # yy_grid, xx_grid are already defined globally in the function
+        # Calculate distance of each pixel from the center (cx, cy)
+        distances = np.sqrt((xx_grid - cx)**2 + (yy_grid - cy)**2)
+        
+        # Determine band index for each pixel
+        # Integer division by band_thickness groups pixels into bands
+        band_indices = (distances // band_thickness).astype(int)
+        
+        # Alternate fill based on band index (even/odd)
+        # Pixels in even bands get 255, odd bands get 0
+        # To make the outermost band white (like the original ImageDraw loop that starts with fill_value=255 and draws from max_radius down)
+        # we need to consider the maximum band index. Or, more simply, adjust the % 2 logic.
+        # If (band_index % 2 == 0) is white, then the band at distance 0 (band_index 0) is white.
+        # The original code's fill logic started white for the largest circle and alternated inwards.
+        # Let's find max_band_index to correctly mimic the alternating pattern starting from outside.
+        # max_dist_val = np.max(distances)
+        # max_band_idx = int(max_dist_val // band_thickness)
+        # mask_array = ((max_band_idx - band_indices) % 2 == 0) * 255
+        # A simpler way: (band_indices % 2) will give 0 for first band, 1 for second etc.
+        # If we want the 0-distance band to be, say, black, and next white: (band_indices % 2 == 1) * 255
+        # The original loop: current_radius = max_radius, fill_value = 255 (white). Draws. Then current_radius -= band_thickness, fill_value = 0 (black).
+        # So, the largest bands are white. The bands closest to the origin could be black or white depending on how many bands there are.
+        # ( (distances // band_thickness).astype(int) % 2 == 0 ) * 255 -> band 0 (closest) is white
+        # ( (distances // band_thickness).astype(int) % 2 == 1 ) * 255 -> band 0 (closest) is black
+        # To match the original logic (outermost is white):
+        # We need to know the "parity" of the outermost band.
+        # Let's use a slightly different approach: calculate number of bands from center to farthest point.
+        # If total bands is odd, center band has same color as outermost. If even, different.
+        # Simpler: (floor(dist / thickness)) mod 2. This gives 0,1,0,1... from center.
+        # If we want white as the "first" drawn band (largest radius), then flip the logic for pixels
+        # farther away.
+        # The key is that `draw.ellipse(..., fill=fill_value)` draws the *current* band.
+        # `fill_value` starts at 255. `current_radius` starts at `max_radius`.
+        # So band from `max_radius - band_thickness` to `max_radius` is 255.
+        # Band from `max_radius - 2*band_thickness` to `max_radius - band_thickness` is 0.
+        # This means `floor( (max_radius - distance) / band_thickness ) % 2 == 0` should be 255.
+        
+        # Re-calculate max_radius as it was done in the original loop for consistency
+        corners = [(0,0), (img_width-1,0), (0,img_height-1), (img_width-1,img_height-1)] # Use actual pixel indices
+        max_r_val = 0
+        for corner_x, corner_y in corners:
+            dist_sq = (corner_x - cx)**2 + (corner_y - cy)**2
+            max_r_val = max(max_r_val, math.sqrt(dist_sq))
+
+        # Mask where (max_radius - distance) / thickness, floored, is even.
+        # This makes the outermost band (distance closest to max_radius) have index 0, hence white.
+        # And the next band inwards (distance further from max_radius) have index 1, hence black.
+        mask_values = (np.floor((max_r_val - distances) / band_thickness) % 2 == 0)
+        mask_array = mask_values.astype(np.uint8) * 255
+        
+        mask = Image.fromarray(mask_array, mode='L')
 
     elif mask_type == 'random_triangles':
         # Draw a random pattern of equilateral triangles
@@ -587,7 +659,7 @@ def masked_merge(image, secondary_image, mask_type='checkerboard', width=32, hei
     return merged_image
 
 def concentric_shapes(image, num_points=5, shape_type='circle', thickness=3, spacing=10,
-                      rotation_angle=0, darken_step=0, color_shift=0):
+                      rotation_angle=0, darken_step=0, color_shift=0, seed=None):
     """
     Generates concentric shapes from random points in the image.
 
@@ -600,6 +672,7 @@ def concentric_shapes(image, num_points=5, shape_type='circle', thickness=3, spa
         rotation_angle (int): Incremental rotation angle in degrees for each subsequent shape.
         darken_step (int): Amount to darken the color for each subsequent shape (0-255).
         color_shift (int): Amount to shift the hue for each shape (0-360 degrees).
+        seed (int, optional): Seed for random point generation. Defaults to None.
     
     Returns:
         Image: The processed image.
@@ -607,8 +680,13 @@ def concentric_shapes(image, num_points=5, shape_type='circle', thickness=3, spa
     width, height = image.size
     image = image.convert('RGBA')  # Ensure image has an alpha channel
 
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed) # Also seed python's random if it's used anywhere internally by helpers
+
     # Create a base image to draw on
-    base_image = image.copy()
+    base_image = image.copy() # image is already RGBA
+    draw_on_base = ImageDraw.Draw(base_image)
 
     # Select random points
     xs = np.random.randint(0, width, size=num_points)
@@ -618,15 +696,17 @@ def concentric_shapes(image, num_points=5, shape_type='circle', thickness=3, spa
     # For each point
     for x0, y0 in points:
         # Get the color of the pixel
-        original_color = base_image.getpixel((x0, y0))
+        original_color_rgba = base_image.getpixel((x0, y0)) # This is (R,G,B,A)
+        original_alpha = original_color_rgba[3]
 
         # Initialize variables
         current_size = spacing
         current_rotation = 0  # Initialize cumulative rotation
 
-        # Initialize HSV color from the original color
-        r, g, b = original_color[:3]
-        h_original, s_original, v_original = rgb_to_hsv(r, g, b)
+        # Initialize HSV color from the original color RGB components
+        r_orig, g_orig, b_orig = original_color_rgba[:3]
+        h_temp, s_original, v_original = colorsys.rgb_to_hsv(r_orig / 255.0, g_orig / 255.0, b_orig / 255.0)
+        h_original = h_temp * 360.0
         current_hue = h_original  # Start with the original hue
 
         max_dimension = max(width, height) * 1.5  # Set a maximum size to prevent infinite loops
@@ -635,70 +715,77 @@ def concentric_shapes(image, num_points=5, shape_type='circle', thickness=3, spa
             # Adjust the hue for the current shape
             if color_shift != 0:
                 current_hue = (current_hue + color_shift) % 360
+            
             # Convert HSV back to RGB
-            current_color = hsv_to_rgb(current_hue, s_original, v_original)
+            r_temp, g_temp, b_temp = colorsys.hsv_to_rgb(current_hue / 360.0, s_original, v_original)
+            # Current color with original alpha for drawing
+            current_color_rgb = (int(r_temp * 255), int(g_temp * 255), int(b_temp * 255))
+            current_color_rgba_for_draw = current_color_rgb + (original_alpha,)
 
-            # Darken the color if darken_step is set
+            # Darken the color if darken_step is set (darken RGB, keep alpha)
             if darken_step != 0:
-                current_color = darken_color(current_color, darken_step)
-
-            # Create a shape image to draw the shape
-            shape_image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-            shape_draw = ImageDraw.Draw(shape_image)
+                current_color_rgba_for_draw = darken_color(current_color_rgba_for_draw, darken_step)
 
             # Calculate the points of the shape
             if shape_type == 'circle':
                 bbox = [x0 - current_size, y0 - current_size, x0 + current_size, y0 + current_size]
-                shape_draw.ellipse(bbox, outline=current_color, width=thickness)
-                shape_bbox = bbox
+                draw_on_base.ellipse(bbox, outline=current_color_rgba_for_draw, width=thickness)
+                shape_bbox = bbox # Bounding box for visibility check
+            elif shape_type == 'square':
+                half_size = current_size
+                points_list = [
+                    (x0 - half_size, y0 - half_size),
+                    (x0 + half_size, y0 - half_size),
+                    (x0 + half_size, y0 + half_size),
+                    (x0 - half_size, y0 + half_size)
+                ]
+            elif shape_type == 'triangle':
+                half_size = current_size
+                height_triangle = half_size * math.sqrt(3)
+                points_list = [
+                    (x0, y0 - 2 * half_size / math.sqrt(3)),
+                    (x0 - half_size, y0 + height_triangle / 3),
+                    (x0 + half_size, y0 + height_triangle / 3)
+                ]
+            elif shape_type == 'hexagon':
+                half_size = current_size
+                points_list = []
+                for angle in range(0, 360, 60):
+                    rad = math.radians(angle + current_rotation) # Hexagon points already consider rotation
+                    px = x0 + half_size * math.cos(rad)
+                    py = y0 + half_size * math.sin(rad)
+                    points_list.append((px, py))
             else:
-                if shape_type == 'square':
-                    half_size = current_size
-                    points_list = [
-                        (x0 - half_size, y0 - half_size),
-                        (x0 + half_size, y0 - half_size),
-                        (x0 + half_size, y0 + half_size),
-                        (x0 - half_size, y0 + half_size)
-                    ]
-                elif shape_type == 'triangle':
-                    half_size = current_size
-                    height_triangle = half_size * math.sqrt(3)
-                    points_list = [
-                        (x0, y0 - 2 * half_size / math.sqrt(3)),
-                        (x0 - half_size, y0 + height_triangle / 3),
-                        (x0 + half_size, y0 + height_triangle / 3)
-                    ]
-                elif shape_type == 'hexagon':
-                    half_size = current_size
-                    points_list = []
-                    for angle in range(0, 360, 60):
-                        rad = math.radians(angle + current_rotation)
-                        px = x0 + half_size * math.cos(rad)
-                        py = y0 + half_size * math.sin(rad)
-                        points_list.append((px, py))
-                else:
-                    print(f"Unsupported shape type: {shape_type}")
-                    return base_image.convert('RGB')
+                # print(f"Unsupported shape type: {shape_type}") # Or log a warning
+                # Consider logging: import logging; logging.warning(f"Unsupported shape type: {shape_type} in concentric_shapes")
+                # If an unsupported shape is encountered for a point, skip drawing for this point's iteration and continue to next shape size or next point.
+                # However, the current loop structure will break out of the while loop for this point only if we 'continue'.
+                # To prevent processing further shapes for this point if it's unsupported, we can break from the inner while current_size < max_dimension loop.
+                # For simplicity, if we encounter an unsupported shape, we will simply not draw it for this iteration.
+                # The function will still return the image processed so far.
+                # A more robust solution might involve raising an error or ensuring all form options map to supported types.
+                points_list = [] # Ensure points_list is empty so nothing is drawn
+                # break # This would break the while loop for the current point's shapes
 
-                # Apply cumulative rotation
-                if current_rotation != 0 and shape_type != 'hexagon':
-                    points_list = rotate_points(points_list, (x0, y0), current_rotation)
+            # Apply cumulative rotation if not already handled (e.g. for hexagon)
+            if current_rotation != 0 and shape_type not in ['hexagon']:
+                points_list = rotate_points(points_list, (x0, y0), current_rotation)
 
-                # Draw the shape
-                shape_draw.polygon(points_list, outline=current_color, width=thickness)
+            # Draw the shape if points_list is not empty
+            if points_list:
+                draw_on_base.polygon(points_list, outline=current_color_rgba_for_draw, width=thickness)
 
                 # Calculate the bounding box of the shape
                 xs_list = [p[0] for p in points_list]
                 ys_list = [p[1] for p in points_list]
                 shape_bbox = [min(xs_list), min(ys_list), max(xs_list), max(ys_list)]
+            else: # If points_list is empty (e.g. unsupported shape), create a dummy bbox to allow loop to continue/break correctly
+                shape_bbox = [x0,y0,x0,y0] # A single point, won't cause premature break unless point itself is out of bounds
 
             # Check if the shape is completely outside the image bounds
             if (shape_bbox[2] < 0 or shape_bbox[0] > width or
                     shape_bbox[3] < 0 or shape_bbox[1] > height):
-                break
-
-            # Composite the shape onto the base image
-            base_image = Image.alpha_composite(base_image, shape_image)
+                break # Stop drawing shapes for this point if they go out of bounds
 
             # Update variables
             current_size += spacing + thickness
@@ -708,52 +795,23 @@ def concentric_shapes(image, num_points=5, shape_type='circle', thickness=3, spa
 
     return base_image.convert('RGB')
 
-def rgb_to_hsv(r, g, b):
+def darken_color(color_rgba, amount):
     """
-    Convert RGB color to HSV.
-
-    Args:
-        r (int): Red component (0-255)
-        g (int): Green component (0-255)
-        b (int): Blue component (0-255)
-
-    Returns:
-        tuple: (hue, saturation, value) in degrees (0-360), and 0-1 ranges
-    """
-    h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
-    return h * 360, s, v
-
-def hsv_to_rgb(h, s, v):
-    """
-    Convert HSV color to RGB.
+    Darken an RGBA color by a specified amount, preserving alpha.
     
     Args:
-        h (float): Hue in degrees (0-360)
-        s (float): Saturation (0-1)
-        v (float): Value (0-1)
+        color_rgba (tuple): RGBA color tuple (R, G, B, A)
+        amount (int): Amount to darken RGB components (0-255)
         
     Returns:
-        tuple: (r, g, b) values in 0-255 range
+        tuple: Darkened RGBA color tuple
     """
-    r, g, b = colorsys.hsv_to_rgb(h/360, s, v)
-    return (int(r * 255), int(g * 255), int(b * 255))
-
-def darken_color(color, amount):
-    """
-    Darken a color by a specified amount.
-    
-    Args:
-        color (tuple): RGB color tuple
-        amount (int): Amount to darken (0-255)
-        
-    Returns:
-        tuple: Darkened RGB color
-    """
-    r, g, b = color
+    r, g, b, a = color_rgba
     return (
         max(0, r - amount),
         max(0, g - amount),
-        max(0, b - amount)
+        max(0, b - amount),
+        a  # Preserve alpha
     )
 
 def rotate_points(points, center, angle_degrees):
@@ -788,7 +846,7 @@ def rotate_points(points, center, angle_degrees):
 
 def color_shift_expansion(image, num_points=5, shift_amount=5, expansion_type='square', mode='xtreme', 
                         saturation_boost=0.0, value_boost=0.0, pattern_type='random', 
-                        color_theme='full-spectrum', decay_factor=0.0):
+                        color_theme='full-spectrum', decay_factor=0.0, seed=None):
     """
     Creates vibrant color transformations expanding from seed points across the image.
 
@@ -804,6 +862,7 @@ def color_shift_expansion(image, num_points=5, shift_amount=5, expansion_type='s
         color_theme (str): Color theme to use ('full-spectrum', 'warm', 'cool', 'complementary', 'analogous').
         decay_factor (float): Controls how the effect fades with distance (0.0-1.0). Higher values make the effect more
                          concentrated around seed points. Uses linear decay relative to image diagonal.
+        seed (int): Random seed for reproducibility.
     
     Returns:
         Image: The processed image.
@@ -812,9 +871,20 @@ def color_shift_expansion(image, num_points=5, shift_amount=5, expansion_type='s
     image = image.convert('RGB')
     image_np = np.array(image)
     
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+    
     # Create a blank canvas for our output
     output_np = np.zeros_like(image_np)
     
+    # Parameter clamping (added for robustness, consider defining valid ranges clearly)
+    num_points = max(1, min(100, num_points)) # Example range, adjust as needed
+    shift_amount = max(0.0, min(20.0, shift_amount))
+    saturation_boost = max(0.0, min(1.0, saturation_boost))
+    value_boost = max(0.0, min(1.0, value_boost))
+    decay_factor = max(0.0, min(1.0, decay_factor))
+
     # Generate seed points based on pattern type
     seed_points = []
     if pattern_type == 'grid':
@@ -909,6 +979,15 @@ def color_shift_expansion(image, num_points=5, shift_amount=5, expansion_type='s
     
     # Assign a color to each seed point
     seed_colors = []
+    if not base_colors: # Ensure base_colors is not empty before modulo
+        # Fallback or default color if color_theme logic somehow results in empty base_colors
+        # This might happen if num_points is 0 for 'full-spectrum' before this loop,
+        # though num_points is clamped > 0. Still, good for robustness.
+        if num_points > 0:
+             base_colors = [(random.randint(0,255), random.randint(0,255), random.randint(0,255))] 
+        else: # Should not happen
+            return Image.fromarray(image_np) # Or original image
+
     for i in range(num_points):
         color_idx = i % len(base_colors)
         seed_colors.append(base_colors[color_idx])
@@ -916,112 +995,96 @@ def color_shift_expansion(image, num_points=5, shift_amount=5, expansion_type='s
     # Calculate the maximum possible distance (diagonal of the image)
     max_distance = math.sqrt(width**2 + height**2)
     
-    # Create distance maps for each seed point
-    distance_maps = []
-    for point in seed_points:
-        # Create a new distance map for each seed point
-        distance_map = np.zeros((height, width), dtype=float)
-        
-        # Assign distances based on expansion type
-        x0, y0 = point
-        for y in range(height):
-            for x in range(width):
-                if expansion_type == 'square':
-                    # Manhattan distance (L1 norm)
-                    d = abs(x - x0) + abs(y - y0)
-                elif expansion_type == 'cross':
-                    # Modified Manhattan - stricter cross pattern
-                    d = max(abs(x - x0), abs(y - y0)) * 1.5 + min(abs(x - x0), abs(y - y0)) * 0.5
-                else:  # circular
-                    # Euclidean distance (L2 norm)
-                    d = math.sqrt((x - x0)**2 + (y - y0)**2)
-                
-                # Apply the distance
-                distance_map[y, x] = d
-                
-        distance_maps.append(distance_map)
+    # Create distance maps for each seed point (vectorized)
+    yy_grid, xx_grid = np.mgrid[0:height, 0:width]
+    distance_maps_list = []
+
+    if not seed_points: # Handle case of no seed points (e.g. if num_points was 0 and clamping failed)
+        if seed is not None: # Reset seed if it was set
+            np.random.seed(None)
+            random.seed(None)
+        return Image.fromarray(image_np) # Return original or current state
+
+    for point_coords in seed_points:
+        x0, y0 = point_coords
+        if expansion_type == 'square': # In patterns.py, 'square' was Manhattan
+            dist_map = np.abs(xx_grid - x0) + np.abs(yy_grid - y0)
+        elif expansion_type == 'cross':
+            # Modified Manhattan - stricter cross pattern
+            # d = max(abs(x - x0), abs(y - y0)) * 1.5 + min(abs(x - x0), abs(y - y0)) * 0.5
+            # Vectorized: term1 = np.maximum(np.abs(xx_grid - x0), np.abs(yy_grid - y0))
+            #             term2 = np.minimum(np.abs(xx_grid - x0), np.abs(yy_grid - y0))
+            #             dist_map = term1 * 1.5 + term2 * 0.5 
+            # Simpler interpretation or alternative for cross might be needed if above is too complex or slow
+            # For now, let's use Chebyshev for cross as a placeholder, it creates square-like influence zones
+            # This might need to be revisited for true 'cross' shape.
+            dist_map_abs_x = np.abs(xx_grid - x0)
+            dist_map_abs_y = np.abs(yy_grid - y0)
+            dist_map = np.maximum(dist_map_abs_x, dist_map_abs_y) # Chebyshev distance for now for 'cross'
+            # A true cross might be better made by masking conditions, e.g. (abs(x-x0) < W or abs(y-y0) < H)
+        else:  # 'circular' (default)
+            dist_map = np.sqrt((xx_grid - x0)**2 + (yy_grid - y0)**2)
+        distance_maps_list.append(dist_map)
     
-    # Process each pixel
+    distance_maps_stack = np.stack(distance_maps_list, axis=0) # (num_points, height, width)
+    seed_colors_np = np.array(seed_colors, dtype=np.float32) # (num_points, 3)
+
+    # Process each pixel (main loop - further optimization below)
     for y in range(height):
         for x in range(width):
-            # Get the original pixel color
             original_r, original_g, original_b = image_np[y, x]
-            
-            # Convert to HSV for easier manipulation
             h, s, v = colorsys.rgb_to_hsv(original_r / 255.0, original_g / 255.0, original_b / 255.0)
             
-            # Find the closest seed point and its distance
-            closest_idx = 0
-            min_dist = float('inf')
+            pixel_distances = distance_maps_stack[:, y, x] # Shape: (num_points,)
             
-            # Find weighted influences from all points based on their distances
-            total_influence = 0
-            influences = []
+            # closest_idx = np.argmin(pixel_distances) # Not explicitly used in blending logic later
+            # min_dist = pixel_distances[closest_idx] # Not explicitly used
             
-            for i, distance_map in enumerate(distance_maps):
-                distance = distance_map[y, x]
-                
-                # Check if this is the closest point
-                if distance < min_dist:
-                    min_dist = distance
-                    closest_idx = i
-                
-                # Calculate influence based on distance and decay
-                if decay_factor > 0:
-                    # With decay, influence drops off with distance
-                    influence = max(0.0, 1.0 - (decay_factor * distance / max_distance))
-                else:
-                    # Without decay, we use an inverse square relationship
-                    influence = 1.0 / (1.0 + (distance / 50.0)**2)
-                
-                # Store the influence and add to total
-                influences.append(influence)
-                total_influence += influence
+            influences = np.zeros(len(seed_points), dtype=float)
+            if decay_factor > 0:
+                influences = np.maximum(0.0, 1.0 - (decay_factor * pixel_distances / max_distance))
+            else:
+                influences = 1.0 / (1.0 + (pixel_distances / 50.0)**2)
+
+            total_influence = np.sum(influences)
             
-            # If no significant influence, keep original color
-            if total_influence < 0.001:
+            if total_influence < 0.001 or len(seed_colors_np) == 0:
                 output_np[y, x] = image_np[y, x]
                 continue
             
-            # Normalize influences so they sum to 1
-            influences = [inf / total_influence for inf in influences]
+            normalized_influences = influences / total_influence
             
-            # Calculate the weighted blend of all seed colors
-            blend_r, blend_g, blend_b = 0, 0, 0
-            for i, influence in enumerate(influences):
-                seed_r, seed_g, seed_b = seed_colors[i]
-                blend_r += seed_r * influence
-                blend_g += seed_g * influence
-                blend_b += seed_b * influence
+            blend_rgb = np.sum(normalized_influences[:, np.newaxis] * seed_colors_np, axis=0)
+            blend_r, blend_g, blend_b = blend_rgb[0], blend_rgb[1], blend_rgb[2]
             
-            # Convert the blend to HSV
             blend_h, blend_s, blend_v = colorsys.rgb_to_hsv(
-                blend_r / 255.0, blend_g / 255.0, blend_b / 255.0)
+                np.clip(blend_r / 255.0, 0, 1),
+                np.clip(blend_g / 255.0, 0, 1),
+                np.clip(blend_b / 255.0, 0, 1)
+            )
             
-            # Apply the shift amount to control the intensity of the effect
-            # The higher the shift_amount, the more of the seed colors show through
-            # Scale to provide good results in the 1-10 range
-            shift_weight = min(0.85, shift_amount / 12.0)
+            shift_weight = min(0.85, shift_amount / 12.0) 
             
-            # Blend original and seed colors based on shift_weight
             final_h = h * (1 - shift_weight) + blend_h * shift_weight
             final_s = s * (1 - shift_weight) + (blend_s + saturation_boost) * shift_weight
             final_v = v * (1 - shift_weight) + (blend_v + value_boost) * shift_weight
             
-            # Ensure saturation and value are in valid range
-            final_s = min(1.0, max(0.0, final_s))
-            final_v = min(1.0, max(0.0, final_v))
+            final_s = np.clip(final_s, 0.0, 1.0) # Using np.clip for consistency
+            final_v = np.clip(final_v, 0.0, 1.0)
+            final_h = final_h % 1.0
             
-            # Convert back to RGB
-            final_r, final_g, final_b = colorsys.hsv_to_rgb(final_h, final_s, final_v)
+            final_r_float, final_g_float, final_b_float = colorsys.hsv_to_rgb(final_h, final_s, final_v)
             
-            # Store the final color
             output_np[y, x] = [
-                int(final_r * 255), 
-                int(final_g * 255), 
-                int(final_b * 255)
+                int(final_r_float * 255),
+                int(final_g_float * 255),
+                int(final_b_float * 255)
             ]
     
+    if seed is not None: # Reset seed
+        np.random.seed(None)
+        random.seed(None)
+
     # Convert back to PIL Image
     processed_image = Image.fromarray(output_np.astype(np.uint8))
     return processed_image 

@@ -1,10 +1,11 @@
 from PIL import Image
 import numpy as np
-import colorsys
+# import colorsys # Not directly used after refactor
 from ..core.pixel_attributes import PixelAttributes
+# from scipy.stats import mode # Alternative for most_common, but np.unique is fine
 
 def pixelate_by_attribute(image, pixel_width=8, pixel_height=8, attribute='color', num_bins=100):
-    """
+    """ # num_bins is currently unused, consider removing or implementing its use if intended
     Apply pixelation grouping similar values from the specified attribute.
     
     Args:
@@ -12,87 +13,82 @@ def pixelate_by_attribute(image, pixel_width=8, pixel_height=8, attribute='color
         pixel_width (int): Width of each pixelated block.
         pixel_height (int): Height of each pixelated block.
         attribute (str): Attribute to use for pixel grouping ('color', 'brightness', 'hue', 'saturation', 'value').
-        num_bins (int): Number of value groups to create.
+        num_bins (int): Number of value groups to create (currently unused).
     
     Returns:
         Image: Processed image with pixelation effect.
     """
-    # Convert to RGB mode if the image has an alpha channel or is in a different mode
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
-    # Create a copy of the image
-    im = image.copy()
-    width, height = im.size
-    
-    # Create a new image with the same size
-    result = Image.new('RGB', (width, height))
+    img_array = np.array(image)
+    height, width, _ = img_array.shape
+    result_array = np.zeros_like(img_array)
     
     # Define the attribute function based on the selected attribute
     if attribute == 'color':
-        # For color, we'll use the most common color in the block
-        def attr_func(pixel):
-            return pixel
+        # Handled specially in the loop
+        pass 
     elif attribute == 'brightness':
-        def attr_func(pixel):
-            return PixelAttributes.brightness(pixel)
+        attr_func = PixelAttributes.brightness
     elif attribute == 'hue':
-        def attr_func(pixel):
-            return PixelAttributes.hue(pixel)
+        attr_func = PixelAttributes.hue
     elif attribute == 'saturation':
-        def attr_func(pixel):
-            return PixelAttributes.saturation(pixel)
-    elif attribute == 'luminance' or attribute == 'value':
-        def attr_func(pixel):
-            return PixelAttributes.luminance(pixel)
+        attr_func = PixelAttributes.saturation
+    elif attribute == 'luminance' or attribute == 'value': # 'value' is often used for luminance in HSV context
+        attr_func = PixelAttributes.luminance
     else:
         # Default to brightness if the attribute is not recognized
-        def attr_func(pixel):
-            return PixelAttributes.brightness(pixel)
+        attr_func = PixelAttributes.brightness
     
     # Process each pixel block
     for y in range(0, height, pixel_height):
         for x in range(0, width, pixel_width):
-            # Define the block boundaries
-            block_right = min(x + pixel_width, width)
-            block_bottom = min(y + pixel_height, height)
+            block_y_end = min(y + pixel_height, height)
+            block_x_end = min(x + pixel_width, width)
             
-            # Get all pixels in the block
-            block_pixels = []
-            for by in range(y, block_bottom):
-                for bx in range(x, block_right):
-                    pixel = im.getpixel((bx, by))
-                    block_pixels.append(pixel)
+            current_block_slice = img_array[y:block_y_end, x:block_x_end]
+            if current_block_slice.size == 0:
+                continue
+
+            fill_color = None
             
             if attribute == 'color':
-                # Find the most common color in the block
-                color_counts = {}
-                for pixel in block_pixels:
-                    pixel_str = str(pixel)
-                    if pixel_str in color_counts:
-                        color_counts[pixel_str] += 1
-                    else:
-                        color_counts[pixel_str] = 1
+                # Reshape block to (num_pixels_in_block, 3)
+                flat_block = current_block_slice.reshape(-1, 3)
+                if flat_block.shape[0] == 0: continue # Skip empty blocks if any
                 
-                # Get the most common color
-                most_common_color_str = max(color_counts, key=color_counts.get)
-                most_common_color = eval(most_common_color_str)
-                
-                # Fill the block with the most common color
-                for by in range(y, block_bottom):
-                    for bx in range(x, block_right):
-                        result.putpixel((bx, by), most_common_color)
+                # Find the most common color
+                # np.unique returns unique rows and their counts
+                unique_colors, counts = np.unique(flat_block, axis=0, return_counts=True)
+                most_common_color_idx = np.argmax(counts)
+                fill_color = unique_colors[most_common_color_idx]
             else:
-                # Calculate the average attribute value for the block
-                attr_values = [attr_func(pixel) for pixel in block_pixels]
-                avg_attr = sum(attr_values) / len(attr_values)
+                # Reshape block to (num_pixels_in_block, 3)
+                flat_block = current_block_slice.reshape(-1, 3)
+                if flat_block.shape[0] == 0: continue # Skip empty blocks
+
+                # Calculate attribute for each pixel in the block
+                # This part is not fully vectorized due to PixelAttributes taking tuples
+                attr_values = np.array([attr_func(tuple(p)) for p in flat_block])
                 
-                # Find a representative pixel with the closest attribute value
-                closest_pixel = min(block_pixels, key=lambda p: abs(attr_func(p) - avg_attr))
-                
-                # Fill the block with the representative color
-                for by in range(y, block_bottom):
-                    for bx in range(x, block_right):
-                        result.putpixel((bx, by), closest_pixel)
-    
-    return result 
+                if attr_values.size == 0: # Should be caught by flat_block.shape[0] == 0
+                    # Fallback or skip, e.g., use average color of block or first pixel
+                    if flat_block.shape[0] > 0:
+                         fill_color = flat_block[0] # Fallback to first pixel color
+                    else:
+                        continue # Should not happen if previous checks are fine
+                else:
+                    avg_attr = np.mean(attr_values)
+                    
+                    # Find the pixel with the attribute value closest to the average
+                    closest_idx = np.argmin(np.abs(attr_values - avg_attr))
+                    fill_color = flat_block[closest_idx]
+            
+            if fill_color is not None:
+                result_array[y:block_y_end, x:block_x_end] = fill_color
+            else: # Should not happen if logic above ensures fill_color is set
+                # As a robust fallback, copy original block if no fill_color determined
+                result_array[y:block_y_end, x:block_x_end] = current_block_slice
+
+    return Image.fromarray(result_array) 
