@@ -1,306 +1,263 @@
-# Guide: Adding a New Effect to the Glitch Art App
+# Guide: Adding a New Effect to the Glitch Art App (Post-Refactor)
 
-This document outlines the step-by-step process for adding a new effect to the Glitch Art application.
+This document outlines the step-by-step process for adding a new effect to the refactored Glitch Art application. The new architecture emphasizes modularity, with separate form classes for each effect and dynamic loading of UI components.
 
 ## 1. Implement the Core Effect Function
 
-First, decide which module the effect belongs in based on its nature:
+First, create or identify the Python module for your effect based on its nature:
 
-- `glitch_art/effects/distortion.py` - For effects that manipulate pixel positions
-- `glitch_art/effects/color.py` - For effects that manipulate colors
-- `glitch_art/effects/sorting.py` - For pixel sorting effects
-- `glitch_art/effects/noise.py` - For noise-based effects
-- `glitch_art/effects/patterns.py` - For pattern generation
-- `glitch_art/effects/glitch.py` - For classic glitch/databending effects
-- `glitch_art/effects/pixelate.py` - For pixelation effects
-- `glitch_art/effects/blend.py` - For blend/composite effects
+- `glitch_art/effects/distortion.py` - For effects that manipulate pixel positions.
+- `glitch_art/effects/color.py` - For effects that manipulate colors.
+- `glitch_art/effects/sorting.py` - For pixel sorting effects.
+- `glitch_art/effects/noise.py` - For noise-based effects.
+- `glitch_art/effects/patterns.py` - For pattern generation.
+- `glitch_art/effects/glitch.py` - For classic glitch/databending effects.
+- `glitch_art/effects/pixelate.py` - For pixelation effects.
+- `glitch_art/effects/blend.py` - For blending/compositing images.
+- `glitch_art/effects/contour.py` - For contour and edge detection effects.
 
-### Example implementation:
+Define your effect function within the chosen module.
+
+### Example: `my_new_effect.py` (e.g., in `glitch_art/effects/`)
 
 ```python
-def my_new_effect(image, param1, param2, optional_param=None):
+# In e.g., glitch_art/effects/custom.py (or an existing relevant module)
+from PIL import Image
+import numpy as np
+import random # if needed
+
+def my_awesome_effect(image, strength: int, use_random_seed: bool = False, seed: int = None):
     """
-    Description of what this effect does.
-    
-    Args:
-        image (PIL.Image): Input image to process.
-        param1 (type): Description of param1.
-        param2 (type): Description of param2.
-        optional_param (type, optional): Description of optional parameter.
-    
-    Returns:
-        PIL.Image: Processed image.
-    """
-    # Convert to NumPy array if needed
-    import numpy as np
-    image_np = np.array(image)
-    
-    # Process the image
-    # ...
-    
-    # Return the processed image
-    from PIL import Image
-    return Image.fromarray(processed_image_np)
-```
-
-## 2. Update the Form in `forms.py`
-
-### 2.1. Add the effect to the choices in the main effect SelectField
-
-```python
-effect = SelectField('Effect', choices=[
-    # ... existing effects ...
-    ('my_new_effect', 'My New Effect')
-], validators=[DataRequired()])
-```
-
-### 2.2. Add form fields for the effect's parameters
-
-```python
-# My New Effect Fields
-my_effect_param1 = IntegerField('Parameter 1', 
-                           validators=[Optional(), NumberRange(min=1, max=100)])
-my_effect_param2 = SelectField('Parameter 2', choices=[
-    ('option1', 'Option 1'), 
-    ('option2', 'Option 2')
-], default='option1', validators=[Optional()])
-my_effect_optional_param = FloatField('Optional Parameter',
-                                   validators=[Optional()])
-```
-
-### 2.3. Update the form validation method
-
-Add a branch for your new effect in the `validate()` method:
-
-```python
-def validate(self, extra_validators=None):
-    # ... existing code ...
-    
-    elif effect == 'my_new_effect':
-        if not self.my_effect_param1.data:
-            self.my_effect_param1.errors = ['Parameter 1 is required for My New Effect']
-            return False
-        if not self.my_effect_param2.data:
-            self.my_effect_param2.errors = ['Parameter 2 is required for My New Effect']
-            return False
-        # Optional param doesn't need validation since it's optional
-    
-    # ... existing code ...
-    return True
-```
-
-## 3. Update the Request Handler in `app.py`
-
-### 3.1. Import the effect function
-
-```python
-from glitch_art.effects.chosen_module import my_new_effect
-```
-
-### 3.2. Add a branch for the new effect in the route handler
-
-```python
-elif effect == 'my_new_effect':
-    # Get parameters from form
-    param1 = form.my_effect_param1.data
-    param2 = form.my_effect_param2.data
-    optional_param = form.my_effect_optional_param.data
-    
-    # Log parameters
-    logger.debug(f"My new effect params: param1={param1}, param2={param2}, optional_param={optional_param}")
-    
-    # Process the image
-    processed_image = my_new_effect(image, param1, param2, optional_param)
-    
-    # Create settings string for output filename
-    settings = f"myeffect_{param1}_{param2}"
-    if optional_param:
-        settings += f"_{optional_param}"
-```
-
-## 4. Update the HTML Template (`templates/index.html`)
-
-### 4.1. Add a form section for the new effect
-
-Add a div to hold your effect's fields (make sure it has a unique ID):
-
-```html
-<div id="my-new-effect-options" style="display: none;">
-    <div class="form-group">
-        {{ form.my_effect_param1.label }} {{ form.my_effect_param1(size=10, id='my_effect_param1') }}
-        <small class="form-text text-muted">Help text if needed</small>
-    </div>
-    <div class="form-group">
-        {{ form.my_effect_param2.label }} {{ form.my_effect_param2(id='my_effect_param2') }}
-    </div>
-    <div class="form-group">
-        {{ form.my_effect_optional_param.label }} {{ form.my_effect_optional_param(size=10, id='my_effect_optional_param') }}
-        <small class="form-text text-muted">Optional parameter</small>
-    </div>
-</div>
-```
-
-### 4.2. Update the JavaScript to show/hide your effect options
-
-```javascript
-var myNewEffectOptions = document.getElementById("my-new-effect-options");
-
-function toggleEffectOptions() {
-    // Hide all effect option sections
-    offsetOptions.style.display = "none";
-    sliceShuffleOptions.style.display = "none";
-    myNewEffectOptions.style.display = "none";
-    // ... hide other effects' option divs
-    
-    // Show only the selected effect's options
-    if(effectField.value === "offset") {
-        offsetOptions.style.display = "block";
-    } else if(effectField.value === "slice_shuffle") {
-        sliceShuffleOptions.style.display = "block";
-    } else if(effectField.value === "my_new_effect") {
-        myNewEffectOptions.style.display = "block";
-    }
-    // ... handle other effects
-}
-
-// Make sure this event listener is set up already
-effectField.addEventListener("change", toggleEffectOptions);
-```
-
-## 5. Test Your New Effect
-
-1. Start the application
-2. Upload an image
-3. Select your new effect from the dropdown
-4. Verify that the appropriate parameter fields appear
-5. Enter valid values for your parameters
-6. Submit the form and verify that your effect is applied correctly
-
-## Troubleshooting Checklist
-
-If you encounter issues, check:
-
-- Did you add the effect to the `__init__.py` file if required for import?
-- Are all required parameters being passed to your effect function?
-- Is the effect function properly converting between NumPy arrays and PIL Images?
-- Is the validation logic correct for your form fields?
-- Have you added your effect's options div to the JavaScript toggle function?
-- Check for typos in field names and IDs
-- Look at the application logs for specific error messages
-
-## Example: Complete Effect Implementation
-
-For reference, here's how a complete effect called "Slice Shuffle" might be implemented:
-
-### In `glitch_art/effects/distortion.py`:
-```python
-def slice_shuffle(image, slice_count, orientation, seed=None):
-    """
-    Apply the Slice Shuffle effect by dividing the image into a specified number of slices and shuffling them randomly.
+    Applies an awesome new effect to the image.
 
     Args:
-        image (PIL.Image): Input image to process.
-        slice_count (int): Number of slices (must be between 4 and 128).
-        orientation (str): Either 'rows' (to shuffle horizontal slices) or 'columns' (to shuffle vertical slices).
-        seed (int, optional): Optional random seed for reproducibility.
+        image (PIL.Image.Image): Input PIL Image object.
+        strength (int): The intensity of the awesome effect.
+        use_random_seed (bool, optional): Whether to use a specific seed for randomness.
+        seed (int, optional): The seed value if use_random_seed is True.
 
     Returns:
-        PIL.Image: Image with shuffled slices.
+        PIL.Image.Image: The processed PIL Image.
     """
-    import numpy as np
+    if image.mode != 'RGB':
+        image = image.convert('RGB') # Ensure RGB for consistency
+
     image_np = np.array(image)
+    
+    if use_random_seed and seed is not None:
+        np.random.seed(seed)
+        random.seed(seed) # Seed Python's random too if used directly
 
-    # Set seed if provided
-    if seed is not None:
-        random.seed(seed)
-
-    # Split image into slices along the specified axis
-    if orientation == 'rows':
-        slices = np.array_split(image_np, slice_count, axis=0)
-        random.shuffle(slices)
-        shuffled_np = np.vstack(slices)
-    elif orientation == 'columns':
-        slices = np.array_split(image_np, slice_count, axis=1)
-        random.shuffle(slices)
-        shuffled_np = np.hstack(slices)
+    # --- Your awesome effect logic here ---
+    # Example: Simple inversion based on strength
+    if strength > 50:
+        processed_image_np = 255 - image_np
     else:
-        # If orientation is unrecognized, return the original image
-        return image
+        processed_image_np = image_np.copy() # Make a copy if modifying in place
+        # Add some noise if strength is low
+        noise = np.random.randint(0, strength // 2 if strength > 0 else 1, 
+                                  size=image_np.shape, dtype=image_np.dtype)
+        processed_image_np = np.clip(image_np + noise, 0, 255)
+    # --- End of effect logic ---
+    
+    return Image.fromarray(processed_image_np.astype(np.uint8))
 
-    from PIL import Image
-    return Image.fromarray(shuffled_np)
 ```
 
-### In `forms.py`:
+### 1.2. Add to `glitch_art/effects/__init__.py`
+
+Ensure your new effect function is importable from the `glitch_art.effects` package. Add it to the `__all__` list and import it in `glitch_art/effects/__init__.py`.
+
 ```python
-# Slice Shuffle Effect Fields
-slice_count = IntegerField('Slice Count', validators=[Optional(), NumberRange(min=4, max=128, message="Slice count must be between 4 and 128")])
-slice_orientation = SelectField('Slice Orientation', choices=[('rows', 'Rows'), ('columns', 'Columns')], default='rows', validators=[Optional()])
-slice_seed = IntegerField('Slice Shuffle Seed (optional)', validators=[Optional()])
+# In glitch_art/effects/__init__.py
+# ... other imports ...
+from .custom import my_awesome_effect # Assuming it's in custom.py
 
-# In the validate method:
-elif effect == 'slice_shuffle':
-    # For the slice shuffle effect, slice_count and slice_orientation are required
-    if self.slice_count.data is None:
-        self.slice_count.errors = ['Slice count is required for Slice Shuffle effect']
-        return False
-    if self.slice_orientation.data is None:
-        self.slice_orientation.errors = ['Slice orientation is required for Slice Shuffle effect']
-        return False
+__all__ = [
+    # ... other effects ...
+    'my_awesome_effect',
+]
 ```
 
-### In `app.py`:
+## 2. Create a Specific Form Class in `forms.py`
+
+For each new effect, create a dedicated form class that inherits from `FlaskForm`. This class will define the UI fields for your effect's parameters.
+
+### 2.1. Define the Form Class
+
 ```python
-from glitch_art.effects.distortion import slice_shuffle
+# In forms.py
 
-# In the route handler:
-elif effect == 'slice_shuffle':
-    # process slice shuffle effect
-    slice_count = form.slice_count.data
-    orientation = form.slice_orientation.data
-    seed = form.slice_seed.data
-    processed_image = slice_shuffle(image, slice_count, orientation, seed if seed != 0 else None)
-    settings = f"slice_{slice_count}_{orientation}" + (f"_{seed}" if seed else "")
+from flask_wtf import FlaskForm
+from wtforms import IntegerField, BooleanField # Add other fields as needed (SelectField, FloatField, etc.)
+from wtforms.validators import DataRequired, Optional, NumberRange
+
+# You can use existing mixins for common fields:
+# from .mixins import SeedMixin, SecondaryImageMixin, SortingFieldsMixin 
+
+class MyAwesomeEffectForm(FlaskForm): # If using SeedMixin: MyAwesomeEffectForm(FlaskForm, SeedMixin)
+    """Form for My Awesome Effect parameters."""
+    strength = IntegerField(
+        'Effect Strength',
+        default=25,
+        validators=[DataRequired(), NumberRange(min=0, max=100, message="Strength must be 0-100.")]
+    )
+    # If your effect uses a seed, and you want to expose it via a standardized field,
+    # inherit from SeedMixin and the 'seed' field will be automatically available.
+    # For this example, let's add a boolean toggle and a conditional seed field if not using SeedMixin.
+    use_random_seed = BooleanField('Use Specific Seed', default=False, validators=[Optional()])
+    custom_seed = IntegerField('Seed Value', validators=[Optional(), NumberRange(min=1, max=99999)])
+    
+    # Add other fields as needed for your effect's parameters.
+    # Example:
+    # mode = SelectField('Mode', choices=[('fast', 'Fast'), ('quality', 'Quality')], default='fast')
+
+    # If using SeedMixin, you don't need 'use_random_seed' or 'custom_seed' here;
+    # The SeedMixin provides a standard 'seed' field (IntegerField with Optional validator).
+    # Your effect function would then just check if `seed is not None`.
 ```
 
-### In `templates/index.html`:
-```html
-<div id="slice-shuffle-options" style="display: none;">
-    <div class="form-group">
-        {{ form.slice_count.label }} {{ form.slice_count(size=10, id='slice_count') }}
-        <small class="form-text text-muted">Enter a value between 4 and 128</small>
-    </div>
-    <div class="form-group">
-        {{ form.slice_orientation.label }} {{ form.slice_orientation(id='slice_orientation') }}
-    </div>
-    <div class="form-group">
-        {{ form.slice_seed.label }} {{ form.slice_seed(size=10, id='slice_seed') }}
-        <small class="form-text text-muted">Optional - leave empty for random results each time</small>
-    </div>
-</div>
+### 2.2. Add New Effect to `ImageProcessForm` Choices
 
-<!-- JavaScript -->
-<script>
-    var effectField = document.getElementById("effect");
-    var offsetOptions = document.getElementById("offset-options");
-    var sliceShuffleOptions = document.getElementById("slice-shuffle-options");
+In `forms.py`, add your new effect to the `choices` list of the `effect` `SelectField` within the main `ImageProcessForm`. The first element of the tuple is the effect key (used in `app.py` and URLs), and the second is the display name.
 
-    function toggleEffectOptions() {
-        // Hide all option sections first
-        offsetOptions.style.display = "none";
-        sliceShuffleOptions.style.display = "none";
+```python
+# In forms.py, within class ImageProcessForm:
 
-        // Show the appropriate section based on selected effect
-        if(effectField.value === "offset") {
-            offsetOptions.style.display = "block";
-        } else if(effectField.value === "slice_shuffle") {
-            sliceShuffleOptions.style.display = "block";
-        }
-    }
-
-    effectField.addEventListener("change", toggleEffectOptions);
-    toggleEffectOptions(); // initial check on page load
-</script>
+    effect = SelectField('Effect', choices=[
+        # ... existing effects ...
+        ('my_awesome_effect_key', 'My Awesome Effect') # Use a unique key
+    ], validators=[DataRequired()])
 ```
 
-By following these steps, you should be able to successfully implement a new effect in the Glitch Art application. 
+## 3. Update Application Logic in `app.py`
+
+### 3.1. Import Your New Effect Function and Form Class
+
+At the top of `app.py`:
+
+```python
+# In app.py
+
+# ... other effect imports ...
+from glitch_art.effects.custom import my_awesome_effect # Adjust module if different
+
+# ... other form imports ...
+from forms import MyAwesomeEffectForm # Your new form class
+```
+
+### 3.2. Map Effect Key to Your Form Class in `EFFECT_FORM_MAP`
+
+Add an entry to the `EFFECT_FORM_MAP` dictionary. This dictionary is crucial for the application to know which form class corresponds to which effect key.
+
+```python
+# In app.py
+
+EFFECT_FORM_MAP = {
+    # ... existing effect_key: FormClass mappings ...
+    'my_awesome_effect_key': MyAwesomeEffectForm, # Must match the key from ImageProcessForm.effect.choices
+}
+```
+
+### 3.3. Add Dispatch Logic for Your Effect
+
+In the main `index()` route within `app.py`, add an `elif` block to handle your new effect. This block will be executed when your effect is selected and the form is submitted.
+
+```python
+# In app.py, inside the index() route, within the POST request handling block,
+# after `if effect_specific_form.validate():` and inside the `try:` block:
+
+                    # ... existing elif blocks for other effects ...
+                    
+                    elif selected_effect_key == 'my_awesome_effect_key':
+                        # Parameters are retrieved from the automatically instantiated 
+                        # and validated effect_specific_form (which is an instance of MyAwesomeEffectForm here).
+                        
+                        strength_val = effect_specific_form.strength.data
+                        use_seed_flag = effect_specific_form.use_random_seed.data # From our example form
+                        seed_val = effect_specific_form.custom_seed.data       # From our example form
+                        
+                        # If using SeedMixin, you'd access it like:
+                        # seed_val = effect_specific_form.seed.data 
+                        # And your effect function would just check `if seed is not None`.
+                        # The 'use_random_seed' flag might become redundant or handled differently.
+
+                        logger.debug(f"My Awesome Effect params: strength={strength_val}, use_seed={use_seed_flag}, seed={seed_val}")
+                        
+                        # Call your effect function
+                        # Adapt parameters based on your actual effect function signature
+                        if use_seed_flag and seed_val is not None:
+                             processed_image = my_awesome_effect(image, 
+                                                                 strength=strength_val, 
+                                                                 use_random_seed=True, 
+                                                                 seed=seed_val)
+                        else:
+                             processed_image = my_awesome_effect(image, 
+                                                                 strength=strength_val, 
+                                                                 use_random_seed=False, 
+                                                                 seed=None) # Or just my_awesome_effect(image, strength_val) if defaults handle it
+
+                        # Create a descriptive settings string for the output filename
+                        settings = f"awesome_{strength_val}"
+                        if use_seed_flag and seed_val is not None:
+                            settings += f"_s{seed_val}"
+                        # Add other parameters to settings string as needed
+                    
+                    # ... other elif blocks ...
+```
+
+## 4. HTML Template and JavaScript (Usually No Changes Needed!)
+
+Due to the refactored dynamic form loading system, you typically **do not need to make direct changes** to `templates/index.html` or its associated JavaScript to add the fields for your new effect.
+
+-   **Form Field Rendering:** The `templates/_effect_form_fields.html` partial template automatically iterates through the fields of the `effect_specific_form` (which will be an instance of `MyAwesomeEffectForm` when your effect is selected) and renders them.
+    -   Ensure your fields in `MyAwesomeEffectForm` have appropriate labels (e.g., `IntegerField('Effect Strength', ...)`).
+    -   Field descriptions/help text can be added via the `description` argument in WTForms fields or manually in `_effect_form_fields.html` if more complex markup is needed (though this is less common now).
+-   **Dynamic Loading:** The JavaScript in `index.html` (specifically the `loadEffectFields` function) handles fetching and injecting the HTML for your specific form's fields by making an AJAX call to `/get-effect-form/<effect_key>`. This endpoint uses `EFFECT_FORM_MAP` to get your form class and `_effect_form_fields.html` to render it.
+
+### When HTML/JS Changes Might Be Needed:
+
+-   **Complex Conditional Logic *Within* Your Specific Form:** If fields in `MyAwesomeEffectForm` need to show/hide based on *other fields within that same form*, you might need to add custom JavaScript. This JavaScript could be:
+    -   Included directly in `_effect_form_fields.html` within a `<script>` tag that only runs when your form is loaded.
+    -   Attached globally in `index.html` using event delegation, targeting elements by IDs/classes you define in your form fields.
+-   **Highly Custom Field Rendering:** If the standard rendering in `_effect_form_fields.html` is insufficient for a particular field in your new form, you might need to adjust the partial template with conditional logic for your specific field's name or type.
+
+## 5. Test Your New Effect Thoroughly
+
+1.  **Start the application:** `python app.py`
+2.  **Open in browser:** `http://localhost:8080` (or your configured port).
+3.  **Upload an image.**
+4.  **Select your new effect** ("My Awesome Effect") from the main "Effect" dropdown.
+5.  **Verify Form Display:**
+    -   Confirm that the fields defined in `MyAwesomeEffectForm` (e.g., "Effect Strength", "Use Specific Seed", "Seed Value") appear correctly.
+    -   Check default values and validators (e.g., try submitting without a required field, or with a value out of range).
+6.  **Enter valid parameters.**
+7.  **Submit the form.**
+8.  **Verify Output:**
+    -   Check that the image is processed as expected by `my_awesome_effect`.
+    -   Examine the generated filename to ensure your `settings` string is correctly formed.
+    -   Look for any errors in the browser console or the Flask application logs in your terminal.
+
+## 6. Troubleshooting Checklist (Post-Refactor)
+
+-   **Effect Function:**
+    -   Is your effect function correctly defined and placed in a module under `glitch_art/effects/`?
+    -   Did you add your effect function to `glitch_art/effects/__init__.py` and its `__all__` list?
+    -   Does it handle `PIL.Image` input and return a `PIL.Image`?
+    -   Is it correctly converting to/from NumPy arrays if used internally?
+-   **Forms (`forms.py`):**
+    -   Did you create a new, separate form class (e.g., `MyAwesomeEffectForm`) for your effect?
+    -   Are all fields (e.g., `IntegerField`, `SelectField`) correctly defined with appropriate validators (`DataRequired`, `Optional`, `NumberRange`, etc.) and labels in this specific form class?
+    -   Did you add your effect's unique key and display name to the `choices` of the `effect` field in the main `ImageProcessForm`?
+-   **Application Logic (`app.py`):**
+    -   Did you import your new effect function (e.g., `my_awesome_effect`) and your new specific form class (e.g., `MyAwesomeEffectForm`)?
+    -   Did you add an entry to `EFFECT_FORM_MAP` mapping your effect's string key to your new form class? (e.g., `'my_awesome_effect_key': MyAwesomeEffectForm`). Ensure the key matches `ImageProcessForm`.
+    -   In the `index()` route, does the `elif selected_effect_key == 'my_awesome_effect_key':` block correctly retrieve parameters from `effect_specific_form.your_field_name.data`?
+    -   Are you passing the parameters to your effect function in the correct order and with the correct names?
+    -   Is the `settings` string for the filename being generated correctly?
+-   **General:**
+    -   Check for typos in effect keys, function names, class names, field names, and dictionary keys. These must match exactly between `forms.py`, `app.py`, and your effect module.
+    -   Review the Flask application logs (terminal output) for any error messages or tracebacks. These are usually very helpful.
+    -   Use your browser's developer tools (Network tab for AJAX requests to `/get-effect-form/`, Console for JavaScript errors) if the UI is not behaving as expected.
+
+This updated guide should provide a clearer path for integrating new effects into the refactored application structure. 
