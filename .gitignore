@@ -72,3 +72,6 @@ REFACTORING_SUMMARY.md
 notes.md 
 DEPRECIATED-utils.py
 setup.py
+check_path.py
+fix_heroku.sh
+redeploy_heroku.sh

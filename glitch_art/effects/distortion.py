@@ -11,7 +11,7 @@ from ..utils.helpers import generate_noise_map
 def pixel_drift(image, direction='down', num_bands=10, intensity=1.0):
     """
     Apply a pixel drift effect, shifting pixels in a specified direction with variable amounts
-    to create a more glitchy effect.
+    to create a more glitchy effect. This version mimics the original PIL-based per-pixel logic.
     
     Args:
         image (Image): PIL Image object to process.
@@ -27,56 +27,62 @@ def pixel_drift(image, direction='down', num_bands=10, intensity=1.0):
     
     img_array = np.array(image)
     height, width = img_array.shape[:2]
-    result_array = np.zeros_like(img_array)
+    result_array = np.zeros_like(img_array) 
     
     base_drift = int(20 * intensity)
     
+    # Ensure band_height/width are at least 1 to avoid division by zero if num_bands is very large or zero
+    band_height = max(1, height // num_bands if num_bands > 0 else height)
+    band_width = max(1, width // num_bands if num_bands > 0 else width)
+    
     if direction == 'down' or direction == 'up':
-        band_height = height // num_bands if num_bands > 0 else height
         for y in range(height):
-            band_index = y // band_height if band_height > 0 else 0
-            current_base_drift = base_drift
+            band_index = y // band_height
+            current_base_drift_for_row = base_drift
             if band_index % 3 == 0:
-                current_base_drift = base_drift
+                current_base_drift_for_row = base_drift
             elif band_index % 3 == 1:
-                current_base_drift = base_drift * 2
+                current_base_drift_for_row = base_drift * 2
             else:
-                current_base_drift = base_drift // 2
+                current_base_drift_for_row = base_drift // 2
             
-            drift_amount = current_base_drift
-            if random.random() < 0.1:
-                drift_amount = random.randint(5, int(max(5, 50 * intensity))) # ensure max is at least 5
+            drift_amount_for_row = current_base_drift_for_row
+            if random.random() < 0.1: # 10% chance of a random shift for the entire row
+                drift_amount_for_row = random.randint(5, int(max(5, 50 * intensity)))
                 
-            if direction == 'down':
-                source_y = (y - drift_amount + height) % height # Ensure positive before modulo
-            else:  # up
-                source_y = (y + drift_amount) % height
-            result_array[y, :] = img_array[source_y, :] # Assign entire row
+            for x_coord in range(width): # Iterate through each pixel in the row
+                if direction == 'down':
+                    # Add height before modulo to ensure positive operand if y - drift_amount_for_row is negative
+                    source_y = (y - drift_amount_for_row + height) % height 
+                else:  # up
+                    source_y = (y + drift_amount_for_row + height) % height
+                result_array[y, x_coord] = img_array[source_y, x_coord]
     
     elif direction == 'left' or direction == 'right':
-        band_width = width // num_bands if num_bands > 0 else width
-        for x in range(width):
-            band_index = x // band_width if band_width > 0 else 0
-            current_base_drift = base_drift
-            if band_index % 3 == 0:
-                current_base_drift = base_drift
-            elif band_index % 3 == 1:
-                current_base_drift = base_drift * 2
-            else:
-                current_base_drift = base_drift // 2
-
-            drift_amount = current_base_drift
-            if random.random() < 0.1:
-                drift_amount = random.randint(5, int(max(5, 50 * intensity))) # ensure max is at least 5
-
-            if direction == 'right':
-                source_x = (x - drift_amount + width) % width # Ensure positive before modulo
-            else:  # left
-                source_x = (x + drift_amount) % width
-            result_array[:, x] = img_array[:, source_x] # Assign entire column
+        for y_coord in range(height): # Iterate through each row
+            for x in range(width):    # Iterate through each pixel in the row
+                band_index = x // band_width
+                current_base_drift_for_pixel = base_drift
+                if band_index % 3 == 0:
+                    current_base_drift_for_pixel = base_drift
+                elif band_index % 3 == 1:
+                    current_base_drift_for_pixel = base_drift * 2
+                else:
+                    current_base_drift_for_pixel = base_drift // 2
+                
+                drift_amount_for_pixel = current_base_drift_for_pixel
+                if random.random() < 0.1: # 10% chance of a random shift for this pixel
+                    drift_amount_for_pixel = random.randint(5, int(max(5, 50 * intensity)))
+                    
+                if direction == 'right':
+                    # Add width before modulo for potentially negative result of x - drift_amount_for_pixel
+                    source_x = (x - drift_amount_for_pixel + width) % width
+                else:  # left
+                    source_x = (x + drift_amount_for_pixel + width) % width
+                result_array[y_coord, x] = img_array[y_coord, source_x]
     else:
-        # Should not happen if form validation is correct, but as a fallback:
-        result_array = img_array # Return original if direction is unknown
+        # Fallback if direction is invalid (should be caught by form validation)
+        result_array = np.copy(img_array)
         
     return Image.fromarray(result_array)
 

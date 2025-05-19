@@ -58,7 +58,7 @@ A powerful web application for creating artistic glitch effects and image manipu
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/glitch_art_app.git
+git clone https://github.com/XWAVEart/Xlitch
 cd glitch_art_app
 ```
 
