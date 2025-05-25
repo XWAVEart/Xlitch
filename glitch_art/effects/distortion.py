@@ -884,4 +884,254 @@ def block_shuffle(image, block_width, block_height, seed=None):
         output[y_target : y_target + actual_target_slot_h, 
                x_target : x_target + actual_target_slot_w] = cropped_block_for_slot
 
-    return Image.fromarray(output) 
+    return Image.fromarray(output)
+
+def wave_distortion(image, wave_type='horizontal', amplitude=20.0, frequency=0.02, phase=0.0,
+                   secondary_wave=False, secondary_amplitude=10.0, secondary_frequency=0.05,
+                   secondary_phase=90.0, blend_mode='add', edge_behavior='wrap', 
+                   interpolation='bilinear'):
+    """
+    Apply sine wave distortion to an image with comprehensive controls.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        wave_type (str): Type of wave ('horizontal', 'vertical', 'both', 'diagonal', 'radial').
+        amplitude (float): Wave amplitude in pixels (0.0 to 100.0).
+        frequency (float): Wave frequency (0.001 to 0.1).
+        phase (float): Wave phase offset in degrees (0.0 to 360.0).
+        secondary_wave (bool): Enable secondary wave for complex patterns.
+        secondary_amplitude (float): Secondary wave amplitude (0.0 to 100.0).
+        secondary_frequency (float): Secondary wave frequency (0.001 to 0.1).
+        secondary_phase (float): Secondary wave phase in degrees (0.0 to 360.0).
+        blend_mode (str): How to combine waves ('add', 'multiply', 'max', 'interference').
+        edge_behavior (str): How to handle edges ('wrap', 'clamp', 'reflect').
+        interpolation (str): Interpolation method ('bilinear', 'nearest', 'bicubic').
+    
+    Returns:
+        Image: Image with wave distortion applied.
+    """
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    img_array = np.array(image, dtype=np.float32)
+    height, width, channels = img_array.shape
+    
+    # Convert phase from degrees to radians
+    phase_rad = np.radians(phase)
+    secondary_phase_rad = np.radians(secondary_phase)
+    
+    # Create coordinate grids
+    y_coords, x_coords = np.mgrid[0:height, 0:width]
+    
+    # Initialize displacement arrays
+    dx = np.zeros((height, width), dtype=np.float32)
+    dy = np.zeros((height, width), dtype=np.float32)
+    
+    # Calculate primary wave displacement
+    if wave_type == 'horizontal':
+        # Horizontal waves - vertical displacement based on x position
+        primary_wave = np.sin(x_coords * frequency * 2 * np.pi + phase_rad) * amplitude
+        dy += primary_wave
+        
+    elif wave_type == 'vertical':
+        # Vertical waves - horizontal displacement based on y position
+        primary_wave = np.sin(y_coords * frequency * 2 * np.pi + phase_rad) * amplitude
+        dx += primary_wave
+        
+    elif wave_type == 'both':
+        # Both horizontal and vertical waves
+        horizontal_wave = np.sin(x_coords * frequency * 2 * np.pi + phase_rad) * amplitude
+        vertical_wave = np.sin(y_coords * frequency * 2 * np.pi + phase_rad) * amplitude
+        dy += horizontal_wave
+        dx += vertical_wave
+        
+    elif wave_type == 'diagonal':
+        # Diagonal wave pattern
+        diagonal_coord = (x_coords + y_coords) / np.sqrt(2)
+        primary_wave = np.sin(diagonal_coord * frequency * 2 * np.pi + phase_rad) * amplitude
+        # Split displacement between x and y for diagonal effect
+        dx += primary_wave * 0.707  # cos(45°)
+        dy += primary_wave * 0.707  # sin(45°)
+        
+    elif wave_type == 'radial':
+        # Radial waves from center
+        center_x, center_y = width // 2, height // 2
+        distance = np.sqrt((x_coords - center_x)**2 + (y_coords - center_y)**2)
+        primary_wave = np.sin(distance * frequency * 2 * np.pi + phase_rad) * amplitude
+        
+        # Calculate radial displacement
+        angle = np.arctan2(y_coords - center_y, x_coords - center_x)
+        dx += primary_wave * np.cos(angle)
+        dy += primary_wave * np.sin(angle)
+    
+    # Add secondary wave if enabled
+    if secondary_wave:
+        if wave_type == 'horizontal':
+            secondary_wave_pattern = np.sin(x_coords * secondary_frequency * 2 * np.pi + secondary_phase_rad) * secondary_amplitude
+            if blend_mode == 'add':
+                dy += secondary_wave_pattern
+            elif blend_mode == 'multiply':
+                dy *= (1 + secondary_wave_pattern / amplitude)
+            elif blend_mode == 'max':
+                dy = np.maximum(dy, secondary_wave_pattern)
+            elif blend_mode == 'interference':
+                # Create interference pattern
+                dy += secondary_wave_pattern * np.cos(x_coords * frequency * np.pi)
+                
+        elif wave_type == 'vertical':
+            secondary_wave_pattern = np.sin(y_coords * secondary_frequency * 2 * np.pi + secondary_phase_rad) * secondary_amplitude
+            if blend_mode == 'add':
+                dx += secondary_wave_pattern
+            elif blend_mode == 'multiply':
+                dx *= (1 + secondary_wave_pattern / amplitude)
+            elif blend_mode == 'max':
+                dx = np.maximum(dx, secondary_wave_pattern)
+            elif blend_mode == 'interference':
+                dx += secondary_wave_pattern * np.cos(y_coords * frequency * np.pi)
+                
+        elif wave_type == 'both':
+            h_secondary = np.sin(x_coords * secondary_frequency * 2 * np.pi + secondary_phase_rad) * secondary_amplitude
+            v_secondary = np.sin(y_coords * secondary_frequency * 2 * np.pi + secondary_phase_rad) * secondary_amplitude
+            
+            if blend_mode == 'add':
+                dy += h_secondary
+                dx += v_secondary
+            elif blend_mode == 'multiply':
+                dy *= (1 + h_secondary / amplitude)
+                dx *= (1 + v_secondary / amplitude)
+            elif blend_mode == 'interference':
+                dy += h_secondary * np.cos(y_coords * frequency * np.pi)
+                dx += v_secondary * np.cos(x_coords * frequency * np.pi)
+                
+        elif wave_type == 'diagonal':
+            diagonal_coord = (x_coords + y_coords) / np.sqrt(2)
+            secondary_wave_pattern = np.sin(diagonal_coord * secondary_frequency * 2 * np.pi + secondary_phase_rad) * secondary_amplitude
+            
+            if blend_mode == 'add':
+                dx += secondary_wave_pattern * 0.707
+                dy += secondary_wave_pattern * 0.707
+            elif blend_mode == 'interference':
+                dx += secondary_wave_pattern * 0.707 * np.cos(diagonal_coord * frequency * np.pi)
+                dy += secondary_wave_pattern * 0.707 * np.cos(diagonal_coord * frequency * np.pi)
+                
+        elif wave_type == 'radial':
+            center_x, center_y = width // 2, height // 2
+            distance = np.sqrt((x_coords - center_x)**2 + (y_coords - center_y)**2)
+            secondary_wave_pattern = np.sin(distance * secondary_frequency * 2 * np.pi + secondary_phase_rad) * secondary_amplitude
+            
+            angle = np.arctan2(y_coords - center_y, x_coords - center_x)
+            if blend_mode == 'add':
+                dx += secondary_wave_pattern * np.cos(angle)
+                dy += secondary_wave_pattern * np.sin(angle)
+            elif blend_mode == 'interference':
+                interference_factor = np.cos(distance * frequency * np.pi)
+                dx += secondary_wave_pattern * np.cos(angle) * interference_factor
+                dy += secondary_wave_pattern * np.sin(angle) * interference_factor
+    
+    # Calculate new coordinates
+    new_x = x_coords + dx
+    new_y = y_coords + dy
+    
+    # Handle edge behavior
+    if edge_behavior == 'wrap':
+        new_x = new_x % width
+        new_y = new_y % height
+    elif edge_behavior == 'clamp':
+        new_x = np.clip(new_x, 0, width - 1)
+        new_y = np.clip(new_y, 0, height - 1)
+    elif edge_behavior == 'reflect':
+        # Reflect coordinates at boundaries
+        new_x = np.where(new_x < 0, -new_x, new_x)
+        new_x = np.where(new_x >= width, 2 * (width - 1) - new_x, new_x)
+        new_y = np.where(new_y < 0, -new_y, new_y)
+        new_y = np.where(new_y >= height, 2 * (height - 1) - new_y, new_y)
+        
+        # Clamp after reflection to ensure bounds
+        new_x = np.clip(new_x, 0, width - 1)
+        new_y = np.clip(new_y, 0, height - 1)
+    
+    # Apply interpolation
+    result_array = np.zeros_like(img_array)
+    
+    if interpolation == 'nearest':
+        # Nearest neighbor interpolation
+        new_x_int = np.round(new_x).astype(int)
+        new_y_int = np.round(new_y).astype(int)
+        
+        # Ensure indices are within bounds
+        new_x_int = np.clip(new_x_int, 0, width - 1)
+        new_y_int = np.clip(new_y_int, 0, height - 1)
+        
+        result_array[y_coords, x_coords] = img_array[new_y_int, new_x_int]
+        
+    elif interpolation == 'bilinear':
+        # Bilinear interpolation
+        x0 = np.floor(new_x).astype(int)
+        x1 = x0 + 1
+        y0 = np.floor(new_y).astype(int)
+        y1 = y0 + 1
+        
+        # Clamp coordinates
+        x0 = np.clip(x0, 0, width - 1)
+        x1 = np.clip(x1, 0, width - 1)
+        y0 = np.clip(y0, 0, height - 1)
+        y1 = np.clip(y1, 0, height - 1)
+        
+        # Calculate interpolation weights
+        wx = new_x - x0
+        wy = new_y - y0
+        
+        # Perform bilinear interpolation for each channel
+        for c in range(channels):
+            result_array[y_coords, x_coords, c] = (
+                img_array[y0, x0, c] * (1 - wx) * (1 - wy) +
+                img_array[y0, x1, c] * wx * (1 - wy) +
+                img_array[y1, x0, c] * (1 - wx) * wy +
+                img_array[y1, x1, c] * wx * wy
+            )
+    
+    elif interpolation == 'bicubic':
+        # Simplified bicubic (using scipy if available, otherwise fallback to bilinear)
+        try:
+            from scipy import ndimage
+            
+            # Use scipy's map_coordinates for bicubic interpolation
+            coordinates = np.array([new_y.ravel(), new_x.ravel()])
+            
+            for c in range(channels):
+                mapped = ndimage.map_coordinates(
+                    img_array[:, :, c], 
+                    coordinates, 
+                    order=3,  # Cubic interpolation
+                    mode='wrap' if edge_behavior == 'wrap' else 'nearest',
+                    prefilter=True
+                )
+                result_array[:, :, c] = mapped.reshape(height, width)
+                
+        except ImportError:
+            # Fallback to bilinear if scipy not available
+            x0 = np.floor(new_x).astype(int)
+            x1 = x0 + 1
+            y0 = np.floor(new_y).astype(int)
+            y1 = y0 + 1
+            
+            x0 = np.clip(x0, 0, width - 1)
+            x1 = np.clip(x1, 0, width - 1)
+            y0 = np.clip(y0, 0, height - 1)
+            y1 = np.clip(y1, 0, height - 1)
+            
+            wx = new_x - x0
+            wy = new_y - y0
+            
+            for c in range(channels):
+                result_array[y_coords, x_coords, c] = (
+                    img_array[y0, x0, c] * (1 - wx) * (1 - wy) +
+                    img_array[y0, x1, c] * wx * (1 - wy) +
+                    img_array[y1, x0, c] * (1 - wx) * wy +
+                    img_array[y1, x1, c] * wx * wy
+                )
+    
+    # Ensure values are in valid range
+    result_array = np.clip(result_array, 0, 255).astype(np.uint8)
+    
+    return Image.fromarray(result_array) 

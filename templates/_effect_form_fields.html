@@ -21,6 +21,11 @@
                         <div class="checkbox-container">
                            {{ field() }} {# field() for BooleanField usually renders input+label #}
                         </div>
+                    {% elif field.id in ['color', 'gradient_color2'] %}
+                        <div class="color-picker-container">
+                            {{ field(class_="form-control color-input", data_color_picker="true") }}
+                            <div class="color-preview" data-target="{{ field.id }}"></div>
+                        </div>
                     {% else %}
                         {{ field(class_="form-control") }}
                     {% endif %}
@@ -55,5 +60,38 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
         gap: 15px;
+    }
+    
+    /* Color picker styles */
+    .color-picker-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .color-preview {
+        width: 40px;
+        height: 40px;
+        border: 2px solid #333;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-block;
+    }
+    
+    .color-input {
+        flex: 1;
+    }
+    
+    /* Pickr color picker theme adjustments */
+    .pickr {
+        position: relative;
+    }
+    
+    .pickr .pcr-button {
+        width: 40px;
+        height: 40px;
+        border: 2px solid #333;
+        border-radius: 4px;
     }
 </style> 

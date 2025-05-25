@@ -5,6 +5,7 @@ from io import BytesIO
 from ..core.pixel_attributes import PixelAttributes
 import random
 import bisect
+from PIL import ImageFilter
 
 def color_channel_manipulation(image, manipulation_type, choice, factor=None):
     """
@@ -706,3 +707,895 @@ def curved_hue_shift(image, C, A):
         pass 
         
     return final_rgb_image 
+
+def color_filter(image, filter_type='solid', color='#FF0000', blend_mode='overlay', opacity=0.5, 
+                 gradient_color2='#0000FF', gradient_angle=0):
+    """
+    Apply a colored filter effect to simulate camera lens filters.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        filter_type (str): Type of filter ('solid' or 'gradient').
+        color (str): Primary filter color in hex format (e.g., '#FF0000').
+        blend_mode (str): Blending mode ('overlay' or 'soft_light').
+        opacity (float): Filter opacity (0.0 to 1.0).
+        gradient_color2 (str): Secondary color for gradient filter in hex format.
+        gradient_angle (int): Gradient rotation angle in degrees (0-360).
+    
+    Returns:
+        Image: Processed image with color filter effect.
+    """
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    img_array = np.array(image, dtype=np.float32)
+    height, width, _ = img_array.shape
+    
+    # Convert hex colors to RGB
+    def hex_to_rgb(hex_color):
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
+    color_rgb = hex_to_rgb(color)
+    
+    # Create filter layer
+    if filter_type == 'solid':
+        # Create solid color filter
+        filter_layer = np.full((height, width, 3), color_rgb, dtype=np.float32)
+    else:  # gradient
+        gradient_color2_rgb = hex_to_rgb(gradient_color2)
+        
+        # Create coordinate grids
+        y_coords, x_coords = np.mgrid[0:height, 0:width]
+        
+        # Convert angle to radians and create gradient direction
+        angle_rad = np.radians(gradient_angle)
+        
+        # Calculate gradient based on rotated coordinates
+        # Normalize coordinates to [-1, 1] range
+        x_norm = (x_coords - width / 2) / (width / 2)
+        y_norm = (y_coords - height / 2) / (height / 2)
+        
+        # Rotate coordinates
+        x_rot = x_norm * np.cos(angle_rad) - y_norm * np.sin(angle_rad)
+        
+        # Create gradient values from -1 to 1
+        gradient_values = x_rot
+        
+        # Normalize to [0, 1] range
+        gradient_values = (gradient_values + 1) / 2
+        gradient_values = np.clip(gradient_values, 0, 1)
+        
+        # Create gradient filter layer
+        filter_layer = np.zeros((height, width, 3), dtype=np.float32)
+        for i in range(3):
+            filter_layer[:, :, i] = (
+                gradient_values * color_rgb[i] + 
+                (1 - gradient_values) * gradient_color2_rgb[i]
+            )
+    
+    # Apply blend mode
+    if blend_mode == 'overlay':
+        # Overlay blend mode
+        result = np.where(
+            img_array < 128,
+            2 * img_array * filter_layer / 255,
+            255 - 2 * (255 - img_array) * (255 - filter_layer) / 255
+        )
+    else:  # soft_light
+        # Soft Light blend mode
+        img_norm = img_array / 255.0
+        filter_norm = filter_layer / 255.0
+        
+        result = np.where(
+            filter_norm <= 0.5,
+            img_norm - (1 - 2 * filter_norm) * img_norm * (1 - img_norm),
+            img_norm + (2 * filter_norm - 1) * (
+                np.where(img_norm <= 0.25, 
+                        ((16 * img_norm - 12) * img_norm + 4) * img_norm,
+                        np.sqrt(img_norm)) - img_norm
+            )
+        )
+        result = result * 255
+    
+    # Apply opacity
+    result = img_array * (1 - opacity) + result * opacity
+    
+    # Ensure values are in valid range
+    result = np.clip(result, 0, 255).astype(np.uint8)
+    
+    return Image.fromarray(result) 
+
+def gaussian_blur(image, radius=5.0, sigma=None):
+    """
+    Apply Gaussian blur to an image.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        radius (float): Blur radius in pixels (0.1 to 50.0).
+        sigma (float, optional): Standard deviation for Gaussian kernel. 
+                                If None, sigma = radius / 3.0 (common approximation).
+    
+    Returns:
+        Image: Blurred image.
+    """
+    if image.mode not in ['RGB', 'RGBA', 'L']:
+        image = image.convert('RGB')
+    
+    # If sigma is not provided, use the common approximation
+    if sigma is None:
+        sigma = radius / 3.0
+    
+    # Ensure minimum values to prevent errors
+    radius = max(0.1, radius)
+    sigma = max(0.1, sigma)
+    
+    # Apply Gaussian blur using PIL's ImageFilter
+    # PIL's GaussianBlur uses radius parameter
+    blurred_image = image.filter(ImageFilter.GaussianBlur(radius=radius))
+    
+    return blurred_image 
+
+def noise_effect(image, noise_type='film_grain', intensity=0.3, grain_size=1.0, 
+                color_variation=0.2, noise_color='#FFFFFF', blend_mode='overlay', 
+                pattern='random', seed=None):
+    """
+    Add various types of noise effects to an image.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        noise_type (str): Type of noise ('film_grain', 'digital', 'colored', 'salt_pepper', 'gaussian').
+        intensity (float): Overall noise intensity (0.0 to 1.0).
+        grain_size (float): Size of noise particles (0.5 to 5.0).
+        color_variation (float): Amount of color variation in noise (0.0 to 1.0).
+        noise_color (str): Base color for colored noise in hex format.
+        blend_mode (str): How to blend noise ('overlay', 'add', 'multiply', 'screen').
+        pattern (str): Noise pattern ('random', 'perlin', 'cellular').
+        seed (int, optional): Random seed for reproducible results.
+    
+    Returns:
+        Image: Image with noise effect applied.
+    """
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+    
+    img_array = np.array(image, dtype=np.float32)
+    height, width, channels = img_array.shape
+    
+    # Convert hex color to RGB
+    def hex_to_rgb(hex_color):
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
+    base_color = hex_to_rgb(noise_color)
+    
+    # Generate base noise pattern
+    if pattern == 'perlin':
+        # Simple Perlin-like noise using multiple octaves
+        noise_base = np.zeros((height, width))
+        for octave in range(3):
+            scale = 0.1 * (2 ** octave) * grain_size
+            y_coords, x_coords = np.mgrid[0:height, 0:width]
+            noise_octave = np.sin(x_coords * scale) * np.cos(y_coords * scale)
+            noise_base += noise_octave / (2 ** octave)
+        noise_base = (noise_base + 1) / 2  # Normalize to 0-1
+    elif pattern == 'cellular':
+        # Cellular automata-like pattern
+        noise_base = np.random.random((height, width))
+        # Apply cellular automata rules
+        for _ in range(2):
+            kernel = np.ones((3, 3)) / 9
+            from scipy import ndimage
+            noise_base = ndimage.convolve(noise_base, kernel, mode='wrap')
+            noise_base = (noise_base > 0.5).astype(float)
+    else:  # random
+        noise_base = np.random.random((height, width))
+    
+    # Scale noise by grain size
+    if grain_size != 1.0:
+        from scipy import ndimage
+        # Resize noise pattern
+        scale_factor = 1.0 / grain_size
+        small_height = max(1, int(height * scale_factor))
+        small_width = max(1, int(width * scale_factor))
+        
+        # Generate smaller noise and scale up
+        if pattern == 'random':
+            small_noise = np.random.random((small_height, small_width))
+        else:
+            small_noise = noise_base[:small_height, :small_width]
+        
+        # Resize back to original size
+        noise_base = ndimage.zoom(small_noise, (height/small_height, width/small_width), order=1)
+    
+    # Create noise based on type
+    if noise_type == 'film_grain':
+        # Simulate film grain with luminance-dependent noise
+        luminance = 0.299 * img_array[:,:,0] + 0.587 * img_array[:,:,1] + 0.114 * img_array[:,:,2]
+        luminance_norm = luminance / 255.0
+        
+        # More grain in mid-tones, less in shadows and highlights
+        grain_mask = 4 * luminance_norm * (1 - luminance_norm)
+        
+        # Generate colored grain
+        noise_r = (noise_base - 0.5) * intensity * grain_mask
+        noise_g = (np.random.random((height, width)) - 0.5) * intensity * grain_mask * color_variation
+        noise_b = (np.random.random((height, width)) - 0.5) * intensity * grain_mask * color_variation
+        
+        noise_array = np.stack([noise_r, noise_g, noise_b], axis=2) * 255
+        
+    elif noise_type == 'digital':
+        # Sharp digital noise
+        noise_base = (noise_base > (1 - intensity)).astype(float)
+        noise_array = np.stack([noise_base] * 3, axis=2) * 255
+        
+        # Add color variation
+        if color_variation > 0:
+            for i in range(3):
+                color_noise = (np.random.random((height, width)) - 0.5) * color_variation * 255
+                noise_array[:,:,i] += color_noise
+    
+    elif noise_type == 'colored':
+        # Colored noise based on base color
+        noise_r = (noise_base - 0.5) * intensity * (base_color[0] / 255.0) * 255
+        noise_g = (noise_base - 0.5) * intensity * (base_color[1] / 255.0) * 255
+        noise_b = (noise_base - 0.5) * intensity * (base_color[2] / 255.0) * 255
+        
+        # Add color variation
+        if color_variation > 0:
+            noise_r += (np.random.random((height, width)) - 0.5) * color_variation * 255
+            noise_g += (np.random.random((height, width)) - 0.5) * color_variation * 255
+            noise_b += (np.random.random((height, width)) - 0.5) * color_variation * 255
+        
+        noise_array = np.stack([noise_r, noise_g, noise_b], axis=2)
+    
+    elif noise_type == 'salt_pepper':
+        # Salt and pepper noise
+        salt_pepper = np.random.random((height, width))
+        salt_mask = salt_pepper > (1 - intensity/2)
+        pepper_mask = salt_pepper < (intensity/2)
+        
+        noise_array = np.zeros((height, width, 3))
+        noise_array[salt_mask] = 255  # Salt (white)
+        noise_array[pepper_mask] = -255  # Pepper (black)
+    
+    else:  # gaussian
+        # Gaussian noise
+        noise_r = np.random.normal(0, intensity * 255, (height, width))
+        noise_g = np.random.normal(0, intensity * 255 * color_variation, (height, width))
+        noise_b = np.random.normal(0, intensity * 255 * color_variation, (height, width))
+        
+        noise_array = np.stack([noise_r, noise_g, noise_b], axis=2)
+    
+    # Apply blend mode
+    if blend_mode == 'add':
+        result = img_array + noise_array
+    elif blend_mode == 'multiply':
+        noise_norm = (noise_array + 255) / 510  # Normalize to 0-1 range
+        result = img_array * noise_norm
+    elif blend_mode == 'screen':
+        img_norm = img_array / 255.0
+        noise_norm = (noise_array + 255) / 510
+        result = (1 - (1 - img_norm) * (1 - noise_norm)) * 255
+    else:  # overlay (default)
+        noise_norm = noise_array / 255.0
+        img_norm = img_array / 255.0
+        
+        result = np.where(
+            img_norm < 0.5,
+            2 * img_norm * (noise_norm + 0.5),
+            1 - 2 * (1 - img_norm) * (0.5 - noise_norm)
+        ) * 255
+    
+    # Ensure values are in valid range
+    result = np.clip(result, 0, 255).astype(np.uint8)
+    
+    return Image.fromarray(result) 
+
+def chromatic_aberration(image, intensity=5.0, pattern='radial', red_shift_x=0.0, red_shift_y=0.0,
+                        blue_shift_x=0.0, blue_shift_y=0.0, center_x=0.5, center_y=0.5,
+                        falloff='quadratic', edge_enhancement=0.0, color_boost=1.0, seed=None):
+    """
+    Apply chromatic aberration effect to simulate lens color fringing.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        intensity (float): Overall aberration intensity (0.0 to 50.0).
+        pattern (str): Aberration pattern ('radial', 'linear', 'barrel', 'custom').
+        red_shift_x (float): Manual red channel X displacement (-20.0 to 20.0).
+        red_shift_y (float): Manual red channel Y displacement (-20.0 to 20.0).
+        blue_shift_x (float): Manual blue channel X displacement (-20.0 to 20.0).
+        blue_shift_y (float): Manual blue channel Y displacement (-20.0 to 20.0).
+        center_x (float): Aberration center X position (0.0 to 1.0).
+        center_y (float): Aberration center Y position (0.0 to 1.0).
+        falloff (str): Distance falloff type ('linear', 'quadratic', 'cubic').
+        edge_enhancement (float): Enhance edge contrast (0.0 to 1.0).
+        color_boost (float): Boost color saturation (0.5 to 2.0).
+        seed (int, optional): Random seed for pattern variations.
+    
+    Returns:
+        Image: Image with chromatic aberration effect applied.
+    """
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+    
+    img_array = np.array(image, dtype=np.float32)
+    height, width, channels = img_array.shape
+    
+    # Extract color channels
+    red_channel = img_array[:, :, 0]
+    green_channel = img_array[:, :, 1]
+    blue_channel = img_array[:, :, 2]
+    
+    # Create coordinate grids
+    y_coords, x_coords = np.mgrid[0:height, 0:width]
+    
+    # Normalize coordinates to [-1, 1] range centered on aberration center
+    center_x_px = center_x * width
+    center_y_px = center_y * height
+    x_norm = (x_coords - center_x_px) / (width / 2)
+    y_norm = (y_coords - center_y_px) / (height / 2)
+    
+    # Calculate distance from center
+    distance = np.sqrt(x_norm**2 + y_norm**2)
+    
+    # Apply falloff function
+    if falloff == 'linear':
+        falloff_factor = distance
+    elif falloff == 'cubic':
+        falloff_factor = distance**3
+    else:  # quadratic (default)
+        falloff_factor = distance**2
+    
+    # Calculate displacement based on pattern
+    if pattern == 'radial':
+        # Classic radial chromatic aberration
+        # Red channel moves outward, blue moves inward
+        red_disp_x = x_norm * falloff_factor * intensity * 0.1
+        red_disp_y = y_norm * falloff_factor * intensity * 0.1
+        blue_disp_x = -x_norm * falloff_factor * intensity * 0.1
+        blue_disp_y = -y_norm * falloff_factor * intensity * 0.1
+        
+    elif pattern == 'linear':
+        # Linear aberration (like prism effect)
+        red_disp_x = np.full_like(x_coords, intensity * 0.2, dtype=np.float32)
+        red_disp_y = np.zeros_like(y_coords, dtype=np.float32)
+        blue_disp_x = np.full_like(x_coords, -intensity * 0.2, dtype=np.float32)
+        blue_disp_y = np.zeros_like(y_coords, dtype=np.float32)
+        
+    elif pattern == 'barrel':
+        # Barrel distortion-like aberration
+        angle = np.arctan2(y_norm, x_norm)
+        radial_factor = falloff_factor * intensity * 0.1
+        red_disp_x = np.cos(angle) * radial_factor * 1.2
+        red_disp_y = np.sin(angle) * radial_factor * 1.2
+        blue_disp_x = np.cos(angle) * radial_factor * 0.8
+        blue_disp_y = np.sin(angle) * radial_factor * 0.8
+        
+    else:  # custom
+        # Use manual displacement values with some distance modulation
+        distance_mod = 1.0 + falloff_factor * 0.5
+        red_disp_x = np.full_like(x_coords, red_shift_x * distance_mod, dtype=np.float32)
+        red_disp_y = np.full_like(y_coords, red_shift_y * distance_mod, dtype=np.float32)
+        blue_disp_x = np.full_like(x_coords, blue_shift_x * distance_mod, dtype=np.float32)
+        blue_disp_y = np.full_like(y_coords, blue_shift_y * distance_mod, dtype=np.float32)
+    
+    # Add manual shifts to pattern-based displacement
+    if pattern != 'custom':
+        red_disp_x += red_shift_x
+        red_disp_y += red_shift_y
+        blue_disp_x += blue_shift_x
+        blue_disp_y += blue_shift_y
+    
+    # Apply displacement to channels using bilinear interpolation
+    def apply_displacement(channel, disp_x, disp_y):
+        # Calculate new coordinates
+        new_x = x_coords + disp_x
+        new_y = y_coords + disp_y
+        
+        # Clip coordinates to image bounds
+        new_x = np.clip(new_x, 0, width - 1)
+        new_y = np.clip(new_y, 0, height - 1)
+        
+        # Get integer and fractional parts
+        x0 = np.floor(new_x).astype(int)
+        x1 = np.minimum(x0 + 1, width - 1)
+        y0 = np.floor(new_y).astype(int)
+        y1 = np.minimum(y0 + 1, height - 1)
+        
+        # Calculate interpolation weights
+        wx = new_x - x0
+        wy = new_y - y0
+        
+        # Bilinear interpolation
+        interpolated = (
+            channel[y0, x0] * (1 - wx) * (1 - wy) +
+            channel[y0, x1] * wx * (1 - wy) +
+            channel[y1, x0] * (1 - wx) * wy +
+            channel[y1, x1] * wx * wy
+        )
+        
+        return interpolated
+    
+    # Apply displacements
+    red_displaced = apply_displacement(red_channel, red_disp_x, red_disp_y)
+    blue_displaced = apply_displacement(blue_channel, blue_disp_x, blue_disp_y)
+    
+    # Green channel stays in place (or minimal displacement)
+    green_displaced = green_channel.copy()
+    
+    # Combine channels
+    result = np.stack([red_displaced, green_displaced, blue_displaced], axis=2)
+    
+    # Apply edge enhancement if requested
+    if edge_enhancement > 0:
+        from scipy import ndimage
+        # Create edge detection kernel
+        edge_kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+        
+        # Apply edge detection to each channel
+        for i in range(3):
+            edges = ndimage.convolve(result[:, :, i], edge_kernel, mode='reflect')
+            result[:, :, i] += edges * edge_enhancement * 0.1
+    
+    # Apply color boost
+    if color_boost != 1.0:
+        # Convert to HSV for saturation boost
+        result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
+        result_pil = Image.fromarray(result_uint8)
+        
+        # Simple saturation boost by scaling color channels relative to luminance
+        luminance = 0.299 * result[:, :, 0] + 0.587 * result[:, :, 1] + 0.114 * result[:, :, 2]
+        for i in range(3):
+            # Boost color relative to luminance
+            color_diff = result[:, :, i] - luminance
+            result[:, :, i] = luminance + color_diff * color_boost
+    
+    # Ensure values are in valid range
+    result = np.clip(result, 0, 255).astype(np.uint8)
+    
+    return Image.fromarray(result) 
+
+def vhs_effect(image, quality_preset='medium', scan_line_intensity=0.3, scan_line_spacing=2,
+               static_intensity=0.2, static_type='white', vertical_hold_frequency=0.1,
+               vertical_hold_intensity=5.0, color_bleeding=0.3, chroma_shift=0.2,
+               tracking_errors=0.15, tape_wear=0.1, head_switching_noise=0.1,
+               color_desaturation=0.3, brightness_variation=0.2, seed=None):
+    """
+    Apply comprehensive VHS tape effect with authentic analog video artifacts.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        quality_preset (str): Overall quality preset ('high', 'medium', 'low', 'damaged').
+        scan_line_intensity (float): Intensity of horizontal scan lines (0.0 to 1.0).
+        scan_line_spacing (int): Spacing between scan lines in pixels (1 to 5).
+        static_intensity (float): Amount of static noise (0.0 to 1.0).
+        static_type (str): Type of static ('white', 'colored', 'mixed').
+        vertical_hold_frequency (float): Frequency of vertical hold issues (0.0 to 1.0).
+        vertical_hold_intensity (float): Intensity of line displacement (0.0 to 20.0).
+        color_bleeding (float): Amount of color bleeding between channels (0.0 to 1.0).
+        chroma_shift (float): Chroma/luma separation artifacts (0.0 to 1.0).
+        tracking_errors (float): Frequency of tracking problems (0.0 to 1.0).
+        tape_wear (float): Amount of tape wear and dropouts (0.0 to 1.0).
+        head_switching_noise (float): Head switching noise bands (0.0 to 1.0).
+        color_desaturation (float): Color desaturation amount (0.0 to 1.0).
+        brightness_variation (float): Random brightness variations (0.0 to 1.0).
+        seed (int, optional): Random seed for reproducible results.
+    
+    Returns:
+        Image: Image with VHS effect applied.
+    """
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+    
+    # Apply quality preset adjustments
+    preset_multipliers = {
+        'high': 0.3,
+        'medium': 1.0,
+        'low': 2.0,
+        'damaged': 3.5
+    }
+    multiplier = preset_multipliers.get(quality_preset, 1.0)
+    
+    # Adjust parameters based on preset
+    scan_line_intensity *= multiplier * 0.8
+    static_intensity *= multiplier
+    vertical_hold_frequency *= multiplier
+    vertical_hold_intensity *= multiplier
+    color_bleeding *= multiplier
+    chroma_shift *= multiplier
+    tracking_errors *= multiplier
+    tape_wear *= multiplier
+    head_switching_noise *= multiplier
+    color_desaturation *= multiplier * 0.7
+    brightness_variation *= multiplier * 0.6
+    
+    # Clamp values to valid ranges
+    scan_line_intensity = min(1.0, scan_line_intensity)
+    static_intensity = min(1.0, static_intensity)
+    vertical_hold_frequency = min(1.0, vertical_hold_frequency)
+    color_bleeding = min(1.0, color_bleeding)
+    chroma_shift = min(1.0, chroma_shift)
+    tracking_errors = min(1.0, tracking_errors)
+    tape_wear = min(1.0, tape_wear)
+    head_switching_noise = min(1.0, head_switching_noise)
+    color_desaturation = min(1.0, color_desaturation)
+    brightness_variation = min(1.0, brightness_variation)
+    
+    img_array = np.array(image, dtype=np.float32)
+    height, width, channels = img_array.shape
+    
+    # 1. Apply color desaturation (VHS color degradation)
+    if color_desaturation > 0:
+        # Convert to grayscale and blend
+        gray = 0.299 * img_array[:, :, 0] + 0.587 * img_array[:, :, 1] + 0.114 * img_array[:, :, 2]
+        for i in range(3):
+            img_array[:, :, i] = img_array[:, :, i] * (1 - color_desaturation) + gray * color_desaturation
+    
+    # 2. Apply chroma shift (Y/C separation)
+    if chroma_shift > 0:
+        shift_amount = int(chroma_shift * 3) + 1
+        # Shift chroma channels slightly
+        img_array[:, :, 0] = np.roll(img_array[:, :, 0], shift_amount, axis=1)  # Red shift right
+        img_array[:, :, 2] = np.roll(img_array[:, :, 2], -shift_amount, axis=1)  # Blue shift left
+    
+    # 3. Apply color bleeding
+    if color_bleeding > 0:
+        from scipy import ndimage
+        # Create bleeding effect by blurring individual channels differently
+        blur_kernel = np.ones((1, 3)) / 3  # Horizontal blur
+        for i in range(3):
+            if np.random.random() < color_bleeding:
+                img_array[:, :, i] = ndimage.convolve(img_array[:, :, i], blur_kernel, mode='wrap')
+    
+    # 4. Apply vertical hold issues (horizontal line displacement)
+    if vertical_hold_frequency > 0 and vertical_hold_intensity > 0:
+        num_glitches = int(height * vertical_hold_frequency * 0.1)
+        for _ in range(num_glitches):
+            glitch_line = np.random.randint(0, height)
+            displacement = int((np.random.random() - 0.5) * vertical_hold_intensity * 2)
+            if displacement != 0:
+                # Displace the line horizontally
+                img_array[glitch_line] = np.roll(img_array[glitch_line], displacement, axis=0)
+    
+    # 5. Apply tracking errors (horizontal bands of distortion)
+    if tracking_errors > 0:
+        num_bands = int(tracking_errors * 10) + 1
+        for _ in range(num_bands):
+            band_start = np.random.randint(0, height - 10)
+            band_height = np.random.randint(2, 8)
+            band_end = min(band_start + band_height, height)
+            
+            # Apply horizontal displacement to the band
+            displacement = int((np.random.random() - 0.5) * 6)
+            if displacement != 0:
+                img_array[band_start:band_end] = np.roll(img_array[band_start:band_end], displacement, axis=1)
+            
+            # Add some noise to the band
+            noise = np.random.normal(0, 10, (band_end - band_start, width, 3))
+            img_array[band_start:band_end] += noise * tracking_errors
+    
+    # 5.5. Apply severe tracking errors (large displaced bands with color shifts)
+    if tracking_errors > 0.3:  # Only apply for medium to high tracking error levels
+        # Create larger, more dramatic tracking bands
+        num_severe_bands = max(1, int(tracking_errors * 5))
+        
+        for _ in range(num_severe_bands):
+            # Create larger bands (10-50 pixels high)
+            band_start = np.random.randint(0, height - 20)
+            band_height = np.random.randint(10, min(50, height - band_start))
+            band_end = min(band_start + band_height, height)
+            
+            # Store original band data
+            original_band = img_array[band_start:band_end].copy()
+            
+            # Apply large horizontal displacement (can be quite dramatic)
+            large_displacement = int((np.random.random() - 0.5) * width * 0.3)  # Up to 30% of width
+            
+            if large_displacement != 0:
+                # Displace the band
+                displaced_band = np.roll(original_band, large_displacement, axis=1)
+                
+                # Apply color channel shifts to simulate bad sync
+                color_shift_intensity = tracking_errors * 0.5
+                
+                # Randomly shift individual color channels
+                if np.random.random() < color_shift_intensity:
+                    # Red channel shift
+                    red_shift = int((np.random.random() - 0.5) * 8)
+                    displaced_band[:, :, 0] = np.roll(displaced_band[:, :, 0], red_shift, axis=1)
+                
+                if np.random.random() < color_shift_intensity:
+                    # Blue channel shift (opposite direction often)
+                    blue_shift = int((np.random.random() - 0.5) * 8)
+                    displaced_band[:, :, 2] = np.roll(displaced_band[:, :, 2], blue_shift, axis=1)
+                
+                # Apply color bleeding/smearing effect
+                if np.random.random() < 0.7:
+                    # Horizontal blur to simulate color bleeding
+                    from scipy import ndimage
+                    blur_kernel = np.ones((1, 3)) / 3
+                    for channel in range(3):
+                        displaced_band[:, :, channel] = ndimage.convolve(
+                            displaced_band[:, :, channel], blur_kernel, mode='wrap'
+                        )
+                
+                # Apply brightness/contrast variations
+                brightness_variation = (np.random.random() - 0.5) * 0.3 * tracking_errors
+                contrast_variation = 1.0 + (np.random.random() - 0.5) * 0.4 * tracking_errors
+                
+                displaced_band = displaced_band * contrast_variation + brightness_variation * 255
+                displaced_band = np.clip(displaced_band, 0, 255)
+                
+                # Blend the displaced band back with some transparency for realism
+                blend_factor = 0.7 + np.random.random() * 0.3  # 70-100% opacity
+                
+                # Replace the original band with the processed version
+                img_array[band_start:band_end] = (
+                    displaced_band * blend_factor + 
+                    original_band * (1 - blend_factor)
+                )
+                
+                # Add some edge artifacts at band boundaries
+                if band_start > 0:
+                    # Add noise/distortion at top edge
+                    edge_noise = np.random.normal(0, 15, (1, width, 3))
+                    img_array[band_start:band_start+1] += edge_noise * tracking_errors * 0.5
+                
+                if band_end < height:
+                    # Add noise/distortion at bottom edge
+                    edge_noise = np.random.normal(0, 15, (1, width, 3))
+                    img_array[band_end-1:band_end] += edge_noise * tracking_errors * 0.5
+    
+    # 6. Apply head switching noise (horizontal noise bands)
+    if head_switching_noise > 0:
+        # Add periodic horizontal noise bands
+        band_frequency = 60  # Approximate scan lines where head switching occurs
+        for y in range(0, height, band_frequency):
+            if np.random.random() < head_switching_noise:
+                noise_height = np.random.randint(1, 3)
+                noise_end = min(y + noise_height, height)
+                noise = np.random.normal(0, 30, (noise_end - y, width, 3))
+                img_array[y:noise_end] += noise
+    
+    # 7. Apply tape wear (random dropouts)
+    if tape_wear > 0:
+        num_dropouts = int(tape_wear * width * height * 0.0001)
+        for _ in range(num_dropouts):
+            dropout_x = np.random.randint(0, width)
+            dropout_y = np.random.randint(0, height)
+            dropout_size = np.random.randint(1, 5)
+            
+            x_end = min(dropout_x + dropout_size, width)
+            y_end = min(dropout_y + dropout_size, height)
+            
+            # Create dropout (dark spots or noise)
+            if np.random.random() < 0.5:
+                img_array[dropout_y:y_end, dropout_x:x_end] *= 0.1  # Dark dropout
+            else:
+                dropout_noise = np.random.normal(128, 50, (y_end - dropout_y, x_end - dropout_x, 3))
+                img_array[dropout_y:y_end, dropout_x:x_end] = dropout_noise
+    
+    # 8. Apply static noise
+    if static_intensity > 0:
+        if static_type == 'white':
+            noise = np.random.normal(0, static_intensity * 30, (height, width, 3))
+        elif static_type == 'colored':
+            noise = np.random.normal(0, static_intensity * 25, (height, width, 3))
+            # Add color tint to noise
+            noise[:, :, 0] *= 1.2  # More red noise
+            noise[:, :, 2] *= 0.8  # Less blue noise
+        else:  # mixed
+            # Combine white and colored noise
+            white_noise = np.random.normal(0, static_intensity * 20, (height, width, 3))
+            colored_noise = np.random.normal(0, static_intensity * 15, (height, width, 3))
+            colored_noise[:, :, 0] *= 1.3
+            colored_noise[:, :, 2] *= 0.7
+            noise = white_noise + colored_noise
+        
+        img_array += noise
+    
+    # 9. Apply brightness variation
+    if brightness_variation > 0:
+        # Create random brightness variations across the image
+        variation_map = np.random.normal(1.0, brightness_variation * 0.1, (height, width))
+        variation_map = np.clip(variation_map, 0.5, 1.5)
+        for i in range(3):
+            img_array[:, :, i] *= variation_map
+    
+    # 10. Apply scan lines (last to be most visible)
+    if scan_line_intensity > 0:
+        for y in range(0, height, scan_line_spacing):
+            # Create scan line effect
+            scan_line_darkness = 1.0 - scan_line_intensity
+            img_array[y] *= scan_line_darkness
+            
+            # Add slight horizontal blur to scan lines for authenticity
+            if scan_line_spacing > 1 and y + 1 < height:
+                img_array[y + 1] *= (1.0 - scan_line_intensity * 0.3)
+    
+    # Ensure values are in valid range
+    img_array = np.clip(img_array, 0, 255).astype(np.uint8)
+    
+    return Image.fromarray(img_array) 
+
+def sharpen_effect(image, method='unsharp_mask', intensity=1.0, radius=1.0, threshold=0,
+                   edge_enhancement=0.0, high_pass_radius=3.0, custom_kernel=None):
+    """
+    Apply various sharpening effects to an image.
+    
+    Args:
+        image (Image): PIL Image object to process.
+        method (str): Sharpening method ('unsharp_mask', 'high_pass', 'edge_enhance', 'custom').
+        intensity (float): Sharpening intensity/amount (0.0 to 5.0).
+        radius (float): Radius for blur operations in unsharp mask (0.1 to 10.0).
+        threshold (int): Threshold for unsharp mask (0 to 255).
+        edge_enhancement (float): Additional edge enhancement (0.0 to 2.0).
+        high_pass_radius (float): Radius for high-pass filter (1.0 to 10.0).
+        custom_kernel (str): Custom convolution kernel type ('laplacian', 'sobel', 'prewitt').
+    
+    Returns:
+        Image: Sharpened image.
+    """
+    if image.mode not in ['RGB', 'RGBA', 'L']:
+        image = image.convert('RGB')
+    
+    # Ensure parameters are in valid ranges
+    intensity = max(0.0, min(5.0, intensity))
+    radius = max(0.1, min(10.0, radius))
+    threshold = max(0, min(255, threshold))
+    edge_enhancement = max(0.0, min(2.0, edge_enhancement))
+    high_pass_radius = max(1.0, min(10.0, high_pass_radius))
+    
+    img_array = np.array(image, dtype=np.float32)
+    
+    if method == 'unsharp_mask':
+        # Classic unsharp mask sharpening
+        # 1. Create blurred version
+        blurred = image.filter(ImageFilter.GaussianBlur(radius=radius))
+        blurred_array = np.array(blurred, dtype=np.float32)
+        
+        # 2. Calculate difference (mask)
+        mask = img_array - blurred_array
+        
+        # 3. Apply threshold if specified
+        if threshold > 0:
+            # Only sharpen where the difference exceeds threshold
+            mask_magnitude = np.sqrt(np.sum(mask**2, axis=2, keepdims=True))
+            threshold_mask = mask_magnitude > threshold
+            mask = mask * threshold_mask
+        
+        # 4. Add scaled mask back to original
+        result = img_array + mask * intensity
+        
+    elif method == 'high_pass':
+        # High-pass filter sharpening
+        # Create a strong blur and subtract from original
+        heavily_blurred = image.filter(ImageFilter.GaussianBlur(radius=high_pass_radius))
+        heavily_blurred_array = np.array(heavily_blurred, dtype=np.float32)
+        
+        # High-pass = original - low-pass
+        high_pass = img_array - heavily_blurred_array
+        
+        # Add high-pass back to original with intensity scaling
+        result = img_array + high_pass * intensity
+        
+    elif method == 'edge_enhance':
+        # Use PIL's built-in edge enhancement as base
+        if intensity <= 1.0:
+            # Use smooth edge enhancement for subtle effects
+            enhanced = image.filter(ImageFilter.EDGE_ENHANCE)
+        else:
+            # Use more aggressive edge enhancement
+            enhanced = image.filter(ImageFilter.EDGE_ENHANCE_MORE)
+        
+        enhanced_array = np.array(enhanced, dtype=np.float32)
+        
+        # Blend between original and enhanced based on intensity
+        blend_factor = min(1.0, intensity)
+        result = img_array * (1 - blend_factor) + enhanced_array * blend_factor
+        
+        # If intensity > 1.0, apply additional sharpening
+        if intensity > 1.0:
+            extra_intensity = intensity - 1.0
+            # Apply unsharp mask for additional sharpening
+            blurred = Image.fromarray(np.clip(result, 0, 255).astype(np.uint8)).filter(
+                ImageFilter.GaussianBlur(radius=1.0)
+            )
+            blurred_array = np.array(blurred, dtype=np.float32)
+            mask = result - blurred_array
+            result = result + mask * extra_intensity
+    
+    elif method == 'custom':
+        # Custom convolution kernel sharpening
+        from scipy import ndimage
+        
+        if custom_kernel == 'laplacian':
+            # Laplacian kernel for edge detection/sharpening
+            kernel = np.array([
+                [0, -1, 0],
+                [-1, 4, -1],
+                [0, -1, 0]
+            ], dtype=np.float32)
+        elif custom_kernel == 'sobel':
+            # Sobel-based sharpening (combine X and Y)
+            sobel_x = np.array([
+                [-1, 0, 1],
+                [-2, 0, 2],
+                [-1, 0, 1]
+            ], dtype=np.float32)
+            sobel_y = np.array([
+                [-1, -2, -1],
+                [0, 0, 0],
+                [1, 2, 1]
+            ], dtype=np.float32)
+            # Combine Sobel X and Y for omnidirectional edge detection
+            kernel = sobel_x + sobel_y
+        elif custom_kernel == 'prewitt':
+            # Prewitt operator
+            prewitt_x = np.array([
+                [-1, 0, 1],
+                [-1, 0, 1],
+                [-1, 0, 1]
+            ], dtype=np.float32)
+            prewitt_y = np.array([
+                [-1, -1, -1],
+                [0, 0, 0],
+                [1, 1, 1]
+            ], dtype=np.float32)
+            kernel = prewitt_x + prewitt_y
+        else:  # Default to a simple sharpening kernel
+            kernel = np.array([
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0]
+            ], dtype=np.float32)
+        
+        # Apply convolution to each channel
+        if len(img_array.shape) == 3:  # Color image
+            result = np.zeros_like(img_array)
+            for i in range(img_array.shape[2]):
+                convolved = ndimage.convolve(img_array[:, :, i], kernel, mode='reflect')
+                result[:, :, i] = img_array[:, :, i] + convolved * intensity
+        else:  # Grayscale
+            convolved = ndimage.convolve(img_array, kernel, mode='reflect')
+            result = img_array + convolved * intensity
+    
+    else:
+        # Fallback to simple sharpening
+        result = img_array
+    
+    # Apply additional edge enhancement if requested
+    if edge_enhancement > 0:
+        from scipy import ndimage
+        # Use Laplacian for edge detection
+        edge_kernel = np.array([
+            [0, -1, 0],
+            [-1, 4, -1],
+            [0, -1, 0]
+        ], dtype=np.float32)
+        
+        if len(result.shape) == 3:  # Color image
+            for i in range(result.shape[2]):
+                edges = ndimage.convolve(result[:, :, i], edge_kernel, mode='reflect')
+                result[:, :, i] += edges * edge_enhancement
+        else:  # Grayscale
+            edges = ndimage.convolve(result, edge_kernel, mode='reflect')
+            result += edges * edge_enhancement
+    
+    # Ensure values are in valid range
+    result = np.clip(result, 0, 255).astype(np.uint8)
+    
+    return Image.fromarray(result) 

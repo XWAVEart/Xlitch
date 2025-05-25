@@ -396,6 +396,123 @@ def spiral_sort_2(image, chunk_size=64, sort_by='brightness', reverse=False):
     # Convert back to PIL image
     return Image.fromarray(result)
 
+def wrapped_sort(image, chunk_width, chunk_height, starting_corner='top-left', flow_direction='primary', sort_direction='vertical', sort_by='brightness', reverse=False, direction=None):
+    """
+    Apply wrapped pixel sorting where chunks are placed column by column, and partial chunks
+    at the bottom of each column cause the next column to start with an offset, creating
+    a staggered "wrapped" pattern.
+    
+    Args:
+        image (Image): PIL Image object to process
+        chunk_width (int): Width of each column of chunks
+        chunk_height (int): Target height for each chunk (creates wrapping when doesn't fit evenly)
+        starting_corner (str): Corner to start chunk placement from
+        flow_direction (str): How chunks flow ('primary' or 'secondary' direction from corner)
+        sort_direction (str): Sort direction within chunks ('vertical' or 'horizontal')
+        sort_by (str): Attribute to sort by ('brightness', 'hue', 'saturation', etc.)
+        reverse (bool): Whether to reverse the sort order
+    
+    Returns:
+        Image: Processed image with wrapped chunk sorting applied
+    """
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Backward compatibility: if old 'direction' parameter is used, map it to flow_direction
+    if direction is not None:
+        flow_direction = 'primary' if direction == 'vertical' else 'secondary'
+    
+    sort_function = _SORT_FUNCTIONS.get(sort_by, PixelAttributes.brightness)
+    
+    img_array = np.array(image, dtype=np.uint8)
+    img_height, img_width = img_array.shape[:2]
+    result_array = np.copy(img_array)
+    
+    def generate_chunks(img_w, img_h, chunk_w, chunk_h, start_corner, flow_dir):
+        """Generate chunks using the wrapped algorithm - partial chunks continue across columns."""
+        chunks = []
+        
+        # For simplicity, start with top-left primary (can extend later)
+        # The key is: when a column ends with a partial chunk, that chunk continues in the next column
+        
+        x = 0
+        current_chunk_remaining = chunk_h  # How much height is left in the current chunk
+        
+        while x < img_w:
+            y = 0
+            col_width = min(chunk_w, img_w - x)
+            
+            while y < img_h:
+                remaining_h = img_h - y
+                
+                # Use the smaller of: remaining height in image, or remaining height needed for current chunk
+                curr_h = min(current_chunk_remaining, remaining_h)
+                
+                chunks.append((x, y, col_width, curr_h))
+                y += curr_h
+                current_chunk_remaining -= curr_h
+                
+                # If we completed a full chunk, start a new one
+                if current_chunk_remaining == 0:
+                    current_chunk_remaining = chunk_h
+                
+                # If we hit the bottom of the image, move to next column
+                # The current_chunk_remaining carries over (this is the key!)
+                if y >= img_h:
+                    break
+            
+            x += chunk_w
+        
+        return chunks
+    
+    # Generate the wrapped chunks
+    chunks = generate_chunks(img_width, img_height, chunk_width, chunk_height, starting_corner, flow_direction)
+    
+    # Process each chunk
+    for chunk_x, chunk_y, chunk_w, chunk_h in chunks:
+        # Collect pixels for this chunk
+        chunk_pixels = []
+        chunk_positions = []
+        
+        for dy in range(chunk_h):
+            for dx in range(chunk_w):
+                y = chunk_y + dy
+                x = chunk_x + dx
+                if 0 <= y < img_height and 0 <= x < img_width:
+                    chunk_positions.append((y, x))
+                    chunk_pixels.append(tuple(img_array[y, x]))
+        
+        # Sort the pixels in this chunk
+        if chunk_pixels:
+            sorted_pixels = sorted(chunk_pixels, key=sort_function, reverse=reverse)
+            
+            # Place sorted pixels back in the chunk area
+            if sort_direction == 'vertical':
+                # Sort vertically within the chunk (column by column)
+                idx = 0
+                for col in range(chunk_w):
+                    for row in range(chunk_h):
+                        if idx < len(sorted_pixels):
+                            y = chunk_y + row
+                            x = chunk_x + col
+                            if 0 <= y < img_height and 0 <= x < img_width:
+                                result_array[y, x] = sorted_pixels[idx]
+                                idx += 1
+            else:  # horizontal
+                # Sort horizontally within the chunk (row by row)
+                idx = 0
+                for row in range(chunk_h):
+                    for col in range(chunk_w):
+                        if idx < len(sorted_pixels):
+                            y = chunk_y + row
+                            x = chunk_x + col
+                            if 0 <= y < img_height and 0 <= x < img_width:
+                                result_array[y, x] = sorted_pixels[idx]
+                                idx += 1
+    
+    return Image.fromarray(result_array)
+
+
 def polar_sorting(image, chunk_size, sort_by='angle', reverse=False):
     """
     Apply polar sorting to an image by sorting pixels within chunks based on polar coordinates.

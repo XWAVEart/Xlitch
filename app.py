@@ -30,17 +30,19 @@ try:
     
     # Import effect functions directly from their modules for improved maintainability
     from glitch_art.effects.sorting import pixel_sorting, full_frame_sort, spiral_sort_2, polar_sorting
-    from glitch_art.effects.color import color_channel_manipulation, split_and_shift_channels, histogram_glitch, color_shift_expansion, posterize, curved_hue_shift
-    from glitch_art.effects.distortion import pixel_drift, perlin_noise_displacement, pixel_scatter, ripple_effect, offset_effect, slice_shuffle, slice_offset, slice_reduction, geometric_distortion
+    from glitch_art.effects.color import color_channel_manipulation, split_and_shift_channels, histogram_glitch, color_shift_expansion, posterize, curved_hue_shift, color_filter, gaussian_blur, noise_effect, chromatic_aberration, vhs_effect, sharpen_effect
+    from glitch_art.effects.distortion import pixel_drift, perlin_noise_displacement, pixel_scatter, ripple_effect, offset_effect, slice_shuffle, slice_offset, slice_reduction, geometric_distortion, wave_distortion
     from glitch_art.effects.glitch import bit_manipulation, databend_image, simulate_jpeg_artifacts, data_mosh_blocks
     from glitch_art.effects.patterns import voronoi_pixel_sort, masked_merge, concentric_shapes
     from glitch_art.effects.noise import perlin_noise_sorting, perlin_full_frame_sort
-    from glitch_art.effects.pixelate import pixelate_by_attribute
+    from glitch_art.effects.pixelate import pixelate_by_attribute, voronoi_pixelate
     from glitch_art.effects.blend import double_expose
     # Import core utilities
     from glitch_art.core.image_utils import load_image, generate_output_filename, resize_image_if_needed
     from glitch_art.effects import contour_effect
     from glitch_art.effects.distortion import block_shuffle
+    # Import consolidated effects
+    from glitch_art.effects.consolidated import advanced_pixel_sorting, slice_block_manipulation
     
     logger.info("Successfully imported all glitch_art modules")
 
@@ -51,9 +53,11 @@ try:
         SpiralSort2Form, JpegArtifactsForm, PerlinFullFrameForm, VoronoiSortForm,
         PerlinNoiseSortForm, PixelScatterForm, PerlinDisplacementForm, RippleEffectForm,
         RGBChannelShiftForm, HistogramGlitchForm, ColorShiftExpansionForm,
-        PixelateForm, ConcentricShapesForm, PosterizeForm, CurvedHueShiftForm,
+        PixelateForm, VoronoiPixelateForm, GaussianBlurForm, NoiseEffectForm, ChromaticAberrationForm, VHSEffectForm, SharpenEffectForm, WaveDistortionForm, ConcentricShapesForm, PosterizeForm, CurvedHueShiftForm, ColorFilterForm,
         MaskedMergeForm, OffsetEffectForm, SliceShuffleForm, SliceOffsetForm,
-        SliceReductionForm, ContourForm, BlockShuffleForm, DataMoshBlocksForm
+        SliceReductionForm, ContourForm, BlockShuffleForm, DataMoshBlocksForm,
+        # New consolidated forms
+        SliceBlockManipulationForm, AdvancedPixelSortingForm
     )
     logger.info("Successfully imported all specific effect form classes")
 
@@ -81,6 +85,7 @@ from PIL import Image
 
 # --- Effect Form Mapping ---
 EFFECT_FORM_MAP = {
+    # Individual effects (maintained for backward compatibility)
     'pixel_sort_chunk': PixelSortChunkForm,
     'color_channel': ColorChannelForm,
     'bit_manipulation': BitManipulationForm,
@@ -100,7 +105,15 @@ EFFECT_FORM_MAP = {
     'channel_shift': RGBChannelShiftForm, # Key is 'channel_shift' from main form
     'histogram_glitch': HistogramGlitchForm,
     'color_shift_expansion': ColorShiftExpansionForm,
+    'color_filter': ColorFilterForm,
     'pixelate': PixelateForm,
+    'voronoi_pixelate': VoronoiPixelateForm,
+    'gaussian_blur': GaussianBlurForm,
+    'noise_effect': NoiseEffectForm,
+    'chromatic_aberration': ChromaticAberrationForm,
+    'vhs_effect': VHSEffectForm,
+    'sharpen_effect': SharpenEffectForm,
+    'wave_distortion': WaveDistortionForm,
     'concentric_shapes': ConcentricShapesForm,
     'posterize': PosterizeForm,
     'curved_hue_shift': CurvedHueShiftForm,
@@ -112,8 +125,10 @@ EFFECT_FORM_MAP = {
     'contour': ContourForm,
     'block_shuffle': BlockShuffleForm,
     'data_mosh_blocks': DataMoshBlocksForm,
-    # Add a mapping for the old 'spiral_sort' if it needs to be handled gracefully
-    # or ensure it's removed from the main form's choices if it's fully replaced by spiral_sort_2
+    
+    # New consolidated effects
+    'slice_block_manipulation': SliceBlockManipulationForm,
+    'advanced_pixel_sorting': AdvancedPixelSortingForm,
 }
 logger.info("EFFECT_FORM_MAP created.")
 
@@ -424,6 +439,135 @@ def index():
                         processed_image = pixelate_by_attribute(image, pixel_width, pixel_height, attribute, num_bins)
                         settings = f"pixelate_{pixel_width}x{pixel_height}_{attribute}_{num_bins}"
 
+                    elif effect == 'voronoi_pixelate':
+                        num_cells = effect_specific_form.num_cells.data
+                        attribute = effect_specific_form.attribute.data
+                        seed_val = effect_specific_form.seed.data
+                        logger.debug(f"Voronoi Pixelate params: num_cells={num_cells}, attribute={attribute}, seed={seed_val}")
+                        processed_image = voronoi_pixelate(image, num_cells, attribute, seed_val)
+                        settings = f"voronoipixelate_{num_cells}_{attribute}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'gaussian_blur':
+                        radius = effect_specific_form.radius.data
+                        sigma = effect_specific_form.sigma.data
+                        logger.debug(f"Gaussian Blur params: radius={radius}, sigma={sigma}")
+                        processed_image = gaussian_blur(image, radius, sigma)
+                        settings = f"gaussianblur_{radius}"
+                        if sigma is not None: settings += f"_s{sigma}"
+
+                    elif effect == 'noise_effect':
+                        noise_type = effect_specific_form.noise_type.data
+                        intensity = effect_specific_form.intensity.data
+                        grain_size = effect_specific_form.grain_size.data
+                        color_variation = effect_specific_form.color_variation.data
+                        noise_color = effect_specific_form.noise_color.data
+                        blend_mode = effect_specific_form.blend_mode.data
+                        pattern = effect_specific_form.pattern.data
+                        seed_val = effect_specific_form.seed.data
+                        
+                        logger.debug(f"Noise Effect params: type={noise_type}, intensity={intensity}, grain_size={grain_size}, color_variation={color_variation}, noise_color={noise_color}, blend_mode={blend_mode}, pattern={pattern}, seed={seed_val}")
+                        processed_image = noise_effect(
+                            image, noise_type=noise_type, intensity=intensity, grain_size=grain_size,
+                            color_variation=color_variation, noise_color=noise_color, blend_mode=blend_mode,
+                            pattern=pattern, seed=seed_val
+                        )
+                        settings = f"noise_{noise_type}_{blend_mode}_{intensity}_{grain_size}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'chromatic_aberration':
+                        intensity = effect_specific_form.intensity.data
+                        pattern = effect_specific_form.pattern.data
+                        red_shift_x = effect_specific_form.red_shift_x.data or 0.0
+                        red_shift_y = effect_specific_form.red_shift_y.data or 0.0
+                        blue_shift_x = effect_specific_form.blue_shift_x.data or 0.0
+                        blue_shift_y = effect_specific_form.blue_shift_y.data or 0.0
+                        center_x = effect_specific_form.center_x.data or 0.5
+                        center_y = effect_specific_form.center_y.data or 0.5
+                        falloff = effect_specific_form.falloff.data
+                        edge_enhancement = effect_specific_form.edge_enhancement.data or 0.0
+                        color_boost = effect_specific_form.color_boost.data or 1.0
+                        seed_val = effect_specific_form.seed.data
+                        
+                        logger.debug(f"Chromatic Aberration params: intensity={intensity}, pattern={pattern}, red_shift=({red_shift_x},{red_shift_y}), blue_shift=({blue_shift_x},{blue_shift_y}), center=({center_x},{center_y}), falloff={falloff}, edge_enhancement={edge_enhancement}, color_boost={color_boost}, seed={seed_val}")
+                        processed_image = chromatic_aberration(
+                            image, intensity=intensity, pattern=pattern, red_shift_x=red_shift_x, red_shift_y=red_shift_y,
+                            blue_shift_x=blue_shift_x, blue_shift_y=blue_shift_y, center_x=center_x, center_y=center_y,
+                            falloff=falloff, edge_enhancement=edge_enhancement, color_boost=color_boost, seed=seed_val
+                        )
+                        settings = f"chromatic_{pattern}_{intensity}_{falloff}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'vhs_effect':
+                        quality_preset = effect_specific_form.quality_preset.data
+                        scan_line_intensity = effect_specific_form.scan_line_intensity.data or 0.3
+                        scan_line_spacing = effect_specific_form.scan_line_spacing.data or 2
+                        static_intensity = effect_specific_form.static_intensity.data or 0.2
+                        static_type = effect_specific_form.static_type.data
+                        vertical_hold_frequency = effect_specific_form.vertical_hold_frequency.data or 0.1
+                        vertical_hold_intensity = effect_specific_form.vertical_hold_intensity.data or 5.0
+                        color_bleeding = effect_specific_form.color_bleeding.data or 0.3
+                        chroma_shift = effect_specific_form.chroma_shift.data or 0.2
+                        tracking_errors = effect_specific_form.tracking_errors.data or 0.15
+                        tape_wear = effect_specific_form.tape_wear.data or 0.1
+                        head_switching_noise = effect_specific_form.head_switching_noise.data or 0.1
+                        color_desaturation = effect_specific_form.color_desaturation.data or 0.3
+                        brightness_variation = effect_specific_form.brightness_variation.data or 0.2
+                        seed_val = effect_specific_form.seed.data
+                        
+                        logger.debug(f"VHS Effect params: preset={quality_preset}, scan_lines=({scan_line_intensity},{scan_line_spacing}), static=({static_intensity},{static_type}), vertical_hold=({vertical_hold_frequency},{vertical_hold_intensity}), color=({color_bleeding},{chroma_shift},{color_desaturation}), wear=({tracking_errors},{tape_wear},{head_switching_noise}), brightness={brightness_variation}, seed={seed_val}")
+                        processed_image = vhs_effect(
+                            image, quality_preset=quality_preset, scan_line_intensity=scan_line_intensity, scan_line_spacing=scan_line_spacing,
+                            static_intensity=static_intensity, static_type=static_type, vertical_hold_frequency=vertical_hold_frequency,
+                            vertical_hold_intensity=vertical_hold_intensity, color_bleeding=color_bleeding, chroma_shift=chroma_shift,
+                            tracking_errors=tracking_errors, tape_wear=tape_wear, head_switching_noise=head_switching_noise,
+                            color_desaturation=color_desaturation, brightness_variation=brightness_variation, seed=seed_val
+                        )
+                        settings = f"vhs_{quality_preset}_{static_type}_{scan_line_intensity}_{static_intensity}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'sharpen_effect':
+                        method = effect_specific_form.method.data
+                        intensity = effect_specific_form.intensity.data
+                        radius = effect_specific_form.radius.data or 1.0
+                        threshold = effect_specific_form.threshold.data or 0
+                        high_pass_radius = effect_specific_form.high_pass_radius.data or 3.0
+                        custom_kernel = effect_specific_form.custom_kernel.data
+                        edge_enhancement = effect_specific_form.edge_enhancement.data or 0.0
+                        
+                        logger.debug(f"Sharpen Effect params: method={method}, intensity={intensity}, radius={radius}, threshold={threshold}, high_pass_radius={high_pass_radius}, custom_kernel={custom_kernel}, edge_enhancement={edge_enhancement}")
+                        processed_image = sharpen_effect(
+                            image, method=method, intensity=intensity, radius=radius, threshold=threshold,
+                            edge_enhancement=edge_enhancement, high_pass_radius=high_pass_radius, custom_kernel=custom_kernel
+                        )
+                        settings = f"sharpen_{method}_{intensity}_{radius}"
+                        if threshold > 0: settings += f"_t{threshold}"
+                        if edge_enhancement > 0: settings += f"_e{edge_enhancement}"
+
+                    elif effect == 'wave_distortion':
+                        wave_type = effect_specific_form.wave_type.data
+                        amplitude = effect_specific_form.amplitude.data
+                        frequency = effect_specific_form.frequency.data
+                        phase = effect_specific_form.phase.data or 0.0
+                        secondary_wave = effect_specific_form.secondary_wave.data
+                        secondary_amplitude = effect_specific_form.secondary_amplitude.data or 10.0
+                        secondary_frequency = effect_specific_form.secondary_frequency.data or 0.05
+                        secondary_phase = effect_specific_form.secondary_phase.data or 90.0
+                        blend_mode = effect_specific_form.blend_mode.data
+                        edge_behavior = effect_specific_form.edge_behavior.data
+                        interpolation = effect_specific_form.interpolation.data
+                        
+                        logger.debug(f"Wave Distortion params: type={wave_type}, amplitude={amplitude}, frequency={frequency}, phase={phase}, secondary={secondary_wave}, blend={blend_mode}, edge={edge_behavior}, interp={interpolation}")
+                        processed_image = wave_distortion(
+                            image, wave_type=wave_type, amplitude=amplitude, frequency=frequency, phase=phase,
+                            secondary_wave=secondary_wave, secondary_amplitude=secondary_amplitude,
+                            secondary_frequency=secondary_frequency, secondary_phase=secondary_phase,
+                            blend_mode=blend_mode, edge_behavior=edge_behavior, interpolation=interpolation
+                        )
+                        settings = f"wave_{wave_type}_{amplitude}_{frequency}_{phase}"
+                        if secondary_wave: settings += f"_sec{secondary_amplitude}_{secondary_frequency}_{secondary_phase}"
+                        settings += f"_{blend_mode}_{edge_behavior}_{interpolation}"
+
                     elif effect == 'concentric_shapes':
                         num_points = effect_specific_form.num_points.data
                         shape_type = effect_specific_form.shape_type.data
@@ -681,6 +825,23 @@ def index():
                         logger.debug(f"Curved Hue Shift: curve={curve_value}, amount={shift_amount}")
                         processed_image = curved_hue_shift(image, curve_value, shift_amount)
                         settings = f"hueskift_C{curve_value}_A{shift_amount}"
+
+                    elif effect == 'color_filter':
+                        filter_type = effect_specific_form.filter_type.data
+                        color = effect_specific_form.color.data
+                        blend_mode = effect_specific_form.blend_mode.data
+                        opacity = effect_specific_form.opacity.data
+                        gradient_color2 = effect_specific_form.gradient_color2.data
+                        gradient_angle = effect_specific_form.gradient_angle.data
+                        
+                        logger.debug(f"Color Filter params: type={filter_type}, color={color}, blend_mode={blend_mode}, opacity={opacity}, gradient_color2={gradient_color2}, angle={gradient_angle}")
+                        processed_image = color_filter(
+                            image, filter_type=filter_type, color=color, blend_mode=blend_mode, 
+                            opacity=opacity, gradient_color2=gradient_color2, gradient_angle=gradient_angle
+                        )
+                        settings = f"colorfilter_{filter_type}_{blend_mode}_{opacity}"
+                        if filter_type == 'gradient':
+                            settings += f"_{gradient_angle}"
                         
                     elif effect == 'contour':
                         num_levels = effect_specific_form.num_levels.data
@@ -711,6 +872,86 @@ def index():
                         logger.debug(f"Block Shuffle params: width={block_width}, height={block_height}, seed={seed_val}")
                         processed_image = block_shuffle(image, block_width, block_height, seed_val)
                         settings = f"blockshuffle_{block_width}x{block_height}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    # === CONSOLIDATED EFFECTS ===
+                    elif effect == 'slice_block_manipulation':
+                        manipulation_type = effect_specific_form.manipulation_type.data
+                        orientation = effect_specific_form.orientation.data
+                        seed_val = effect_specific_form.seed.data
+                        
+                        # Extract parameters based on manipulation type
+                        kwargs = {
+                            'orientation': orientation,
+                            'seed': seed_val
+                        }
+                        
+                        if manipulation_type in ['slice_shuffle', 'slice_offset', 'slice_reduction']:
+                            kwargs['slice_count'] = effect_specific_form.slice_count.data
+                        
+                        if manipulation_type == 'slice_offset':
+                            kwargs['max_offset'] = effect_specific_form.max_offset.data
+                            kwargs['offset_mode'] = effect_specific_form.offset_mode.data
+                            kwargs['frequency'] = effect_specific_form.frequency.data
+                        elif manipulation_type == 'slice_reduction':
+                            kwargs['reduction_value'] = effect_specific_form.reduction_value.data
+                        elif manipulation_type == 'block_shuffle':
+                            kwargs['block_width'] = effect_specific_form.block_width.data
+                            kwargs['block_height'] = effect_specific_form.block_height.data
+                        
+                        logger.debug(f"Slice/Block Manipulation: type={manipulation_type}, params={kwargs}")
+                        processed_image = slice_block_manipulation(image, manipulation_type, **kwargs)
+                        settings = f"sliceblock_{manipulation_type}_{orientation}"
+                        if seed_val is not None: settings += f"_s{seed_val}"
+
+                    elif effect == 'advanced_pixel_sorting':
+                        sorting_method = effect_specific_form.sorting_method.data
+                        sort_by = effect_specific_form.sort_by.data
+                        reverse_sort = effect_specific_form.reverse_sort.data
+                        seed_val = effect_specific_form.seed.data
+                        
+                        # Extract parameters based on sorting method
+                        kwargs = {
+                            'sort_by': sort_by,
+                            'reverse_sort': reverse_sort,
+                            'seed': seed_val
+                        }
+                        
+                        if sorting_method == 'chunk':
+                            kwargs['chunk_width'] = effect_specific_form.chunk_width.data
+                            kwargs['chunk_height'] = effect_specific_form.chunk_height.data
+                            kwargs['sort_mode'] = effect_specific_form.sort_mode.data
+                            kwargs['starting_corner'] = effect_specific_form.starting_corner.data
+                        elif sorting_method in ['full_frame', 'perlin_noise']:
+                            kwargs['direction'] = effect_specific_form.direction.data
+                        elif sorting_method in ['polar', 'spiral']:
+                            kwargs['chunk_size'] = effect_specific_form.chunk_size.data
+                            if sorting_method == 'polar':
+                                kwargs['polar_sort_by'] = effect_specific_form.polar_sort_by.data
+                        elif sorting_method == 'voronoi':
+                            kwargs['num_cells'] = effect_specific_form.num_cells.data
+                            kwargs['size_variation'] = effect_specific_form.size_variation.data
+                            kwargs['sort_order'] = effect_specific_form.sort_order.data
+                            kwargs['voronoi_orientation'] = effect_specific_form.voronoi_orientation.data
+                            kwargs['start_position'] = effect_specific_form.start_position.data
+                        elif sorting_method in ['perlin_noise', 'perlin_full_frame']:
+                            kwargs['noise_scale'] = effect_specific_form.noise_scale.data
+                            if sorting_method == 'perlin_noise':
+                                kwargs['chunk_width'] = effect_specific_form.chunk_width.data
+                                kwargs['chunk_height'] = effect_specific_form.chunk_height.data
+                            else:  # perlin_full_frame
+                                kwargs['pattern_width'] = effect_specific_form.pattern_width.data
+                        elif sorting_method == 'wrapped':
+                            kwargs['wrapped_chunk_width'] = effect_specific_form.wrapped_chunk_width.data
+                            kwargs['wrapped_chunk_height'] = effect_specific_form.wrapped_chunk_height.data
+                            kwargs['wrapped_starting_corner'] = effect_specific_form.wrapped_starting_corner.data
+                            kwargs['wrapped_flow_direction'] = effect_specific_form.wrapped_flow_direction.data
+                            kwargs['direction'] = effect_specific_form.direction.data
+                        
+                        logger.debug(f"Advanced Pixel Sorting: method={sorting_method}, params={kwargs}")
+                        processed_image = advanced_pixel_sorting(image, sorting_method, **kwargs)
+                        settings = f"pixelsort_{sorting_method}_{sort_by}"
+                        if reverse_sort: settings += "_desc"
                         if seed_val is not None: settings += f"_s{seed_val}"
                         
                     else: # Should not be reached if EffectFormClass was found

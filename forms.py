@@ -38,6 +38,14 @@ def validate_is_odd(form, field):
     if field.data % 2 == 0:
         raise ValidationError('Value must be an odd number.')
 
+def validate_hex_color(form, field):
+    """Validate that the value is a valid hex color."""
+    if not field.data:
+        return
+    pattern = re.compile(r'^#[0-9A-Fa-f]{6}$')
+    if not pattern.match(field.data):
+        raise ValidationError('Color must be in hex format (e.g., #FF0000)')
+
 # --- Base Forms and Mixins ---
 
 class BaseEffectForm(FlaskForm):
@@ -286,7 +294,7 @@ class VoronoiSortForm(FlaskForm, SeedMixin):
 class PerlinNoiseSortForm(FlaskForm, SeedMixin):
     """Form for Perlin Noise Sorting effect."""
     chunk_width = IntegerField('Chunk Width', 
-                                default=128,
+                                default=120,
                                 validators=[DataRequired(), NumberRange(min=8, max=1024), validate_multiple_of_8])
     chunk_height = IntegerField('Chunk Height', 
                                 default=1024,
@@ -498,6 +506,20 @@ class PixelateForm(FlaskForm):
                         default=200,
                         validators=[DataRequired(), NumberRange(min=10, max=1000)]) # Renamed
 
+class VoronoiPixelateForm(FlaskForm, SeedMixin):
+    """Form for Voronoi Pixelate effect."""
+    num_cells = IntegerField('Number of Voronoi Cells',
+                            default=50,
+                            validators=[DataRequired(), NumberRange(min=10, max=500)])
+    attribute = SelectField('Cell Color Attribute', choices=[
+        ('color', 'Color (Most Common)'),
+        ('brightness', 'Brightness'),
+        ('hue', 'Hue'),
+        ('saturation', 'Saturation'),
+        ('luminance', 'Luminance')
+    ], default='hue', validators=[DataRequired()])
+    # seed is from SeedMixin
+
 class ConcentricShapesForm(FlaskForm, SeedMixin): # Added SeedMixin
     """Form for Concentric Shapes effect."""
     num_points = IntegerField('Number of Points',
@@ -540,6 +562,314 @@ class CurvedHueShiftForm(FlaskForm):
     shift_amount = FloatField('Shift Amount (degrees)',
                                 default=45.0, # Default was previously updated in a commit
                                 validators=[DataRequired(), NumberRange(min=-360.0, max=360.0)]) # Renamed from hue_shift_amount
+
+class ColorFilterForm(FlaskForm):
+    """Form for Color Filter effect."""
+    filter_type = SelectField('Filter Type', choices=[
+        ('solid', 'Solid Color'),
+        ('gradient', 'Gradient')
+    ], default='solid', validators=[DataRequired()])
+    
+    blend_mode = SelectField('Blend Mode', choices=[
+        ('overlay', 'Overlay'),
+        ('soft_light', 'Soft Light')
+    ], default='overlay', validators=[DataRequired()])
+    
+    opacity = FloatField('Filter Opacity',
+                        default=0.5,
+                        validators=[DataRequired(), NumberRange(min=0.0, max=1.0)])
+    
+    # Color picker fields - using StringField with hex validation
+    color = StringField('Filter Color',
+                       default='#FF0000',
+                       validators=[DataRequired(), validate_hex_color])
+    
+    # Gradient-specific fields (conditional)
+    gradient_color2 = StringField('Gradient End Color',
+                                 default='#0000FF',
+                                 validators=[Optional(), validate_hex_color])
+    
+    gradient_angle = IntegerField('Gradient Angle (degrees)',
+                                 default=0,
+                                 validators=[Optional(), NumberRange(min=0, max=360)])
+
+class GaussianBlurForm(FlaskForm):
+    """Form for Gaussian Blur effect."""
+    radius = FloatField('Blur Radius',
+                       default=5.0,
+                       validators=[DataRequired(), NumberRange(min=0.1, max=50.0)])
+    
+    sigma = FloatField('Sigma (Standard Deviation)',
+                      default=None,
+                      validators=[Optional(), NumberRange(min=0.1, max=20.0)])
+
+class NoiseEffectForm(FlaskForm, SeedMixin):
+    """Form for Noise Effect."""
+    noise_type = SelectField('Noise Type', choices=[
+        ('film_grain', 'Film Grain'),
+        ('digital', 'Digital Noise'),
+        ('colored', 'Colored Noise'),
+        ('salt_pepper', 'Salt & Pepper'),
+        ('gaussian', 'Gaussian Noise')
+    ], default='film_grain', validators=[DataRequired()])
+    
+    intensity = FloatField('Noise Intensity',
+                          default=0.3,
+                          validators=[DataRequired(), NumberRange(min=0.0, max=1.0)])
+    
+    grain_size = FloatField('Grain/Particle Size',
+                           default=1.0,
+                           validators=[DataRequired(), NumberRange(min=0.5, max=5.0)])
+    
+    color_variation = FloatField('Color Variation',
+                                default=0.2,
+                                validators=[DataRequired(), NumberRange(min=0.0, max=1.0)])
+    
+    noise_color = StringField('Noise Color (for Colored type)',
+                             default='#FFFFFF',
+                             validators=[Optional(), validate_hex_color])
+    
+    blend_mode = SelectField('Blend Mode', choices=[
+        ('overlay', 'Overlay'),
+        ('add', 'Add'),
+        ('multiply', 'Multiply'),
+        ('screen', 'Screen')
+    ], default='overlay', validators=[DataRequired()])
+    
+    pattern = SelectField('Noise Pattern', choices=[
+        ('random', 'Random'),
+        ('perlin', 'Perlin-like'),
+        ('cellular', 'Cellular')
+    ], default='random', validators=[DataRequired()])
+    
+    # seed is inherited from SeedMixin
+
+class ChromaticAberrationForm(FlaskForm, SeedMixin):
+    """Form for Chromatic Aberration effect."""
+    intensity = FloatField('Aberration Intensity',
+                          default=5.0,
+                          validators=[DataRequired(), NumberRange(min=0.0, max=50.0)])
+    
+    pattern = SelectField('Aberration Pattern', choices=[
+        ('radial', 'Radial (Lens-like)'),
+        ('linear', 'Linear (Prism-like)'),
+        ('barrel', 'Barrel Distortion'),
+        ('custom', 'Custom Manual')
+    ], default='radial', validators=[DataRequired()])
+    
+    # Manual displacement controls (for custom pattern or fine-tuning)
+    red_shift_x = FloatField('Red Channel X Shift',
+                            default=0.0,
+                            validators=[Optional(), NumberRange(min=-20.0, max=20.0)])
+    
+    red_shift_y = FloatField('Red Channel Y Shift',
+                            default=0.0,
+                            validators=[Optional(), NumberRange(min=-20.0, max=20.0)])
+    
+    blue_shift_x = FloatField('Blue Channel X Shift',
+                             default=0.0,
+                             validators=[Optional(), NumberRange(min=-20.0, max=20.0)])
+    
+    blue_shift_y = FloatField('Blue Channel Y Shift',
+                             default=0.0,
+                             validators=[Optional(), NumberRange(min=-20.0, max=20.0)])
+    
+    # Center point controls
+    center_x = FloatField('Center X Position',
+                         default=0.5,
+                         validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    center_y = FloatField('Center Y Position',
+                         default=0.5,
+                         validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    # Advanced controls
+    falloff = SelectField('Distance Falloff', choices=[
+        ('linear', 'Linear'),
+        ('quadratic', 'Quadratic'),
+        ('cubic', 'Cubic')
+    ], default='quadratic', validators=[DataRequired()])
+    
+    edge_enhancement = FloatField('Edge Enhancement',
+                                 default=0.0,
+                                 validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    color_boost = FloatField('Color Saturation Boost',
+                            default=1.0,
+                            validators=[Optional(), NumberRange(min=0.5, max=2.0)])
+    
+    # seed is inherited from SeedMixin
+
+class VHSEffectForm(FlaskForm, SeedMixin):
+    """Form for VHS Effect."""
+    quality_preset = SelectField('VHS Quality Preset', choices=[
+        ('high', 'High Quality (Fresh Tape)'),
+        ('medium', 'Medium Quality (Rental Store)'),
+        ('low', 'Low Quality (Old Tape)'),
+        ('damaged', 'Damaged (Garage Sale Find)')
+    ], default='medium', validators=[DataRequired()])
+    
+    # Scan line controls
+    scan_line_intensity = FloatField('Scan Line Intensity',
+                                    default=0.3,
+                                    validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    scan_line_spacing = IntegerField('Scan Line Spacing',
+                                    default=2,
+                                    validators=[Optional(), NumberRange(min=1, max=5)])
+    
+    # Static noise controls
+    static_intensity = FloatField('Static Noise Intensity',
+                                 default=0.2,
+                                 validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    static_type = SelectField('Static Noise Type', choices=[
+        ('white', 'White Static'),
+        ('colored', 'Colored Static'),
+        ('mixed', 'Mixed Static')
+    ], default='white', validators=[DataRequired()])
+    
+    # Vertical hold controls
+    vertical_hold_frequency = FloatField('Vertical Hold Issues',
+                                        default=0.1,
+                                        validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    vertical_hold_intensity = FloatField('Vertical Hold Intensity',
+                                        default=5.0,
+                                        validators=[Optional(), NumberRange(min=0.0, max=20.0)])
+    
+    # Color bleeding and chroma shift
+    color_bleeding = FloatField('Color Bleeding',
+                               default=0.3,
+                               validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    chroma_shift = FloatField('Chroma/Luma Separation',
+                             default=0.2,
+                             validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    # Tracking and tape wear
+    tracking_errors = FloatField('Tracking Errors',
+                                default=0.15,
+                                validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    tape_wear = FloatField('Tape Wear & Dropouts',
+                          default=0.1,
+                          validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    head_switching_noise = FloatField('Head Switching Noise',
+                                     default=0.1,
+                                     validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    # Color degradation
+    color_desaturation = FloatField('Color Desaturation',
+                                   default=0.3,
+                                   validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    brightness_variation = FloatField('Brightness Variation',
+                                     default=0.2,
+                                     validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    
+    # seed is inherited from SeedMixin
+
+class SharpenEffectForm(FlaskForm):
+    """Form for Sharpen Effect."""
+    method = SelectField('Sharpening Method', choices=[
+        ('unsharp_mask', 'Unsharp Mask (Classic)'),
+        ('high_pass', 'High-Pass Filter'),
+        ('edge_enhance', 'Edge Enhancement'),
+        ('custom', 'Custom Kernel')
+    ], default='unsharp_mask', validators=[DataRequired()])
+    
+    intensity = FloatField('Sharpening Intensity',
+                          default=1.0,
+                          validators=[DataRequired(), NumberRange(min=0.0, max=5.0)])
+    
+    # Unsharp mask specific controls
+    radius = FloatField('Blur Radius (for Unsharp Mask)',
+                       default=1.0,
+                       validators=[Optional(), NumberRange(min=0.1, max=10.0)])
+    
+    threshold = IntegerField('Threshold (for Unsharp Mask)',
+                            default=0,
+                            validators=[Optional(), NumberRange(min=0, max=255)])
+    
+    # High-pass specific controls
+    high_pass_radius = FloatField('High-Pass Radius',
+                                 default=3.0,
+                                 validators=[Optional(), NumberRange(min=1.0, max=10.0)])
+    
+    # Custom kernel controls
+    custom_kernel = SelectField('Custom Kernel Type', choices=[
+        ('default', 'Default Sharpen'),
+        ('laplacian', 'Laplacian'),
+        ('sobel', 'Sobel'),
+        ('prewitt', 'Prewitt')
+    ], default='default', validators=[Optional()])
+    
+    # Additional enhancement
+    edge_enhancement = FloatField('Additional Edge Enhancement',
+                                 default=0.0,
+                                 validators=[Optional(), NumberRange(min=0.0, max=2.0)])
+
+class WaveDistortionForm(FlaskForm):
+    """Form for Wave Distortion effect."""
+    wave_type = SelectField('Wave Type', choices=[
+        ('horizontal', 'Horizontal Waves'),
+        ('vertical', 'Vertical Waves'),
+        ('both', 'Both Horizontal & Vertical'),
+        ('diagonal', 'Diagonal Waves'),
+        ('radial', 'Radial Waves (from center)')
+    ], default='horizontal', validators=[DataRequired()])
+    
+    # Primary wave controls
+    amplitude = FloatField('Wave Amplitude (pixels)',
+                          default=20.0,
+                          validators=[DataRequired(), NumberRange(min=0.0, max=100.0)])
+    
+    frequency = FloatField('Wave Frequency',
+                          default=0.02,
+                          validators=[DataRequired(), NumberRange(min=0.001, max=0.1)])
+    
+    phase = FloatField('Wave Phase (degrees)',
+                      default=0.0,
+                      validators=[Optional(), NumberRange(min=0.0, max=360.0)])
+    
+    # Secondary wave controls
+    secondary_wave = BooleanField('Enable Secondary Wave', default=False, validators=[Optional()])
+    
+    secondary_amplitude = FloatField('Secondary Wave Amplitude',
+                                    default=10.0,
+                                    validators=[Optional(), NumberRange(min=0.0, max=100.0)])
+    
+    secondary_frequency = FloatField('Secondary Wave Frequency',
+                                    default=0.05,
+                                    validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    
+    secondary_phase = FloatField('Secondary Wave Phase (degrees)',
+                                default=90.0,
+                                validators=[Optional(), NumberRange(min=0.0, max=360.0)])
+    
+    # Wave combination controls
+    blend_mode = SelectField('Wave Blend Mode', choices=[
+        ('add', 'Add (Combine waves)'),
+        ('multiply', 'Multiply (Modulate waves)'),
+        ('max', 'Maximum (Take strongest)'),
+        ('interference', 'Interference Pattern')
+    ], default='add', validators=[DataRequired()])
+    
+    # Edge handling
+    edge_behavior = SelectField('Edge Behavior', choices=[
+        ('wrap', 'Wrap Around'),
+        ('clamp', 'Clamp to Edges'),
+        ('reflect', 'Reflect at Edges')
+    ], default='wrap', validators=[DataRequired()])
+    
+    # Interpolation quality
+    interpolation = SelectField('Interpolation Quality', choices=[
+        ('nearest', 'Nearest Neighbor (Fast)'),
+        ('bilinear', 'Bilinear (Good)'),
+        ('bicubic', 'Bicubic (Best)')
+    ], default='bilinear', validators=[DataRequired()])
 
 class MaskedMergeForm(FlaskForm, SeedMixin, SecondaryImageMixin):
     """Form for Masked Merge effect."""
@@ -759,6 +1089,164 @@ class DataMoshBlocksForm(FlaskForm, SeedMixin):
     ], default='random', validators=[DataRequired()]) # Renamed
     # seed from SeedMixin
 
+# === CONSOLIDATED EFFECT FORMS ===
+
+class SliceBlockManipulationForm(FlaskForm, SeedMixin):
+    """Consolidated form for slice and block manipulation effects."""
+    
+    manipulation_type = SelectField('Manipulation Type', choices=[
+        ('slice_shuffle', 'Slice Shuffle'),
+        ('slice_offset', 'Slice Offset'),
+        ('slice_reduction', 'Slice Reduction'),
+        ('block_shuffle', 'Block Shuffle')
+    ], default='slice_shuffle', validators=[DataRequired()])
+    
+    # Common parameters
+    orientation = SelectField('Orientation', choices=[
+        ('rows', 'Rows'),
+        ('columns', 'Columns')
+    ], default='rows', validators=[DataRequired()])
+    
+    # Slice parameters
+    slice_count = IntegerField('Number of Slices', 
+                              default=16, 
+                              validators=[Optional(), NumberRange(min=4, max=256)])
+    
+    # Block parameters
+    block_width = IntegerField('Block Width', 
+                              default=32, 
+                              validators=[Optional(), NumberRange(min=2, max=512)])
+    block_height = IntegerField('Block Height', 
+                               default=32, 
+                               validators=[Optional(), NumberRange(min=2, max=512)])
+    
+    # Offset-specific parameters
+    max_offset = IntegerField('Maximum Offset (pixels)', 
+                             default=50, 
+                             validators=[Optional(), NumberRange(min=1, max=512)])
+    offset_mode = SelectField('Offset Pattern', choices=[
+        ('random', 'Random Offsets'),
+        ('sine', 'Sine Wave Pattern')
+    ], default='random', validators=[Optional()])
+    frequency = FloatField('Sine Wave Frequency', 
+                          default=0.1, 
+                          validators=[Optional(), NumberRange(min=0.01, max=1.0)])
+    
+    # Reduction-specific parameters
+    reduction_value = IntegerField('Reduction Value', 
+                                  default=2, 
+                                  validators=[Optional(), NumberRange(min=2, max=8)])
+
+class AdvancedPixelSortingForm(FlaskForm, SortingFieldsMixin, SeedMixin):
+    """Consolidated form for all pixel sorting effects."""
+    
+    # Primary sorting method selector
+    sorting_method = SelectField('Sorting Method', choices=[
+        ('chunk', 'Chunk-Based Sorting'),
+        ('full_frame', 'Full Frame Sorting'),
+        ('polar', 'Polar Sorting'),
+        ('spiral', 'Spiral Sorting'),
+        ('voronoi', 'Voronoi-Based Sorting'),
+        ('perlin_noise', 'Perlin Noise Sorting'),
+        ('perlin_full_frame', 'Perlin Full Frame Sorting'),
+        ('wrapped', 'Wrapped Sort')
+    ], default='chunk', validators=[DataRequired()])
+    
+    # Chunk-specific parameters (conditional)
+    chunk_width = IntegerField('Chunk Width', 
+                              default=48, 
+                              validators=[Optional(), NumberRange(min=2, max=2048), validate_multiple_of_2])
+    chunk_height = IntegerField('Chunk Height', 
+                               default=48, 
+                               validators=[Optional(), NumberRange(min=2, max=2048), validate_multiple_of_2])
+    sort_mode = SelectField('Sort Mode', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical'),
+        ('diagonal', 'Diagonal')
+    ], default='horizontal', validators=[Optional()])
+    starting_corner = SelectField('Starting Corner (for Diagonal mode)', choices=[
+        ('top-left', 'Top-Left'),
+        ('top-right', 'Top-Right'),
+        ('bottom-left', 'Bottom-Left'),
+        ('bottom-right', 'Bottom-Right')
+    ], default='top-left', validators=[Optional()])
+    
+    # Voronoi-specific parameters
+    num_cells = IntegerField('Number of Cells', 
+                            default=69, 
+                            validators=[Optional(), NumberRange(min=10, max=1000)])
+    size_variation = FloatField('Size Variation', 
+                               default=0.8, 
+                               validators=[Optional(), NumberRange(min=0.0, max=1.0)])
+    sort_order = SelectField('Sort Order', choices=[
+        ('clockwise', 'Clockwise'),
+        ('counter-clockwise', 'Counter-Clockwise')
+    ], default='clockwise', validators=[Optional()])
+    voronoi_orientation = SelectField('Line Orientation', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical'),
+        ('radial', 'Radial'),
+        ('spiral', 'Spiral')
+    ], default='spiral', validators=[Optional()])
+    start_position = SelectField('Start Position', choices=[
+        ('center', 'Center'),
+        ('top-left', 'Top-Left'),
+        ('top-right', 'Top-Right'),
+        ('bottom-left', 'Bottom-Left'),
+        ('bottom-right', 'Bottom-Right')
+    ], default='center', validators=[Optional()])
+    
+    # Perlin noise parameters
+    noise_scale = FloatField('Noise Scale', 
+                            default=0.008, 
+                            validators=[Optional(), NumberRange(min=0.001, max=0.1)])
+    pattern_width = IntegerField('Pattern Width', 
+                                default=1, 
+                                validators=[Optional(), NumberRange(min=1, max=100)])
+    
+    # Perlin noise specific chunk parameters (different from general chunk params)
+    perlin_chunk_width = IntegerField('Perlin Chunk Width', 
+                                     default=120, 
+                                     validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
+    perlin_chunk_height = IntegerField('Perlin Chunk Height', 
+                                      default=1024, 
+                                      validators=[Optional(), NumberRange(min=8, max=1024), validate_multiple_of_8])
+    
+    # Direction for applicable methods
+    direction = SelectField('Direction', choices=[
+        ('horizontal', 'Horizontal'),
+        ('vertical', 'Vertical')
+    ], default='horizontal', validators=[Optional()])
+    
+    # Polar-specific parameters
+    polar_sort_by = SelectField('Polar Sort By', choices=[
+        ('angle', 'Angle (around center)'),
+        ('radius', 'Radius (distance from center)')
+    ], default='radius', validators=[Optional()])
+    
+    # Chunk size for methods that need it (polar, spiral)
+    chunk_size = IntegerField('Chunk Size', 
+                             default=64, 
+                             validators=[Optional(), NumberRange(min=8, max=128), validate_multiple_of_8])
+    
+    # Wrapped sort specific parameters
+    wrapped_chunk_width = IntegerField('Wrapped Chunk Width', 
+                                      default=12, 
+                                      validators=[Optional(), NumberRange(min=1, max=500)])
+    wrapped_chunk_height = IntegerField('Wrapped Chunk Height', 
+                                       default=123, 
+                                       validators=[Optional(), NumberRange(min=1, max=500)])
+    wrapped_starting_corner = SelectField('Wrapped Starting Corner', choices=[
+        ('top-left', 'Top-Left'),
+        ('top-right', 'Top-Right'),
+        ('bottom-left', 'Bottom-Left'),
+        ('bottom-right', 'Bottom-Right')
+    ], default='top-left', validators=[Optional()])
+    wrapped_flow_direction = SelectField('Chunk Flow Direction', choices=[
+        ('primary', 'Primary (down/right from corner)'),
+        ('secondary', 'Secondary (right/down from corner)')
+    ], default='primary', validators=[Optional()])
+
 # Add other specific effect forms here following the pattern:
 # class AnotherEffectForm(FlaskForm, OptionalMixin1, OptionalMixin2):
 #     param1 = ...
@@ -772,47 +1260,49 @@ class ImageProcessForm(FlaskForm):
         FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Images only!')
     ])
     effect = SelectField('Effect', choices=[
-        # Full Frame Sorting
-        ('full_frame_sort', 'Full Frame Sorting'),
-        ('perlin_full_frame', 'Perlin Full Frame'),
-        # Chunked Sorting
-        ('pixel_sort_chunk', 'Pixel Sort Chunk'),
-        ('polar_sort', 'Polar Sorting'),
-        ('spiral_sort_2', 'Spiral Sort 2'),
-        ('voronoi_sort', 'Voronoi Pixel Sort'),
-        ('perlin_noise_sort', 'Perlin Noise Sorting'),
-        # Glitchy/Distortion Effects
-        ('pixel_drift', 'Pixel Drift'),
-        ('bit_manipulation', 'Bit Manipulation'),
-        ('data_mosh_blocks', 'Data Mosh Blocks'),
-        ('jpeg_artifacts', 'JPEG Artifacts'),
-        ('pixel_scatter', 'Pixel Scatter'),
-        ('databend', 'Databending'),
-        ('perlin_displacement', 'Perlin Displacement'),
-        ('ripple', 'Ripple Effect'),
-        # Color/Pattern Effects
+        # === COLOR & TONE EFFECTS ===
+        ('color_filter', 'Color Filter'),
         ('color_channel', 'Color Channel Manipulation'),
         ('channel_shift', 'RGB Channel Shift'),
-        ('histogram_glitch', 'Histogram Glitch'),
-        ('color_shift_expansion', 'Color Shift Expansion'),
-        ('pixelate', 'Pixelate'),
-        ('concentric_shapes', 'Concentric Shapes'),
-        ('posterize', 'Posterfy'),
         ('curved_hue_shift', 'Hue Skrift'),
-        # Merge Effects
+        ('color_shift_expansion', 'Color Shift Expansion'),
+        ('histogram_glitch', 'Histogram Glitch'),
+        ('posterize', 'Posterfy'),
+        
+        # === PIXEL SORTING EFFECTS (CONSOLIDATED) ===
+        ('advanced_pixel_sorting', 'Advanced Pixel Sorting'),
+        
+        # === PIXELATION & STYLIZATION ===
+        ('pixelate', 'Pixelate'),
+        ('voronoi_pixelate', 'Voronoi Pixelate'),
+        ('gaussian_blur', 'Gaussian Blur'),
+        ('sharpen_effect', 'Sharpen Effect'),
+        ('vhs_effect', 'VHS Effect'),
+        ('concentric_shapes', 'Concentric Shapes'),
+        ('contour', 'Contour'),
+        
+        # === DISTORTION & DISPLACEMENT ===
+        ('pixel_drift', 'Pixel Drift'),
+        ('perlin_displacement', 'Perlin Displacement'),
+        ('wave_distortion', 'Wave Distortion'),
+        ('ripple', 'Ripple Effect'),
+        ('pixel_scatter', 'Pixel Scatter'),
+        ('offset', 'Offset'),
+        
+        # === SLICE & BLOCK EFFECTS (CONSOLIDATED) ===
+        ('slice_block_manipulation', 'Slice & Block Manipulation'),
+        
+        # === GLITCH & CORRUPTION ===
+        ('bit_manipulation', 'Bit Manipulation'),
+        ('data_mosh_blocks', 'Data Mosh Blocks'),
+        ('databend', 'Databending'),
+        ('jpeg_artifacts', 'JPEG Artifacts'),
+        ('noise_effect', 'Noise Effect'),
+        ('chromatic_aberration', 'Chromatic Aberration'),
+        
+        # === BLEND & COMPOSITE ===
         ('double_expose', 'Double Expose'),
         ('masked_merge', 'Masked Merge'),
-        # New Offset Effect
-        ('offset', 'Offset'),
-        # Slice Shuffle Effect
-        ('slice_shuffle', 'Slice Shuffle'),
-        # Slice Offset Effect
-        ('slice_offset', 'Slice Offset'),
-        # Slice Reduction Effect
-        ('slice_reduction', 'Slice Reduction'),
-        # Contour Effect
-        ('contour', 'Contour'),
-        ('block_shuffle', 'Block Shuffle'),
     ], validators=[DataRequired()])
     submit = SubmitField('Process Image')
 

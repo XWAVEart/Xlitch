@@ -6,6 +6,9 @@
     <title>XWAVE XLITCH ART</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Color picker library -->
+    <script src="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/themes/nano.min.css"/>
     <style>
         :root {
             --bg-color: #1a1a1a;
@@ -552,6 +555,119 @@
                     const pixelationFields = $(getFieldGroupId('pixelation_scale') + ', ' + getFieldGroupId('pixelation_magnitude'));
                     function toggle() { const type = distortionTypeSelect.val(); colorShiftFields.toggle(type === 'color_shift'); pixelationFields.toggle(type === 'pixelation'); }
                     distortionTypeSelect.off('change.conditionalRipple').on('change.conditionalRipple', toggle); toggle();
+                } else if (effectKey === 'color_filter') {
+                    const filterTypeSelect = $(getFieldGroupId('filter_type') + ' select');
+                    const gradientFields = $(getFieldGroupId('gradient_color2') + ', ' + getFieldGroupId('gradient_angle'));
+                    function toggle() { gradientFields.toggle(filterTypeSelect.val() === 'gradient'); }
+                    filterTypeSelect.off('change.conditionalColorFilter').on('change.conditionalColorFilter', toggle); toggle();
+                    
+                    // Initialize color pickers for this effect
+                    initializeColorPickers(effectKey);
+                } else if (effectKey === 'noise_effect') {
+                    const noiseTypeSelect = $(getFieldGroupId('noise_type') + ' select');
+                    const noiseColorField = $(getFieldGroupId('noise_color'));
+                    function toggle() { noiseColorField.toggle(noiseTypeSelect.val() === 'colored'); }
+                    noiseTypeSelect.off('change.conditionalNoiseEffect').on('change.conditionalNoiseEffect', toggle); toggle();
+                    
+                    // Initialize color pickers for this effect
+                    initializeColorPickers(effectKey);
+                } else if (effectKey === 'chromatic_aberration') {
+                    const patternSelect = $(getFieldGroupId('pattern') + ' select');
+                    const manualShiftFields = $(getFieldGroupId('red_shift_x') + ', ' + getFieldGroupId('red_shift_y') + ', ' + getFieldGroupId('blue_shift_x') + ', ' + getFieldGroupId('blue_shift_y'));
+                    function toggle() { 
+                        const isCustom = patternSelect.val() === 'custom';
+                        manualShiftFields.toggle(isCustom);
+                        // Show help text for custom mode
+                        if (isCustom) {
+                            manualShiftFields.find('.help-text').show();
+                        }
+                    }
+                    patternSelect.off('change.conditionalChromaticAberration').on('change.conditionalChromaticAberration', toggle); toggle();
+                
+                } else if (effectKey === 'slice_block_manipulation') {
+                    // Consolidated Slice & Block Manipulation conditional fields
+                    const manipulationTypeSelect = $(getFieldGroupId('manipulation_type') + ' select');
+                    const sliceFields = $(getFieldGroupId('slice_count'));
+                    const blockFields = $(getFieldGroupId('block_width') + ', ' + getFieldGroupId('block_height'));
+                    const offsetFields = $(getFieldGroupId('max_offset') + ', ' + getFieldGroupId('offset_mode') + ', ' + getFieldGroupId('frequency'));
+                    const reductionFields = $(getFieldGroupId('reduction_value'));
+                    
+                    function toggleSliceBlockFields() {
+                        const type = manipulationTypeSelect.val();
+                        // Hide all conditional fields first
+                        sliceFields.hide();
+                        blockFields.hide();
+                        offsetFields.hide();
+                        reductionFields.hide();
+                        
+                        if (type === 'slice_shuffle') {
+                            sliceFields.show();
+                        } else if (type === 'slice_offset') {
+                            sliceFields.show();
+                            offsetFields.show();
+                        } else if (type === 'slice_reduction') {
+                            sliceFields.show();
+                            reductionFields.show();
+                        } else if (type === 'block_shuffle') {
+                            blockFields.show();
+                        }
+                    }
+                    
+                    manipulationTypeSelect.off('change.conditionalSliceBlock').on('change.conditionalSliceBlock', toggleSliceBlockFields);
+                    toggleSliceBlockFields();
+                    
+                } else if (effectKey === 'advanced_pixel_sorting') {
+                    // Consolidated Advanced Pixel Sorting conditional fields
+                    const sortingMethodSelect = $(getFieldGroupId('sorting_method') + ' select');
+                    const chunkFields = $(getFieldGroupId('chunk_width') + ', ' + getFieldGroupId('chunk_height') + ', ' + getFieldGroupId('sort_mode') + ', ' + getFieldGroupId('starting_corner'));
+                    const directionField = $(getFieldGroupId('direction'));
+                    const chunkSizeField = $(getFieldGroupId('chunk_size'));
+                    const polarSortField = $(getFieldGroupId('polar_sort_by'));
+                    const voronoiFields = $(getFieldGroupId('num_cells') + ', ' + getFieldGroupId('size_variation') + ', ' + getFieldGroupId('sort_order') + ', ' + getFieldGroupId('voronoi_orientation') + ', ' + getFieldGroupId('start_position'));
+                    const noiseScaleField = $(getFieldGroupId('noise_scale'));
+                    const perlinNoiseFields = $(getFieldGroupId('perlin_chunk_width') + ', ' + getFieldGroupId('perlin_chunk_height'));
+                    const patternWidthField = $(getFieldGroupId('pattern_width'));
+                    const wrappedFields = $(getFieldGroupId('wrapped_chunk_width') + ', ' + getFieldGroupId('wrapped_chunk_height') + ', ' + getFieldGroupId('wrapped_starting_corner') + ', ' + getFieldGroupId('wrapped_flow_direction'));
+                    
+                    function togglePixelSortingFields() {
+                        const method = sortingMethodSelect.val();
+                        // Hide all conditional fields first
+                        chunkFields.hide();
+                        directionField.hide();
+                        chunkSizeField.hide();
+                        polarSortField.hide();
+                        voronoiFields.hide();
+                        noiseScaleField.hide();
+                        perlinNoiseFields.hide();
+                        patternWidthField.hide();
+                        wrappedFields.hide();
+                        
+                        if (method === 'chunk') {
+                            chunkFields.show();
+                        } else if (method === 'full_frame') {
+                            directionField.show();
+                        } else if (method === 'polar') {
+                            chunkSizeField.show();
+                            polarSortField.show();
+                        } else if (method === 'spiral') {
+                            chunkSizeField.show();
+                        } else if (method === 'voronoi') {
+                            voronoiFields.show();
+                        } else if (method === 'perlin_noise') {
+                            directionField.show();
+                            noiseScaleField.show();
+                            perlinNoiseFields.show();
+                        } else if (method === 'perlin_full_frame') {
+                            noiseScaleField.show();
+                            patternWidthField.show();
+                        } else if (method === 'wrapped') {
+                            wrappedFields.show();
+                            directionField.show();
+                        }
+                    }
+                    
+                    sortingMethodSelect.off('change.conditionalPixelSorting').on('change.conditionalPixelSorting', togglePixelSortingFields);
+                    togglePixelSortingFields();
                 }
             }
 
@@ -682,6 +798,71 @@
                 }
             });
         });
+
+        function initializeColorPickers(effectKey) {
+            // Initialize color pickers for color fields
+            $('[data-color-picker="true"]').each(function() {
+                const input = $(this);
+                const fieldId = input.attr('id');
+                const preview = $('[data-target="' + fieldId + '"]');
+                
+                // Update preview color
+                function updatePreview(color) {
+                    preview.css('background-color', color);
+                }
+                
+                // Set initial color
+                updatePreview(input.val() || '#FF0000');
+                
+                // Create Pickr instance
+                const pickr = Pickr.create({
+                    el: preview[0],
+                    theme: 'nano',
+                    default: input.val() || '#FF0000',
+                    components: {
+                        preview: true,
+                        opacity: false,
+                        hue: true,
+                        interaction: {
+                            hex: true,
+                            rgba: false,
+                            hsla: false,
+                            hsva: false,
+                            cmyk: false,
+                            input: true,
+                            clear: false,
+                            save: true
+                        }
+                    }
+                });
+                
+                // Update input when color changes
+                pickr.on('change', (color) => {
+                    const hexColor = color.toHEXA().toString();
+                    input.val(hexColor);
+                    updatePreview(hexColor);
+                });
+                
+                // Update input when saved
+                pickr.on('save', (color) => {
+                    if (color) {
+                        const hexColor = color.toHEXA().toString();
+                        input.val(hexColor);
+                        updatePreview(hexColor);
+                    }
+                    pickr.hide();
+                });
+                
+                // Update picker when input changes manually
+                input.on('input change', function() {
+                    const color = $(this).val();
+                    if (color.match(/^#[0-9A-Fa-f]{6}$/)) {
+                        pickr.setColor(color);
+                        updatePreview(color);
+                    }
+                });
+            });
+        }
 
         function previewImage(event) {
             var file = event.target.files[0];

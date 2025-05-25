@@ -6,7 +6,13 @@ from .color import (
     simulate_jpeg_artifacts,
     color_shift_expansion,
     posterize,
-    curved_hue_shift
+    curved_hue_shift,
+    color_filter,
+    gaussian_blur,
+    noise_effect,
+    chromatic_aberration,
+    vhs_effect,
+    sharpen_effect
 )
 
 from .distortion import (
@@ -20,7 +26,8 @@ from .distortion import (
     offset_effect,
     slice_shuffle,
     slice_offset,
-    slice_reduction
+    slice_reduction,
+    wave_distortion
 )
 
 from .glitch import (
@@ -50,7 +57,8 @@ from .sorting import (
 )
 
 from .pixelate import (
-    pixelate_by_attribute
+    pixelate_by_attribute,
+    voronoi_pixelate
 )
 
 from .blend import (
@@ -59,6 +67,11 @@ from .blend import (
 
 from .contour import (
     contour_effect
+)
+
+from .consolidated import (
+    advanced_pixel_sorting,
+    slice_block_manipulation
 )
 
 # Export all imported functions
@@ -71,6 +84,12 @@ __all__ = [
     'color_shift_expansion',
     'posterize',
     'curved_hue_shift',
+    'color_filter',
+    'gaussian_blur',
+    'noise_effect',
+    'chromatic_aberration',
+    'vhs_effect',
+    'sharpen_effect',
     
     # Distortion effects
     'pixel_drift',
@@ -84,6 +103,7 @@ __all__ = [
     'slice_shuffle',
     'slice_offset',
     'slice_reduction',
+    'wave_distortion',
     
     # Glitch effects
     'databend_image',
@@ -109,10 +129,15 @@ __all__ = [
     
     # Pixelate effects
     'pixelate_by_attribute',
+    'voronoi_pixelate',
     
     # Blend effects
     'double_expose',
     
     # Contour effects
-    'contour_effect'
+    'contour_effect',
+    
+    # Consolidated effects
+    'advanced_pixel_sorting',
+    'slice_block_manipulation'
 ]
